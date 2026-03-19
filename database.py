@@ -89,21 +89,6 @@ def init_db():
             ],
         )
 
-        # 食品デフォルト初期データ
-        initial_defaults = [
-            ("鶏胸肉", "皮無し", None),
-            ("鶏むね肉", "皮無し", None),
-            ("オートミール", "味の素製のロールドオーツ", None),
-        ]
-        for keyword, description, notes in initial_defaults:
-            conn.execute(
-                """
-                INSERT INTO food_defaults (keyword, description, notes)
-                SELECT ?, ?, ?
-                WHERE NOT EXISTS (SELECT 1 FROM food_defaults WHERE keyword = ?)
-                """,
-                (keyword, description, notes, keyword),
-            )
 
 
 # ── 設定 ──────────────────────────────────────────────────────────────────────
@@ -137,6 +122,12 @@ def get_food_defaults() -> list[dict]:
             "SELECT keyword, description, notes FROM food_defaults ORDER BY id"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def delete_food_default(keyword: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM food_defaults WHERE keyword = ?", (keyword,))
+        return cur.rowcount > 0
 
 
 def save_food_default(keyword: str, description: str, notes: Optional[str] = None):

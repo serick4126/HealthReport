@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>設定</title>
+  <style>
+    :root {
+      --bg: #f2f2f7; --header-bg: rgba(255,255,255,0.85); --card-bg: #ffffff;
+      --border: #e5e5ea; --accent: #007aff; --danger: #ff3b30;
+      --text-secondary: #8e8e93; --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif; background: var(--bg); min-height: 100dvh; }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--header-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border); padding: 10px 16px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-nav { display: flex; gap: 6px; }
+    .nav-btn {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
+      text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .nav-btn:active { background: #e5e5ea; }
+    .content { padding: 16px; max-width: 600px; margin: 0 auto; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding: 0 4px; }
+    .card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
+    .row { display: flex; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); gap: 12px; }
+    .row:last-child { border-bottom: none; }
+    .row-label { font-size: 14px; min-width: 120px; flex-shrink: 0; }
+    .row input[type=text], .row input[type=password], .row input[type=number] {
+      flex: 1; border: none; outline: none; font-size: 15px; background: transparent;
+      color: #1c1c1e; text-align: right;
+    }
+    .row input::placeholder { color: var(--text-secondary); }
+    .row-unit { font-size: 13px; color: var(--text-secondary); margin-left: 4px; }
+    .save-btn {
+      width: 100%; padding: 14px; border-radius: var(--radius); border: none;
+      background: var(--accent); color: #fff; font-size: 16px; font-weight: 600;
+      cursor: pointer; margin-top: 4px;
+    }
+    .save-btn:active { opacity: 0.8; }
+    .toast {
+      position: fixed; bottom: max(24px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+      background: #1c1c1e; color: #fff; padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 200;
+    }
+    .toast.show { opacity: 1; }
+    /* food-defaults テーブル */
+    .food-table { width: 100%; border-collapse: collapse; }
+    .food-table th { font-size: 12px; color: var(--text-secondary); font-weight: 600; padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .food-table td { font-size: 13px; padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .food-table tr:last-child td { border-bottom: none; }
+    .food-table .td-keyword { font-weight: 600; width: 30%; }
+    .food-table .td-desc { color: #1c1c1e; }
+    .food-table .td-notes { color: var(--text-secondary); font-size: 12px; }
+    .food-table .td-action { width: 36px; text-align: center; }
+    .del-btn {
+      background: none; border: none; cursor: pointer; font-size: 16px; color: var(--danger); padding: 2px 6px;
+    }
+    .add-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .add-row input {
+      flex: 1; min-width: 80px; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 14px; background: var(--card-bg); outline: none;
+    }
+    .add-row input:focus { border-color: var(--accent); }
+    .add-btn {
+      padding: 8px 16px; border-radius: 8px; border: none;
+      background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .loading { text-align: center; padding: 20px; color: var(--text-secondary); }
+    .empty-food { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">⚙️ 設定</div>
+    <div class="header-nav">
+      <a href="/" class="nav-btn">💬 チャット</a>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="mainContent"><div class="loading">読み込み中...</div></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let foodDefaults = [];
+
+    async function loadAll() {
+      try {
+        const [settRes, fdRes] = await Promise.all([
+          fetch('/api/settings'),
+          fetch('/api/food-defaults'),
+        ]);
+        if (settRes.status === 401) { location.href = '/'; return; }
+        const settings = await settRes.json();
+        foodDefaults = await fdRes.json();
+        render(settings);
+      } catch(e) {
+        document.getElementById('mainContent').innerHTML = '<div class="loading">読み込みに失敗しました</div>';
+      }
+    }
+
+    function render(s) {
+      document.getElementById('mainContent').innerHTML = `
+        <!-- プロフィール -->
+        <div class="section">
+          <div class="section-title">プロフィール</div>
+          <div class="card">
+            <div class="row">
+              <span class="row-label">ユーザー名</span>
+              <input type="text" id="user_name" value="${escVal(s.user_name)}" placeholder="例: Serick" />
+            </div>
+            <div class="row">
+              <span class="row-label">身長</span>
+              <input type="number" id="user_height_cm" value="${escVal(s.user_height_cm)}" placeholder="180" min="100" max="250" />
+              <span class="row-unit">cm</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 目標 -->
+        <div class="section">
+          <div class="section-title">目標</div>
+          <div class="card">
+            <div class="row">
+              <span class="row-label">カロリー目標</span>
+              <input type="number" id="daily_calorie_goal" value="${escVal(s.daily_calorie_goal)}" placeholder="1500" min="500" max="5000" />
+              <span class="row-unit">kcal/日</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- セキュリティ -->
+        <div class="section">
+          <div class="section-title">セキュリティ</div>
+          <div class="card">
+            <div class="row">
+              <span class="row-label">アクセスパスワード</span>
+              <input type="password" id="app_password" value="" placeholder="${s.app_password === 'set' ? '（設定済み）変更する場合のみ入力' : 'パスワードを設定'}" autocomplete="new-password" />
+            </div>
+            <div class="row">
+              <span class="row-label">Claude APIキー</span>
+              <input type="password" id="anthropic_api_key" value="" placeholder="${s.anthropic_api_key === 'set' ? '（設定済み）変更する場合のみ入力' : 'sk-ant-...'}" autocomplete="off" />
+            </div>
+          </div>
+        </div>
+
+        <button class="save-btn" onclick="saveSettings()">保存する</button>
+
+        <!-- 食品デフォルト -->
+        <div class="section" style="margin-top:28px">
+          <div class="section-title">食品デフォルト設定</div>
+          <div class="card" style="padding:12px 14px">
+            <div id="foodTable"></div>
+            <div class="add-row" style="margin-top:12px">
+              <input type="text" id="newKeyword" placeholder="キーワード（例: 鶏胸肉）" />
+              <input type="text" id="newDesc" placeholder="詳細（例: 皮無し・100g）" />
+              <input type="text" id="newNotes" placeholder="メモ（任意）" />
+              <button class="add-btn" onclick="addFoodDefault()">追加</button>
+            </div>
+          </div>
+        </div>
+      `;
+      renderFoodTable();
+    }
+
+    function renderFoodTable() {
+      const el = document.getElementById('foodTable');
+      if (!el) return;
+      if (!foodDefaults.length) {
+        el.innerHTML = '<div class="empty-food">登録なし</div>';
+        return;
+      }
+      el.innerHTML = `
+        <table class="food-table">
+          <thead>
+            <tr>
+              <th>キーワード</th>
+              <th>詳細</th>
+              <th>メモ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${foodDefaults.map(f => `
+              <tr>
+                <td class="td-keyword">${escHtml(f.keyword)}</td>
+                <td class="td-desc">${escHtml(f.description)}</td>
+                <td class="td-notes">${escHtml(f.notes || '')}</td>
+                <td class="td-action"><button class="del-btn" onclick="deleteFoodDefault('${escHtml(f.keyword)}')">🗑</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function saveSettings() {
+      const settings = {
+        user_name:          document.getElementById('user_name').value.trim(),
+        user_height_cm:     document.getElementById('user_height_cm').value.trim(),
+        daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
+      };
+      if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
+      if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }
+      // 機密項目は入力があった場合のみ送信（空＝変更なし）
+      const pw = document.getElementById('app_password').value;
+      if (pw) settings.app_password = pw;
+      const apiKey = document.getElementById('anthropic_api_key').value.trim();
+      if (apiKey) settings.anthropic_api_key = apiKey;
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ settings }),
+        });
+        if (!res.ok) throw new Error();
+        showToast('保存しました ✓');
+      } catch(e) {
+        showToast('保存に失敗しました');
+      }
+    }
+
+    async function addFoodDefault() {
+      const keyword = document.getElementById('newKeyword').value.trim();
+      const desc = document.getElementById('newDesc').value.trim();
+      const notes = document.getElementById('newNotes').value.trim();
+      if (!keyword || !desc) { showToast('キーワードと詳細を入力してください'); return; }
+      try {
+        const res = await fetch('/api/food-defaults', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ keyword, description: desc, notes }),
+        });
+        if (!res.ok) throw new Error();
+        document.getElementById('newKeyword').value = '';
+        document.getElementById('newDesc').value = '';
+        document.getElementById('newNotes').value = '';
+        const fd = await fetch('/api/food-defaults');
+        foodDefaults = await fd.json();
+        renderFoodTable();
+        showToast('追加しました ✓');
+      } catch(e) {
+        showToast('追加に失敗しました');
+      }
+    }
+
+    async function deleteFoodDefault(keyword) {
+      if (!confirm(`「${keyword}」を削除しますか？`)) return;
+      try {
+        const res = await fetch(`/api/food-defaults/${encodeURIComponent(keyword)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        foodDefaults = foodDefaults.filter(f => f.keyword !== keyword);
+        renderFoodTable();
+        showToast('削除しました');
+      } catch(e) {
+        showToast('削除に失敗しました');
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function escVal(s) { return escHtml(s || ''); }
+
+    loadAll();
+  </script>
+</body>
+</html>

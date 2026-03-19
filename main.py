@@ -118,6 +118,69 @@ async def today(request: Request):
     return JSONResponse(database.get_daily_summary())
 
 
+# ── 設定エンドポイント ─────────────────────────────────────────────────────────
+
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key"}
+
+
+SENSITIVE_KEYS = {"app_password", "anthropic_api_key"}
+
+
+@app.get("/api/settings")
+async def get_settings(request: Request):
+    require_auth(request)
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal"]
+    result = {k: database.get_setting(k) or "" for k in plain_keys}
+    # 機密項目は値の有無のみ返す（平文は返さない）
+    for k in SENSITIVE_KEYS:
+        result[k] = "set" if database.get_setting(k) else ""
+    return JSONResponse(result)
+
+
+class SettingsBatchRequest(BaseModel):
+    settings: dict[str, str]
+
+
+@app.post("/api/settings")
+async def save_settings(request: Request, body: SettingsBatchRequest):
+    require_auth(request)
+    for key, value in body.settings.items():
+        if key not in EDITABLE_SETTINGS:
+            raise HTTPException(status_code=400, detail=f"編集不可のキーです: {key}")
+        database.save_setting(key, value)
+    return JSONResponse({"success": True})
+
+
+# ── food-defaults エンドポイント ───────────────────────────────────────────────
+
+@app.get("/api/food-defaults")
+async def list_food_defaults(request: Request):
+    require_auth(request)
+    return JSONResponse(database.get_food_defaults())
+
+
+class FoodDefaultRequest(BaseModel):
+    keyword: str
+    description: str
+    notes: str = ""
+
+
+@app.post("/api/food-defaults")
+async def upsert_food_default(request: Request, body: FoodDefaultRequest):
+    require_auth(request)
+    database.save_food_default(body.keyword, body.description, body.notes or None)
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/food-defaults/{keyword}")
+async def remove_food_default(request: Request, keyword: str):
+    require_auth(request)
+    deleted = database.delete_food_default(keyword)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="見つかりません")
+    return JSONResponse({"success": True})
+
+
 # ── 履歴・集計・画像エンドポイント ────────────────────────────────────────────
 
 @app.get("/api/history")
@@ -157,6 +220,11 @@ async def history_page():
 @app.get("/stats")
 async def stats_page():
     return FileResponse(STATIC_DIR / "stats.html")
+
+
+@app.get("/settings")
+async def settings_page():
+    return FileResponse(STATIC_DIR / "settings.html")
 
 
 # ── 起動コマンド（参考） ───────────────────────────────────────────────────────
