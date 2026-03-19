@@ -6,6 +6,7 @@ from typing import AsyncGenerator
 import anthropic
 
 import database
+from image_utils import process_image_b64
 
 MODEL = "claude-sonnet-4-6"
 
@@ -285,9 +286,13 @@ async def stream_chat(
     # ユーザーメッセージを会話履歴に追加
     user_content: list = []
     for img_b64 in images:
+        try:
+            processed = process_image_b64(img_b64)
+        except Exception:
+            processed = img_b64  # 変換失敗時はそのまま送信
         user_content.append({
             "type": "image",
-            "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64},
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": processed},
         })
     user_content.append({"type": "text", "text": user_message})
     conversation_history.append({"role": "user", "content": user_content})

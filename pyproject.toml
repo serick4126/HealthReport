@@ -8,5 +8,6 @@ dependencies = [
     "anthropic>=0.30.0",
     "python-dotenv>=1.0.0",
     "pillow>=10.3.0",
+    "pillow-heif>=0.18.0",
     "python-multipart>=0.0.9",
 ]
