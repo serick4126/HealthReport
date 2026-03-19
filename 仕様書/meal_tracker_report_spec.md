@@ -4,6 +4,55 @@
 
 ---
 
+## ⚠️ 重大注意：タイムゾーン仕様（必読）
+
+**レポート開発を始める前に必ずこのセクションを読むこと。**
+日付の取り扱いを誤ると、医師への提出レポートに「実際と異なる日付のデータ」が載る重大な問題が発生する。
+
+### DBのタイムゾーン仕様
+
+| フィールド | タイムゾーン | 説明 |
+|-----------|------------|------|
+| `meal_date`（mealsテーブル） | **JST** | Claudeがシステムプロンプトの「今日の日付」から設定。コードで明示的にJST取得している |
+| `log_date`（weight_logs / steps_logsテーブル） | **JST** | 同上 |
+| `recorded_at`（全テーブル） | **UTC** | SQLiteの`CURRENT_TIMESTAMP`がUTCで記録される |
+
+### レポート開発時のルール
+
+**✅ 日付の絞り込みには `meal_date` / `log_date` を使う**
+
+```sql
+-- ✅ 正しい：JSTの日付フィールドで絞り込む
+WHERE meal_date BETWEEN '2026-03-15' AND '2026-03-21'
+```
+
+**❌ `recorded_at` で日付絞り込みをしてはいけない**
+
+```sql
+-- ❌ 禁止：recorded_at はUTCのため日付がJSTと最大9時間ずれる
+-- 例：JSTで3/19 0:00〜8:59に記録されたデータは
+--     recorded_at では 3/18 15:00〜23:59 になっている
+WHERE recorded_at BETWEEN '2026-03-15' AND '2026-03-21'  -- 日付ずれが起きる
+```
+
+**`recorded_at` の用途**
+
+- 同一日・同一食事区分内での並び順（`ORDER BY recorded_at`）にのみ使用する
+- UIで記録時刻を表示する場合は `+9時間` してJST変換してから表示する
+
+### 具体的な日付ずれの例
+
+```
+ユーザーがJST 2026-03-20 00:30 に夕食を記録した場合：
+  meal_date  = 2026-03-20  （JST・正しい）
+  recorded_at = 2026-03-19 15:30:00  （UTC・9時間前）
+
+recorded_at で 2026-03-20 を検索すると → このレコードがヒットしない
+recorded_at で 2026-03-19 を検索すると → このレコードが誤ってヒットする
+```
+
+---
+
 ## 1. 概要
 
 ### 目的
@@ -209,20 +258,26 @@ weasyprint
 
 レポートのデータはすべてメインアプリと共有のSQLite3 DBから取得。
 
+> ⚠️ **日付絞り込みは必ず `meal_date` / `log_date`（JST）で行うこと。**
+> `recorded_at`（UTC）を使うと最大9時間の日付ずれが発生する。
+
 ```sql
 -- 食事内容の取得
+-- WHERE句は meal_date（JST）で絞り込む ← ここ重要
 SELECT meal_date, meal_type, description, calories, protein, fat, carbs, sodium
 FROM meals
 WHERE meal_date BETWEEN '2026-03-15' AND '2026-03-21'
-ORDER BY meal_date, meal_type;
+ORDER BY meal_date, meal_type, recorded_at;  -- 並び順にrecorded_atは使ってよい
 
 -- 体重の取得
+-- WHERE句は log_date（JST）で絞り込む ← ここ重要
 SELECT log_date, time_of_day, weight_kg
 FROM weight_logs
 WHERE log_date BETWEEN '2026-03-15' AND '2026-03-21'
 ORDER BY log_date, time_of_day;
 
 -- 歩数の取得
+-- WHERE句は log_date（JST）で絞り込む ← ここ重要
 SELECT log_date, steps
 FROM steps_logs
 WHERE log_date BETWEEN '2026-03-15' AND '2026-03-21'
@@ -275,5 +330,5 @@ ORDER BY log_date;
 
 ---
 
-*最終更新：2026年3月19日*
+*最終更新：2026年3月19日（タイムゾーン仕様を追記）*
 *Claude (claude.ai) との要件定義会話から生成*

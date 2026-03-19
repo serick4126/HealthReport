@@ -1,7 +1,9 @@
 import json
 import os
-from datetime import date
+from datetime import datetime, timezone, timedelta
 from typing import AsyncGenerator
+
+JST = timezone(timedelta(hours=9))
 
 import anthropic
 
@@ -115,8 +117,9 @@ TOOLS: list[anthropic.types.ToolParam] = [
 # ── システムプロンプト ──────────────────────────────────────────────────────────
 
 def build_system_prompt() -> str:
-    today = date.today().isoformat()
-    weekday = ["月", "火", "水", "木", "金", "土", "日"][date.today().weekday()]
+    now_jst = datetime.now(JST)
+    today = now_jst.date().isoformat()
+    weekday = ["月", "火", "水", "木", "金", "土", "日"][now_jst.weekday()]
 
     calorie_goal = database.get_setting("daily_calorie_goal") or "1500"
     user_name = database.get_setting("user_name") or "Serick"

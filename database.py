@@ -1,7 +1,14 @@
 import sqlite3
-from datetime import date
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
+
+JST = timezone(timedelta(hours=9))
+
+
+def today_jst() -> str:
+    """JSTの今日の日付をYYYY-MM-DD形式で返す"""
+    return datetime.now(JST).date().isoformat()
 
 DB_PATH = Path(__file__).parent / "health.db"
 
@@ -206,7 +213,7 @@ def save_weight(log_date: str, time_of_day: str, weight_kg: float) -> int:
 
 def get_previous_weight(time_of_day: str, before_date: Optional[str] = None) -> Optional[float]:
     """同じ時間帯の直前の体重を返す"""
-    before_date = before_date or date.today().isoformat()
+    before_date = before_date or today_jst()
     with get_conn() as conn:
         row = conn.execute(
             """
@@ -243,7 +250,7 @@ def save_steps(log_date: str, steps: int) -> dict:
 # ── 日次サマリー ───────────────────────────────────────────────────────────────
 
 def get_daily_summary(target_date: Optional[str] = None) -> dict:
-    target_date = target_date or date.today().isoformat()
+    target_date = target_date or today_jst()
     with get_conn() as conn:
         meals = conn.execute(
             """
