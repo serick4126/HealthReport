@@ -139,6 +139,24 @@ def get_food_defaults() -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def save_food_default(keyword: str, description: str, notes: Optional[str] = None):
+    """food_defaultsに保存（同一keywordは上書き）"""
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM food_defaults WHERE keyword = ?", (keyword,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE food_defaults SET description=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE keyword=?",
+                (description, notes, keyword),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO food_defaults (keyword, description, notes) VALUES (?, ?, ?)",
+                (keyword, description, notes),
+            )
+
+
 # ── 食事記録 ───────────────────────────────────────────────────────────────────
 
 def save_meal(

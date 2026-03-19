@@ -122,6 +122,23 @@ TOOLS: list[anthropic.types.ToolParam] = [
         },
     },
     {
+        "name": "save_food_default",
+        "description": (
+            "食品のデフォルト設定をDBに保存します。"
+            "推定値またはSlism検索で記録した食品を次回から自動適用するために、record_meal成功後に呼んでください。"
+            "food_defaultsに同じキーワードが既に存在する場合は上書きします。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "食品名キーワード（例：ヤクルト1000）"},
+                "description": {"type": "string", "description": "栄養情報の説明（例：ヤクルト1000 Light 1本65ml 47kcal P:1.5g F:0g C:10.1g 塩:0.04g）"},
+                "notes": {"type": "string", "description": "備考（任意）"},
+            },
+            "required": ["keyword", "description"],
+        },
+    },
+    {
         "name": "show_choices",
         "description": (
             "ユーザーに選択肢ボタンを表示します。"
@@ -200,6 +217,13 @@ def build_system_prompt() -> str:
    notesに '[推定値] カロリー・PFCはClaudeによる推定' を記載すること。
 鶏むね肉・白米・卵などの一般食材はClaudeの知識で推定してよい。
 show_choicesを呼び出した後は余分なテキストを出力しないこと。
+
+【food_defaults自動保存】
+推定値([推定値])またはSlism検索([Slism])でrecord_mealが成功した場合、
+food_defaultsに同じキーワードが未登録であればsave_food_defaultを呼んで自動保存すること。
+保存するキーワードは食品の主要名（例：「ヤクルト1000」「コーヒー牛乳」）とし、
+descriptionに「食品名 分量 Xkcal P:Xg F:Xg C:Xg 塩:Xg」の形式で記載すること。
+既にfood_defaultsに存在する場合はsave_food_defaultを呼ばない。
 
 【量の換算ルール】
 - 「150g食べた」＋「100gあたりXkcal」のデータ → ×1.5 で自動換算
@@ -301,6 +325,14 @@ async def execute_tool(name: str, input_data: dict) -> dict:
                 input_data.get("amount", ""),
             )
             return {"success": True, "tool": "search_food_nutrition", **result}
+
+        elif name == "save_food_default":
+            database.save_food_default(
+                keyword=input_data["keyword"],
+                description=input_data["description"],
+                notes=input_data.get("notes"),
+            )
+            return {"success": True, "tool": "save_food_default", "keyword": input_data["keyword"]}
 
         elif name == "show_choices":
             # 実際の表示はstream_chat側でSSEイベントとして送信する
