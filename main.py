@@ -118,11 +118,45 @@ async def today(request: Request):
     return JSONResponse(database.get_daily_summary())
 
 
+# ── 履歴・集計・画像エンドポイント ────────────────────────────────────────────
+
+@app.get("/api/history")
+async def history_api(request: Request, days: int = 30):
+    require_auth(request)
+    return JSONResponse(database.get_history(days))
+
+
+@app.get("/api/stats")
+async def stats_api(request: Request, days: int = 7):
+    require_auth(request)
+    return JSONResponse(database.get_stats(days))
+
+
+@app.get("/api/image/{meal_id}")
+async def meal_image(request: Request, meal_id: int):
+    require_auth(request)
+    result = database.get_meal_image(meal_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="画像が見つかりません")
+    image_data, mime_type = result
+    return Response(content=image_data, media_type=mime_type)
+
+
 # ── 静的ファイル / フロントエンド ──────────────────────────────────────────────
 
 @app.get("/")
 async def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/history")
+async def history_page():
+    return FileResponse(STATIC_DIR / "history.html")
+
+
+@app.get("/stats")
+async def stats_page():
+    return FileResponse(STATIC_DIR / "stats.html")
 
 
 # ── 起動コマンド（参考） ───────────────────────────────────────────────────────

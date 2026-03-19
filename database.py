@@ -291,6 +291,127 @@ def save_meal_image(
         return cur.lastrowid
 
 
+def get_meal_image(meal_id: int) -> Optional[tuple[bytes, str]]:
+    """食事に紐づく最初の画像を (image_data, mime_type) で返す"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT image_data, mime_type FROM meal_images WHERE meal_id = ? LIMIT 1",
+            (meal_id,),
+        ).fetchone()
+    return (bytes(row["image_data"]), row["mime_type"]) if row else None
+
+
+def get_history(days: int = 30) -> list[dict]:
+    """直近N日間の記録を日付降順で返す"""
+    since = (datetime.now(JST) - timedelta(days=days - 1)).date().isoformat()
+    with get_conn() as conn:
+        meals = conn.execute(
+            """
+            SELECT m.id, m.meal_date, m.meal_type, m.description,
+                   m.calories, m.protein, m.fat, m.carbs, m.sodium, m.notes,
+                   (SELECT COUNT(*) FROM meal_images WHERE meal_id = m.id) AS image_count
+            FROM meals m
+            WHERE m.meal_date >= ?
+            ORDER BY m.meal_date DESC, m.id ASC
+            """,
+            (since,),
+        ).fetchall()
+        weights = conn.execute(
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ? ORDER BY log_date DESC",
+            (since,),
+        ).fetchall()
+        steps_rows = conn.execute(
+            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ? ORDER BY log_date DESC",
+            (since,),
+        ).fetchall()
+
+    from collections import defaultdict
+    days_map: dict = defaultdict(lambda: {"meals": [], "weight": {}, "steps": None})
+    for m in meals:
+        days_map[m["meal_date"]]["meals"].append(dict(m))
+    for w in weights:
+        days_map[w["log_date"]]["weight"][w["time_of_day"]] = w["weight_kg"]
+    for s in steps_rows:
+        days_map[s["log_date"]]["steps"] = s["steps"]
+
+    result = []
+    for date in sorted(days_map.keys(), reverse=True):
+        d = days_map[date]
+        ml = d["meals"]
+        result.append({
+            "date": date,
+            "meals": ml,
+            "weight": d["weight"],
+            "steps": d["steps"],
+            "totals": {
+                "calories": int(sum(m.get("calories") or 0 for m in ml)),
+                "protein": round(sum(m.get("protein") or 0 for m in ml), 1),
+                "fat": round(sum(m.get("fat") or 0 for m in ml), 1),
+                "carbs": round(sum(m.get("carbs") or 0 for m in ml), 1),
+                "sodium": round(sum(m.get("sodium") or 0 for m in ml), 2),
+            },
+        })
+    return result
+
+
+def get_stats(days: int = 7) -> dict:
+    """グラフ用の集計データを返す（直近N日間）"""
+    today = datetime.now(JST).date()
+    dates = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    since = dates[0]
+    with get_conn() as conn:
+        cal_rows = conn.execute(
+            """
+            SELECT meal_date,
+                   SUM(calories) AS cal, SUM(protein) AS p,
+                   SUM(fat) AS f, SUM(carbs) AS c
+            FROM meals WHERE meal_date >= ?
+            GROUP BY meal_date
+            """,
+            (since,),
+        ).fetchall()
+        weight_rows = conn.execute(
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ?",
+            (since,),
+        ).fetchall()
+        step_rows = conn.execute(
+            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ?",
+            (since,),
+        ).fetchall()
+
+    cal_map = {r["meal_date"]: r for r in cal_rows}
+    w_map: dict = {}
+    for r in weight_rows:
+        w_map.setdefault(r["log_date"], {})[r["time_of_day"]] = r["weight_kg"]
+    s_map = {r["log_date"]: r["steps"] for r in step_rows}
+
+    calories, protein, fat, carbs = [], [], [], []
+    wm, we, steps = [], [], []
+    for d in dates:
+        c = cal_map.get(d)
+        calories.append(int(c["cal"]) if c and c["cal"] is not None else None)
+        protein.append(round(c["p"], 1) if c and c["p"] is not None else None)
+        fat.append(round(c["f"], 1) if c and c["f"] is not None else None)
+        carbs.append(round(c["c"], 1) if c and c["c"] is not None else None)
+        w = w_map.get(d, {})
+        wm.append(w.get("morning"))
+        we.append(w.get("evening"))
+        steps.append(s_map.get(d))
+
+    return {
+        "period": days,
+        "dates": dates,
+        "calories": calories,
+        "calories_goal": int(get_setting("daily_calorie_goal") or 1500),
+        "weights_morning": wm,
+        "weights_evening": we,
+        "steps": steps,
+        "protein": protein,
+        "fat": fat,
+        "carbs": carbs,
+    }
+
+
 def get_daily_summary(target_date: Optional[str] = None) -> dict:
     target_date = target_date or today_jst()
     with get_conn() as conn:

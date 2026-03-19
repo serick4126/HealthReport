@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>記録履歴</title>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --header-bg: rgba(255,255,255,0.85);
+      --card-bg: #ffffff;
+      --border: #e5e5ea;
+      --accent: #007aff;
+      --success: #34c759;
+      --text-secondary: #8e8e93;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      background: var(--bg);
+      min-height: 100dvh;
+    }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--header-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-nav { display: flex; gap: 6px; }
+    .nav-btn {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
+      text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .nav-btn:active { background: #e5e5ea; }
+    .period-bar {
+      display: flex; gap: 8px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border); background: var(--header-bg);
+    }
+    .period-btn {
+      padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
+    }
+    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .content { padding: 16px; max-width: 680px; margin: 0 auto; }
+    .day-section { margin-bottom: 20px; }
+    .day-header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 8px; padding: 0 4px;
+    }
+    .day-date { font-size: 15px; font-weight: 700; }
+    .day-totals { font-size: 12px; color: var(--text-secondary); }
+    .day-meta { font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; margin-bottom: 8px; padding: 0 4px; }
+    .meal-card {
+      background: var(--card-bg); border-radius: var(--radius);
+      padding: 12px 14px; margin-bottom: 8px;
+      border: 1px solid var(--border);
+    }
+    .meal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .meal-type-badge {
+      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+      background: #e5f0ff; color: var(--accent); white-space: nowrap; flex-shrink: 0;
+    }
+    .meal-desc { font-size: 14px; font-weight: 600; flex: 1; }
+    .meal-cal { font-size: 14px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+    .meal-pfc {
+      font-size: 12px; color: var(--text-secondary); margin-top: 6px;
+      display: flex; gap: 10px; flex-wrap: wrap;
+    }
+    .meal-pfc span { background: var(--bg); padding: 2px 6px; border-radius: 6px; }
+    .meal-notes { font-size: 11px; color: var(--text-secondary); margin-top: 6px; font-style: italic; }
+    .meal-image { margin-top: 8px; }
+    .meal-image img {
+      max-width: 100%; max-height: 180px; border-radius: 8px;
+      object-fit: cover; display: block;
+    }
+    .empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 15px; }
+    .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .calorie-bar-wrap { margin: 4px 0 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .calorie-bar { height: 100%; border-radius: 2px; background: var(--success); transition: width 0.3s; }
+    .calorie-bar.over { background: #ff3b30; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">📋 記録履歴</div>
+    <div class="header-nav">
+      <a href="/stats" class="nav-btn">📊 集計</a>
+      <a href="/" class="nav-btn">💬 チャット</a>
+    </div>
+  </div>
+  <div class="period-bar">
+    <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
+    <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
+  </div>
+  <div class="content" id="content">
+    <div class="loading">読み込み中...</div>
+  </div>
+
+  <script>
+    const MEAL_TYPE_JA = {
+      breakfast: '朝食', lunch: '昼食', dinner: '夕食',
+      snack: '間食', late_night: '夜食'
+    };
+    let calorieGoal = 1500;
+
+    async function load(days) {
+      const content = document.getElementById('content');
+      content.innerHTML = '<div class="loading">読み込み中...</div>';
+      try {
+        const [histRes, statsRes] = await Promise.all([
+          fetch(`/api/history?days=${days}`),
+          fetch(`/api/stats?days=${days}`)
+        ]);
+        if (histRes.status === 401) { location.href = '/'; return; }
+        const data = await histRes.json();
+        const stats = await statsRes.json();
+        calorieGoal = stats.calories_goal || 1500;
+        render(data);
+      } catch(e) {
+        content.innerHTML = '<div class="empty">データの取得に失敗しました</div>';
+      }
+    }
+
+    function render(days) {
+      const content = document.getElementById('content');
+      if (!days.length) {
+        content.innerHTML = '<div class="empty">記録がありません</div>';
+        return;
+      }
+      content.innerHTML = days.map(day => renderDay(day)).join('');
+    }
+
+    function renderDay(day) {
+      const dateObj = new Date(day.date + 'T00:00:00');
+      const weekdays = ['日','月','火','水','木','金','土'];
+      const label = `${dateObj.getMonth()+1}/${dateObj.getDate()}（${weekdays[dateObj.getDay()]}）`;
+      const t = day.totals;
+      const pct = calorieGoal > 0 ? Math.min((t.calories / calorieGoal) * 100, 100) : 0;
+      const over = t.calories > calorieGoal;
+
+      const weightStr = day.weight
+        ? [day.weight.morning ? `朝 ${day.weight.morning}kg` : '',
+           day.weight.evening ? `夜 ${day.weight.evening}kg` : '']
+            .filter(Boolean).join('　')
+        : '';
+      const stepsStr = day.steps ? `👟 ${day.steps.toLocaleString()}歩` : '';
+
+      const mealsHtml = day.meals.length
+        ? day.meals.map(m => renderMeal(m)).join('')
+        : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
+
+      return `
+        <div class="day-section">
+          <div class="day-header">
+            <span class="day-date">${label}</span>
+            <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g</span>
+          </div>
+          <div class="calorie-bar-wrap">
+            <div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div>
+          </div>
+          ${(weightStr || stepsStr) ? `<div class="day-meta">${weightStr ? `⚖️ ${weightStr}` : ''}${stepsStr ? stepsStr : ''}</div>` : ''}
+          ${mealsHtml}
+        </div>`;
+    }
+
+    function renderMeal(m) {
+      const type = MEAL_TYPE_JA[m.meal_type] || m.meal_type;
+      const cal = m.calories != null ? `${m.calories} kcal` : '—';
+      const pfcParts = [];
+      if (m.protein != null) pfcParts.push(`<span>P: ${m.protein}g</span>`);
+      if (m.fat != null)     pfcParts.push(`<span>F: ${m.fat}g</span>`);
+      if (m.carbs != null)   pfcParts.push(`<span>C: ${m.carbs}g</span>`);
+      if (m.sodium != null)  pfcParts.push(`<span>塩: ${m.sodium}g</span>`);
+      const notesHtml = m.notes ? `<div class="meal-notes">${escHtml(m.notes)}</div>` : '';
+      const imgHtml = m.image_count > 0
+        ? `<div class="meal-image"><img src="/api/image/${m.id}" loading="lazy" alt="食事画像"></div>`
+        : '';
+      return `
+        <div class="meal-card">
+          <div class="meal-header">
+            <span class="meal-type-badge">${type}</span>
+            <span class="meal-desc">${escHtml(m.description)}</span>
+            <span class="meal-cal">${cal}</span>
+          </div>
+          ${pfcParts.length ? `<div class="meal-pfc">${pfcParts.join('')}</div>` : ''}
+          ${notesHtml}
+          ${imgHtml}
+        </div>`;
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function setPeriod(days, btn) {
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      load(days);
+    }
+
+    load(7);
+  </script>
+</body>
+</html>

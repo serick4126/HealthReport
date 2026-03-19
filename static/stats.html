@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>集計・グラフ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --header-bg: rgba(255,255,255,0.85);
+      --card-bg: #ffffff;
+      --border: #e5e5ea;
+      --accent: #007aff;
+      --text-secondary: #8e8e93;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      background: var(--bg); min-height: 100dvh;
+    }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--header-bg); backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-nav { display: flex; gap: 6px; }
+    .nav-btn {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
+      text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .nav-btn:active { background: #e5e5ea; }
+    .period-bar {
+      display: flex; gap: 8px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border); background: var(--header-bg);
+    }
+    .period-btn {
+      padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
+    }
+    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .content { padding: 16px; max-width: 800px; margin: 0 auto; }
+    .chart-card {
+      background: var(--card-bg); border-radius: var(--radius);
+      border: 1px solid var(--border); padding: 16px; margin-bottom: 16px;
+    }
+    .chart-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #1c1c1e; }
+    .chart-wrap { position: relative; height: 200px; }
+    .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .summary-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px;
+    }
+    .summary-card {
+      background: var(--card-bg); border-radius: var(--radius);
+      border: 1px solid var(--border); padding: 12px; text-align: center;
+    }
+    .summary-val { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .summary-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">📊 集計・グラフ</div>
+    <div class="header-nav">
+      <a href="/history" class="nav-btn">📋 履歴</a>
+      <a href="/" class="nav-btn">💬 チャット</a>
+    </div>
+  </div>
+  <div class="period-bar">
+    <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
+    <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
+  </div>
+  <div class="content" id="content">
+    <div class="loading">読み込み中...</div>
+  </div>
+
+  <script>
+    let charts = {};
+
+    function destroyCharts() {
+      Object.values(charts).forEach(c => c.destroy());
+      charts = {};
+    }
+
+    async function load(days) {
+      document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
+      destroyCharts();
+      try {
+        const res = await fetch(`/api/stats?days=${days}`);
+        if (res.status === 401) { location.href = '/'; return; }
+        const data = await res.json();
+        render(data);
+      } catch(e) {
+        document.getElementById('content').innerHTML = '<div class="loading">データの取得に失敗しました</div>';
+      }
+    }
+
+    function shortDate(iso) {
+      const d = new Date(iso + 'T00:00:00');
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    }
+
+    function render(data) {
+      const labels = data.dates.map(shortDate);
+      const goal = data.calories_goal;
+
+      // サマリーカード
+      const validCal = data.calories.filter(v => v != null);
+      const avgCal = validCal.length ? Math.round(validCal.reduce((a,b) => a+b, 0) / validCal.length) : 0;
+      const allWeights = [...(data.weights_morning || []), ...(data.weights_evening || [])].filter(v => v != null);
+      const latestWeight = allWeights.length ? allWeights[allWeights.length - 1] : null;
+      const validSteps = (data.steps || []).filter(v => v != null);
+      const avgSteps = validSteps.length ? Math.round(validSteps.reduce((a,b) => a+b, 0) / validSteps.length) : 0;
+
+      document.getElementById('content').innerHTML = `
+        <div class="summary-row">
+          <div class="summary-card">
+            <div class="summary-val">${avgCal}</div>
+            <div class="summary-label">平均カロリー (kcal)</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-val">${latestWeight != null ? latestWeight : '—'}</div>
+            <div class="summary-label">最新体重 (kg)</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-val">${avgSteps > 0 ? avgSteps.toLocaleString() : '—'}</div>
+            <div class="summary-label">平均歩数</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">🔥 カロリー推移</div>
+          <div class="chart-wrap"><canvas id="chartCalories"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">⚖️ 体重推移</div>
+          <div class="chart-wrap"><canvas id="chartWeight"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">👟 歩数推移</div>
+          <div class="chart-wrap"><canvas id="chartSteps"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">🥩 PFCバランス</div>
+          <div class="chart-wrap"><canvas id="chartPFC"></canvas></div>
+        </div>
+      `;
+
+      const defaults = { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
+        scales: { x: { ticks: { font: { size: 11 } } }, y: { ticks: { font: { size: 11 } } } }
+      };
+
+      // カロリー推移
+      charts.cal = new Chart(document.getElementById('chartCalories'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'カロリー',
+              data: data.calories,
+              borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+              tension: 0.3, fill: true, spanGaps: true,
+              pointRadius: 4, pointBackgroundColor: '#007aff',
+            },
+            {
+              label: `目標 ${goal}kcal`,
+              data: Array(labels.length).fill(goal),
+              borderColor: '#ff3b30', borderDash: [6,3],
+              borderWidth: 1.5, pointRadius: 0, fill: false,
+            }
+          ]
+        },
+        options: { ...defaults, scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } } }
+      });
+
+      // 体重推移
+      const hasWeight = [...(data.weights_morning||[]), ...(data.weights_evening||[])].some(v => v != null);
+      const allW = [...(data.weights_morning||[]), ...(data.weights_evening||[])].filter(v => v != null);
+      const wMin = allW.length ? Math.floor(Math.min(...allW) - 1) : 0;
+      const wMax = allW.length ? Math.ceil(Math.max(...allW) + 1) : 100;
+      charts.weight = new Chart(document.getElementById('chartWeight'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: '朝', data: data.weights_morning,
+              borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,0.1)',
+              tension: 0.3, fill: false, spanGaps: true, pointRadius: 4,
+            },
+            {
+              label: '夜', data: data.weights_evening,
+              borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.1)',
+              tension: 0.3, fill: false, spanGaps: true, pointRadius: 4,
+            }
+          ]
+        },
+        options: {
+          ...defaults,
+          scales: {
+            ...defaults.scales,
+            y: { ...defaults.scales.y, min: hasWeight ? wMin : undefined, max: hasWeight ? wMax : undefined }
+          }
+        }
+      });
+
+      // 歩数推移
+      charts.steps = new Chart(document.getElementById('chartSteps'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: '歩数', data: data.steps,
+            backgroundColor: 'rgba(90,200,250,0.7)', borderColor: '#5ac8fa', borderWidth: 1,
+          }]
+        },
+        options: { ...defaults, scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: true } } }
+      });
+
+      // PFCバランス
+      charts.pfc = new Chart(document.getElementById('chartPFC'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'タンパク質(g)', data: data.protein, backgroundColor: 'rgba(52,199,89,0.8)', stack: 'pfc' },
+            { label: '脂質(g)',       data: data.fat,     backgroundColor: 'rgba(255,149,0,0.8)',  stack: 'pfc' },
+            { label: '炭水化物(g)',   data: data.carbs,   backgroundColor: 'rgba(0,122,255,0.8)',  stack: 'pfc' },
+          ]
+        },
+        options: { ...defaults, scales: { ...defaults.scales, x: { ...defaults.scales.x, stacked: true }, y: { ...defaults.scales.y, stacked: true, beginAtZero: true } } }
+      });
+    }
+
+    function setPeriod(days, btn) {
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      load(days);
+    }
+
+    load(7);
+  </script>
+</body>
+</html>
