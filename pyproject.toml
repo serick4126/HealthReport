@@ -1,0 +1,12 @@
+[project]
+name = "health-report"
+version = "0.1.0"
+description = "食事記録アプリ"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.110.0",
+    "anthropic>=0.30.0",
+    "python-dotenv>=1.0.0",
+    "pillow>=10.3.0",
+    "python-multipart>=0.0.9",
+]

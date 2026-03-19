@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>食事記録アシスタント</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --header-bg: rgba(255,255,255,0.85);
+      --bubble-user: #007aff;
+      --bubble-user-text: #fff;
+      --bubble-ai: #ffffff;
+      --bubble-ai-text: #1c1c1e;
+      --input-bg: #ffffff;
+      --border: #e5e5ea;
+      --accent: #007aff;
+      --success: #34c759;
+      --error-color: #ff3b30;
+      --text-secondary: #8e8e93;
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      background: var(--bg);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── ヘッダー ── */
+    .header {
+      background: var(--header-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-nav { display: flex; gap: 6px; }
+    .nav-btn {
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .nav-btn:active { background: #e5e5ea; }
+
+    /* ── メッセージエリア ── */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .message {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      max-width: 100%;
+    }
+    .message.user { flex-direction: row-reverse; }
+
+    .bubble {
+      max-width: 78%;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 16px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .message.user .bubble {
+      background: var(--bubble-user);
+      color: var(--bubble-user-text);
+      border-bottom-right-radius: 4px;
+    }
+    .message.ai .bubble {
+      background: var(--bubble-ai);
+      color: var(--bubble-ai-text);
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    }
+
+    /* Markdownスタイル（aiバブル内） */
+    .message.ai .bubble p { margin: 0 0 6px; }
+    .message.ai .bubble p:last-child { margin-bottom: 0; }
+    .message.ai .bubble ul,
+    .message.ai .bubble ol { padding-left: 20px; margin: 4px 0; }
+    .message.ai .bubble li { margin-bottom: 2px; }
+    .message.ai .bubble strong { font-weight: 700; }
+    .message.ai .bubble code {
+      background: #f2f2f7;
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-size: 14px;
+    }
+
+    /* 選択肢ボタン */
+    .choices {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .choice-btn {
+      padding: 11px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f9f9f9;
+      text-align: left;
+      cursor: pointer;
+      font-size: 15px;
+      transition: background 0.1s;
+      color: var(--bubble-ai-text);
+    }
+    .choice-btn:active { background: #e5e5ea; }
+
+    /* 画像プレビュー */
+    .image-preview {
+      display: none;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--input-bg);
+      border-top: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .image-preview.has-items { display: flex; }
+    .preview-item {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+    .preview-item img {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .preview-item .remove {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 20px;
+      height: 20px;
+      background: var(--error-color);
+      color: #fff;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    /* 入力エリア */
+    .input-area {
+      background: var(--input-bg);
+      border-top: 1px solid var(--border);
+      padding: 8px 12px;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .attach-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 22px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+    }
+    .attach-btn:active { background: #e5e5ea; }
+
+    .text-input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 14px;
+      font-size: 16px;
+      resize: none;
+      outline: none;
+      max-height: 120px;
+      min-height: 36px;
+      line-height: 1.45;
+      font-family: inherit;
+      background: var(--bg);
+      overflow-y: auto;
+    }
+    .text-input:focus { border-color: var(--accent); }
+
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 18px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s;
+    }
+    .send-btn:disabled { background: var(--border); cursor: default; }
+    .send-btn:not(:disabled):active { background: #005ec4; }
+
+    /* タイピングインジケーター */
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 10px 4px 4px;
+    }
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      animation: bounce 1.3s infinite;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-6px); }
+    }
+
+    /* ユーザーメッセージ内の画像 */
+    .user-image {
+      max-width: 200px;
+      max-height: 200px;
+      border-radius: 12px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* エラーメッセージ */
+    .error-msg {
+      text-align: center;
+      color: var(--error-color);
+      font-size: 13px;
+      padding: 6px;
+    }
+
+    /* ── ログイン画面 ── */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .login-box {
+      background: #fff;
+      border-radius: 20px;
+      padding: 36px 32px;
+      width: min(340px, 90vw);
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .login-box h2 { font-size: 22px; margin-bottom: 6px; }
+    .login-box p { color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; }
+    .login-input {
+      width: 100%;
+      padding: 13px;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      font-size: 18px;
+      margin-bottom: 12px;
+      text-align: center;
+      letter-spacing: 6px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .login-input:focus { border-color: var(--accent); }
+    .login-btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .login-btn:active { background: #005ec4; }
+    .login-error { color: var(--error-color); font-size: 13px; margin-top: 10px; height: 18px; }
+  </style>
+</head>
+<body>
+
+<!-- ログインオーバーレイ -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h2>🍱 食事記録</h2>
+    <p>パスワードを入力してください</p>
+    <input class="login-input" type="password" id="passwordInput" placeholder="••••" />
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">ログイン</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- メインUI -->
+<div class="header">
+  <div class="header-title">🍱 食事記録アシスタント</div>
+  <div class="header-nav">
+    <button class="nav-btn" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>
+    <button class="nav-btn" onclick="doLogout()">ログアウト</button>
+  </div>
+</div>
+
+<div class="messages" id="messages">
+  <div class="message ai">
+    <div class="bubble">
+      こんにちは、Serickさん！😊<br>
+      食事・体重・歩数を報告してください。<br>
+      記録のほか、食事の提案も可能です。
+    </div>
+  </div>
+</div>
+
+<div class="image-preview" id="imagePreview"></div>
+
+<div class="input-area">
+  <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="画像を添付">📎</button>
+  <input type="file" id="fileInput" accept="image/*" multiple hidden />
+  <textarea class="text-input" id="textInput" placeholder="メッセージを入力…" rows="1"></textarea>
+  <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="送信">↑</button>
+</div>
+
+<script>
+// ── 設定 ─────────────────────────────────────────────────────────────────────
+marked.setOptions({ breaks: true, gfm: true });
+
+// ── 状態 ─────────────────────────────────────────────────────────────────────
+let pendingImages = []; // { base64: string, previewUrl: string }
+let isStreaming = false;
+
+// ── 認証 ─────────────────────────────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/me');
+    if (r.ok) hideLogin();
+  } catch (_) {}
+}
+
+function hideLogin() {
+  document.getElementById('loginOverlay').style.display = 'none';
+}
+
+async function doLogin() {
+  const pw = document.getElementById('passwordInput').value;
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    if (r.ok) {
+      hideLogin();
+    } else {
+      document.getElementById('loginError').textContent = 'パスワードが違います';
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function doLogout() {
+  await fetch('/api/logout', { method: 'POST' });
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('passwordInput').value = '';
+  document.getElementById('loginError').textContent = '';
+}
+
+// ── 会話リセット ──────────────────────────────────────────────────────────────
+async function clearHistory() {
+  if (!confirm('会話履歴をリセットしますか？（記録済みのデータは消えません）')) return;
+  await fetch('/api/chat/history', { method: 'DELETE' });
+  const m = document.getElementById('messages');
+  m.innerHTML = `
+    <div class="message ai">
+      <div class="bubble">会話履歴をリセットしました。新しい記録をどうぞ！</div>
+    </div>`;
+}
+
+// ── 画像添付 ──────────────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  for (const file of e.target.files) {
+    const base64 = await fileToBase64(file);
+    const previewUrl = URL.createObjectURL(file);
+    const idx = pendingImages.length;
+    pendingImages.push({ base64, previewUrl });
+    addPreviewItem(idx, previewUrl);
+  }
+  e.target.value = '';
+});
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result.split(',')[1]);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+function addPreviewItem(idx, previewUrl) {
+  const wrap = document.getElementById('imagePreview');
+  const div = document.createElement('div');
+  div.className = 'preview-item';
+  div.dataset.idx = idx;
+  div.innerHTML = `
+    <img src="${previewUrl}" alt="添付画像">
+    <button class="remove" onclick="removePreview(${idx})">×</button>`;
+  wrap.appendChild(div);
+  wrap.classList.add('has-items');
+}
+
+function removePreview(idx) {
+  pendingImages[idx] = null;
+  const el = document.querySelector(`.preview-item[data-idx="${idx}"]`);
+  if (el) el.remove();
+  if (!document.querySelector('.preview-item')) {
+    document.getElementById('imagePreview').classList.remove('has-items');
+  }
+}
+
+// ── テキストエリア自動リサイズ ────────────────────────────────────────────────
+const textInput = document.getElementById('textInput');
+textInput.addEventListener('input', () => {
+  textInput.style.height = 'auto';
+  textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
+});
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+// ── メッセージ送信 ────────────────────────────────────────────────────────────
+async function sendMessage() {
+  if (isStreaming) return;
+
+  const text = textInput.value.trim();
+  const images = pendingImages.filter(Boolean).map(i => i.base64);
+  if (!text && images.length === 0) return;
+
+  // 入力クリア
+  textInput.value = '';
+  textInput.style.height = 'auto';
+  pendingImages = [];
+  document.getElementById('imagePreview').innerHTML = '';
+  document.getElementById('imagePreview').classList.remove('has-items');
+
+  addUserMessage(text, images);
+
+  const typingEl = addTyping();
+  isStreaming = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  let aiMsgEl = null;
+  let aiTextEl = null;
+  let currentText = '';
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, images }),
+    });
+
+    if (!resp.ok) {
+      typingEl.remove();
+      appendError(resp.status === 401 ? 'セッション切れです。再ログインしてください。' : 'サーバーエラーが発生しました。');
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      let newlineIdx;
+      while ((newlineIdx = buf.indexOf('\n\n')) !== -1) {
+        const chunk = buf.slice(0, newlineIdx).trim();
+        buf = buf.slice(newlineIdx + 2);
+
+        if (!chunk.startsWith('data: ')) continue;
+        let data;
+        try { data = JSON.parse(chunk.slice(6)); } catch { continue; }
+
+        if (data.type === 'text') {
+          if (!aiMsgEl) {
+            typingEl.remove();
+            const r = createAiMessage();
+            aiMsgEl = r.msgEl;
+            aiTextEl = r.textEl;
+          }
+          currentText += data.content;
+          aiTextEl.innerHTML = DOMPurify.sanitize(marked.parse(currentText));
+          scrollBottom();
+
+        } else if (data.type === 'done') {
+          if (typingEl.parentElement) typingEl.remove();
+          break;
+
+        } else if (data.type === 'error') {
+          if (typingEl.parentElement) typingEl.remove();
+          appendError(data.message);
+        }
+      }
+    }
+
+  } catch (e) {
+    console.error(e);
+    if (typingEl.parentElement) typingEl.remove();
+    appendError('通信エラーが発生しました。');
+  } finally {
+    isStreaming = false;
+    document.getElementById('sendBtn').disabled = false;
+    textInput.focus();
+  }
+}
+
+// ── UI ヘルパー ────────────────────────────────────────────────────────────────
+function addUserMessage(text, images) {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'message user';
+  let inner = '';
+  images.forEach(b64 => {
+    inner += `<img class="user-image" src="data:image/jpeg;base64,${b64}" alt="添付画像">`;
+  });
+  if (text) inner += escHtml(text).replace(/\n/g, '<br>');
+  div.innerHTML = `<div class="bubble">${inner}</div>`;
+  wrap.appendChild(div);
+  scrollBottom();
+}
+
+function createAiMessage() {
+  const wrap = document.getElementById('messages');
+  const msgEl = document.createElement('div');
+  msgEl.className = 'message ai';
+  const textEl = document.createElement('div');
+  textEl.className = 'bubble';
+  msgEl.appendChild(textEl);
+  wrap.appendChild(msgEl);
+  scrollBottom();
+  return { msgEl, textEl };
+}
+
+function addTyping() {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'message ai';
+  div.innerHTML = `
+    <div class="bubble">
+      <div class="typing-indicator">
+        <span></span><span></span><span></span>
+      </div>
+    </div>`;
+  wrap.appendChild(div);
+  scrollBottom();
+  return div;
+}
+
+function appendError(msg) {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'error-msg';
+  div.textContent = '⚠️ ' + msg;
+  wrap.appendChild(div);
+  scrollBottom();
+}
+
+function scrollBottom() {
+  const m = document.getElementById('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── パスワード入力でEnter ────────────────────────────────────────────────────
+document.getElementById('passwordInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ── 初期化 ────────────────────────────────────────────────────────────────────
+checkAuth();
+</script>
+</body>
+</html>
