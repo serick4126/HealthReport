@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as _date
 from pathlib import Path
 from typing import Optional
 
@@ -301,9 +301,19 @@ def get_meal_image(meal_id: int) -> Optional[tuple[bytes, str]]:
     return (bytes(row["image_data"]), row["mime_type"]) if row else None
 
 
-def get_history(days: int = 30) -> list[dict]:
-    """直近N日間の記録を日付降順で返す"""
-    since = (datetime.now(JST) - timedelta(days=days - 1)).date().isoformat()
+def get_history(
+    days: int = 30,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[dict]:
+    """指定期間の記録を日付降順で返す"""
+    today = datetime.now(JST).date()
+    if start_date and end_date:
+        since = start_date
+        until = end_date
+    else:
+        until = today.isoformat()
+        since = (today - timedelta(days=days - 1)).isoformat()
     with get_conn() as conn:
         meals = conn.execute(
             """
@@ -311,18 +321,18 @@ def get_history(days: int = 30) -> list[dict]:
                    m.calories, m.protein, m.fat, m.carbs, m.sodium, m.notes,
                    (SELECT COUNT(*) FROM meal_images WHERE meal_id = m.id) AS image_count
             FROM meals m
-            WHERE m.meal_date >= ?
+            WHERE m.meal_date >= ? AND m.meal_date <= ?
             ORDER BY m.meal_date DESC, m.id ASC
             """,
-            (since,),
+            (since, until),
         ).fetchall()
         weights = conn.execute(
-            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ? ORDER BY log_date DESC",
-            (since,),
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
+            (since, until),
         ).fetchall()
         steps_rows = conn.execute(
-            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ? ORDER BY log_date DESC",
-            (since,),
+            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
+            (since, until),
         ).fetchall()
 
     from collections import defaultdict
@@ -354,29 +364,44 @@ def get_history(days: int = 30) -> list[dict]:
     return result
 
 
-def get_stats(days: int = 7) -> dict:
-    """グラフ用の集計データを返す（直近N日間）"""
+def get_stats(
+    days: int = 7,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    """グラフ用の集計データを返す"""
     today = datetime.now(JST).date()
-    dates = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    if start_date and end_date:
+        start = _date.fromisoformat(start_date)
+        end = _date.fromisoformat(end_date)
+    else:
+        end = today
+        start = today - timedelta(days=days - 1)
+    total = (end - start).days + 1
+    if total > 366:  # 最大1年
+        start = end - timedelta(days=365)
+        total = 366
+    dates = [(start + timedelta(days=i)).isoformat() for i in range(total)]
     since = dates[0]
+    until = dates[-1]
     with get_conn() as conn:
         cal_rows = conn.execute(
             """
             SELECT meal_date,
                    SUM(calories) AS cal, SUM(protein) AS p,
                    SUM(fat) AS f, SUM(carbs) AS c
-            FROM meals WHERE meal_date >= ?
+            FROM meals WHERE meal_date >= ? AND meal_date <= ?
             GROUP BY meal_date
             """,
-            (since,),
+            (since, until),
         ).fetchall()
         weight_rows = conn.execute(
-            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ?",
-            (since,),
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ? AND log_date <= ?",
+            (since, until),
         ).fetchall()
         step_rows = conn.execute(
-            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ?",
-            (since,),
+            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ? AND log_date <= ?",
+            (since, until),
         ).fetchall()
 
     cal_map = {r["meal_date"]: r for r in cal_rows}
@@ -399,7 +424,7 @@ def get_stats(days: int = 7) -> dict:
         steps.append(s_map.get(d))
 
     return {
-        "period": days,
+        "period": total,
         "dates": dates,
         "calories": calories,
         "calories_goal": int(get_setting("daily_calorie_goal") or 1500),

@@ -37,7 +37,7 @@
     }
     .nav-btn:active { background: #e5e5ea; }
     .period-bar {
-      display: flex; gap: 8px; padding: 12px 16px;
+      display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap;
       border-bottom: 1px solid var(--border); background: var(--header-bg);
     }
     .period-btn {
@@ -62,6 +62,28 @@
     }
     .summary-val { font-size: 22px; font-weight: 700; color: var(--accent); }
     .summary-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+    /* モーダル */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 100; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-box {
+      background: var(--card-bg); border-radius: 16px; padding: 24px;
+      width: min(360px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+    .modal-row { margin-bottom: 14px; }
+    .modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+    .modal-row input[type=date] {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 15px; background: var(--bg);
+    }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-actions button {
+      padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--accent);
+    }
+    .modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -75,9 +97,29 @@
   <div class="period-bar">
     <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
+    <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
   </div>
   <div class="content" id="content">
     <div class="loading">読み込み中...</div>
+  </div>
+
+  <!-- 期間指定モーダル -->
+  <div class="modal-overlay" id="dateModal" style="display:none" onclick="handleOverlayClick(event)">
+    <div class="modal-box">
+      <div class="modal-title">📅 期間を指定</div>
+      <div class="modal-row">
+        <label>開始日</label>
+        <input type="date" id="startDate" />
+      </div>
+      <div class="modal-row">
+        <label>終了日</label>
+        <input type="date" id="endDate" />
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeDateModal()">キャンセル</button>
+        <button class="primary" onclick="applyDateRange()">適用</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -88,11 +130,14 @@
       charts = {};
     }
 
-    async function load(days) {
+    async function load(days, start, end) {
       document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
       destroyCharts();
+      const url = start && end
+        ? `/api/stats?start=${start}&end=${end}`
+        : `/api/stats?days=${days}`;
       try {
-        const res = await fetch(`/api/stats?days=${days}`);
+        const res = await fetch(url);
         if (res.status === 401) { location.href = '/'; return; }
         const data = await res.json();
         render(data);
@@ -151,9 +196,15 @@
         </div>
       `;
 
+      const period = data.period || labels.length;
+      const isLong = period > 60;
+      const xMaxTicks = period <= 14 ? period : period <= 31 ? 10 : period <= 90 ? 12 : 13;
       const defaults = { responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
-        scales: { x: { ticks: { font: { size: 11 } } }, y: { ticks: { font: { size: 11 } } } }
+        scales: {
+          x: { ticks: { font: { size: 11 }, maxTicksLimit: xMaxTicks, maxRotation: period > 30 ? 45 : 0 } },
+          y: { ticks: { font: { size: 11 } } }
+        }
       };
 
       // カロリー推移
@@ -180,31 +231,60 @@
         options: { ...defaults, scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } } }
       });
 
-      // 体重推移（朝→夜→朝→夜 の時系列1本線）
-      const wLabels = [], wData = [], wPointColors = [];
-      for (let i = 0; i < data.dates.length; i++) {
-        const d = shortDate(data.dates[i]);
-        const wm = (data.weights_morning||[])[i] ?? null;
-        const we = (data.weights_evening||[])[i] ?? null;
-        wLabels.push(d + '朝'); wData.push(wm); wPointColors.push('#34c759');
-        wLabels.push(d + '夜'); wData.push(we); wPointColors.push('#ff9500');
-      }
-      const allW = wData.filter(v => v != null);
-      const wMin = allW.length ? Math.floor(Math.min(...allW) - 1) : undefined;
-      const wMax = allW.length ? Math.ceil(Math.max(...allW) + 1) : undefined;
-      charts.weight = new Chart(document.getElementById('chartWeight'), {
-        type: 'line',
-        data: {
+      // 体重推移
+      const allW_check = [...(data.weights_morning||[]), ...(data.weights_evening||[])].filter(v => v != null);
+      const wMin = allW_check.length ? Math.floor(Math.min(...allW_check) - 1) : undefined;
+      const wMax = allW_check.length ? Math.ceil(Math.max(...allW_check) + 1) : undefined;
+      let wChartData, wChartOptions;
+
+      if (isLong) {
+        // 長期間：日次で朝夜の平均または利用可能な値を1点/日表示（2データセット）
+        const wmData = data.weights_morning || [];
+        const weData = data.weights_evening || [];
+        wChartData = {
+          labels,
+          datasets: [
+            {
+              label: '朝', data: wmData,
+              borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,0.1)',
+              tension: 0.3, fill: false, spanGaps: true,
+              pointRadius: 3, pointBackgroundColor: '#34c759',
+            },
+            {
+              label: '夜', data: weData,
+              borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.1)',
+              tension: 0.3, fill: false, spanGaps: true,
+              pointRadius: 3, pointBackgroundColor: '#ff9500',
+            }
+          ]
+        };
+        wChartOptions = {
+          ...defaults,
+          scales: {
+            x: { ticks: { font: { size: 10 }, maxTicksLimit: xMaxTicks, maxRotation: 45 } },
+            y: { ticks: { font: { size: 11 } }, min: wMin, max: wMax }
+          }
+        };
+      } else {
+        // 短期間：朝→夜→朝→夜 の時系列1本線
+        const wLabels = [], wData = [], wPointColors = [];
+        for (let i = 0; i < data.dates.length; i++) {
+          const d = shortDate(data.dates[i]);
+          const wm = (data.weights_morning||[])[i] ?? null;
+          const we = (data.weights_evening||[])[i] ?? null;
+          wLabels.push(d + '朝'); wData.push(wm); wPointColors.push('#34c759');
+          wLabels.push(d + '夜'); wData.push(we); wPointColors.push('#ff9500');
+        }
+        wChartData = {
           labels: wLabels,
           datasets: [{
-            label: '体重',
-            data: wData,
+            label: '体重', data: wData,
             borderColor: '#8e8e93',
             tension: 0.3, fill: false, spanGaps: true,
             pointRadius: 5, pointBackgroundColor: wPointColors, pointBorderColor: wPointColors,
           }]
-        },
-        options: {
+        };
+        wChartOptions = {
           ...defaults,
           plugins: {
             ...defaults.plugins,
@@ -223,7 +303,13 @@
             x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
             y: { ticks: { font: { size: 11 } }, min: wMin, max: wMax }
           }
-        }
+        };
+      }
+
+      charts.weight = new Chart(document.getElementById('chartWeight'), {
+        type: 'line',
+        data: wChartData,
+        options: wChartOptions,
       });
 
       // 歩数推移
@@ -257,10 +343,39 @@
     function setPeriod(days, btn) {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      load(days);
+      load(days, null, null);
     }
 
-    load(7);
+    function openDateModal() {
+      const today = new Date().toISOString().slice(0, 10);
+      const oneMonthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      document.getElementById('startDate').value = oneMonthAgo;
+      document.getElementById('endDate').value = today;
+      document.getElementById('dateModal').style.display = 'flex';
+    }
+
+    function closeDateModal() {
+      document.getElementById('dateModal').style.display = 'none';
+    }
+
+    function handleOverlayClick(e) {
+      if (e.target === document.getElementById('dateModal')) closeDateModal();
+    }
+
+    function applyDateRange() {
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+      if (!start || !end) { alert('開始日と終了日を入力してください'); return; }
+      if (start > end) { alert('開始日は終了日より前にしてください'); return; }
+      closeDateModal();
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('customBtn').classList.add('active');
+      document.getElementById('customBtn').textContent =
+        `📅 ${start.slice(5).replace('-','/')} 〜 ${end.slice(5).replace('-','/')}`;
+      load(null, start, end);
+    }
+
+    load(7, null, null);
   </script>
 </body>
 </html>

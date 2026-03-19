@@ -121,15 +121,15 @@ async def today(request: Request):
 # ── 履歴・集計・画像エンドポイント ────────────────────────────────────────────
 
 @app.get("/api/history")
-async def history_api(request: Request, days: int = 30):
+async def history_api(request: Request, days: int = 30, start: str = None, end: str = None):
     require_auth(request)
-    return JSONResponse(database.get_history(days))
+    return JSONResponse(database.get_history(days, start, end))
 
 
 @app.get("/api/stats")
-async def stats_api(request: Request, days: int = 7):
+async def stats_api(request: Request, days: int = 7, start: str = None, end: str = None):
     require_auth(request)
-    return JSONResponse(database.get_stats(days))
+    return JSONResponse(database.get_stats(days, start, end))
 
 
 @app.get("/api/image/{meal_id}")

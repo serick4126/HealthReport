@@ -6,28 +6,16 @@
   <title>記録履歴</title>
   <style>
     :root {
-      --bg: #f2f2f7;
-      --header-bg: rgba(255,255,255,0.85);
-      --card-bg: #ffffff;
-      --border: #e5e5ea;
-      --accent: #007aff;
-      --success: #34c759;
-      --text-secondary: #8e8e93;
-      --radius: 12px;
+      --bg: #f2f2f7; --header-bg: rgba(255,255,255,0.85); --card-bg: #ffffff;
+      --border: #e5e5ea; --accent: #007aff; --success: #34c759;
+      --text-secondary: #8e8e93; --radius: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
-      background: var(--bg);
-      min-height: 100dvh;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif; background: var(--bg); min-height: 100dvh; }
     .header {
       position: sticky; top: 0; z-index: 10;
-      background: var(--header-bg);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 16px;
+      background: var(--header-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border); padding: 10px 16px;
       padding-top: max(10px, env(safe-area-inset-top));
       display: flex; align-items: center; justify-content: space-between;
     }
@@ -39,52 +27,65 @@
       text-decoration: none; display: inline-flex; align-items: center;
     }
     .nav-btn:active { background: #e5e5ea; }
-    .period-bar {
-      display: flex; gap: 8px; padding: 12px 16px;
-      border-bottom: 1px solid var(--border); background: var(--header-bg);
-    }
+    .period-bar { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--header-bg); flex-wrap: wrap; }
     .period-btn {
       padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
       background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
     }
     .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .content { padding: 16px; max-width: 680px; margin: 0 auto; }
-    .day-section { margin-bottom: 20px; }
-    .day-header {
-      display: flex; align-items: baseline; justify-content: space-between;
-      margin-bottom: 8px; padding: 0 4px;
+    .pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 4px; margin-bottom: 12px;
     }
+    .page-info { font-size: 13px; color: var(--text-secondary); }
+    .page-btn {
+      padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--card-bg); font-size: 13px; cursor: pointer; color: var(--accent);
+    }
+    .page-btn:disabled { opacity: 0.35; cursor: default; }
+    .day-section { margin-bottom: 20px; }
+    .day-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
     .day-date { font-size: 15px; font-weight: 700; }
     .day-totals { font-size: 12px; color: var(--text-secondary); }
     .day-meta { font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; margin-bottom: 8px; padding: 0 4px; }
-    .meal-card {
-      background: var(--card-bg); border-radius: var(--radius);
-      padding: 12px 14px; margin-bottom: 8px;
-      border: 1px solid var(--border);
-    }
+    .meal-card { background: var(--card-bg); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--border); }
     .meal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-    .meal-type-badge {
-      font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
-      background: #e5f0ff; color: var(--accent); white-space: nowrap; flex-shrink: 0;
-    }
+    .meal-type-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #e5f0ff; color: var(--accent); white-space: nowrap; flex-shrink: 0; }
     .meal-desc { font-size: 14px; font-weight: 600; flex: 1; }
     .meal-cal { font-size: 14px; font-weight: 700; color: var(--accent); white-space: nowrap; }
-    .meal-pfc {
-      font-size: 12px; color: var(--text-secondary); margin-top: 6px;
-      display: flex; gap: 10px; flex-wrap: wrap;
-    }
+    .meal-pfc { font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
     .meal-pfc span { background: var(--bg); padding: 2px 6px; border-radius: 6px; }
     .meal-notes { font-size: 11px; color: var(--text-secondary); margin-top: 6px; font-style: italic; }
     .meal-image { margin-top: 8px; }
-    .meal-image img {
-      max-width: 100%; max-height: 180px; border-radius: 8px;
-      object-fit: cover; display: block;
-    }
+    .meal-image img { max-width: 100%; max-height: 180px; border-radius: 8px; object-fit: cover; display: block; }
     .empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 15px; }
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
     .calorie-bar-wrap { margin: 4px 0 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
     .calorie-bar { height: 100%; border-radius: 2px; background: var(--success); transition: width 0.3s; }
     .calorie-bar.over { background: #ff3b30; }
+    /* モーダル */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 100; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-box {
+      background: var(--card-bg); border-radius: 16px; padding: 24px;
+      width: min(360px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+    .modal-row { margin-bottom: 14px; }
+    .modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+    .modal-row input[type=date] {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 15px; background: var(--bg);
+    }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-actions button {
+      padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--accent);
+    }
+    .modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -98,45 +99,87 @@
   <div class="period-bar">
     <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
+    <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
   </div>
   <div class="content" id="content">
     <div class="loading">読み込み中...</div>
   </div>
 
-  <script>
-    const MEAL_TYPE_JA = {
-      breakfast: '朝食', lunch: '昼食', dinner: '夕食',
-      snack: '間食', late_night: '夜食'
-    };
-    let calorieGoal = 1500;
+  <!-- 期間指定モーダル -->
+  <div class="modal-overlay" id="dateModal" style="display:none" onclick="handleOverlayClick(event)">
+    <div class="modal-box">
+      <div class="modal-title">📅 期間を指定</div>
+      <div class="modal-row">
+        <label>開始日</label>
+        <input type="date" id="startDate" />
+      </div>
+      <div class="modal-row">
+        <label>終了日</label>
+        <input type="date" id="endDate" />
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeDateModal()">キャンセル</button>
+        <button class="primary" onclick="applyDateRange()">適用</button>
+      </div>
+    </div>
+  </div>
 
-    async function load(days) {
-      const content = document.getElementById('content');
-      content.innerHTML = '<div class="loading">読み込み中...</div>';
+  <script>
+    const MEAL_TYPE_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食', late_night: '夜食' };
+    const PAGE_SIZE = 10;
+    let calorieGoal = 1500;
+    let allDays = [];
+    let currentPage = 0;
+
+    // ── データ取得 ─────────────────────────────────────────────────────────────
+    async function load(days, start, end) {
+      document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
+      let url = start && end
+        ? `/api/history?start=${start}&end=${end}`
+        : `/api/history?days=${days}`;
+      let statsUrl = start && end
+        ? `/api/stats?start=${start}&end=${end}`
+        : `/api/stats?days=${days}`;
       try {
-        const [histRes, statsRes] = await Promise.all([
-          fetch(`/api/history?days=${days}`),
-          fetch(`/api/stats?days=${days}`)
-        ]);
+        const [histRes, statsRes] = await Promise.all([fetch(url), fetch(statsUrl)]);
         if (histRes.status === 401) { location.href = '/'; return; }
-        const data = await histRes.json();
+        allDays = await histRes.json();
         const stats = await statsRes.json();
         calorieGoal = stats.calories_goal || 1500;
-        render(data);
+        currentPage = 0;
+        renderPage();
       } catch(e) {
-        content.innerHTML = '<div class="empty">データの取得に失敗しました</div>';
+        document.getElementById('content').innerHTML = '<div class="empty">データの取得に失敗しました</div>';
       }
     }
 
-    function render(days) {
+    // ── ページ描画 ─────────────────────────────────────────────────────────────
+    function renderPage() {
       const content = document.getElementById('content');
-      if (!days.length) {
-        content.innerHTML = '<div class="empty">記録がありません</div>';
+      if (!allDays.length) {
+        content.innerHTML = '<div class="empty">この期間に記録はありません</div>';
         return;
       }
-      content.innerHTML = days.map(day => renderDay(day)).join('');
+      const totalPages = Math.ceil(allDays.length / PAGE_SIZE);
+      const start = currentPage * PAGE_SIZE;
+      const pageDays = allDays.slice(start, start + PAGE_SIZE);
+      const paginationHtml = totalPages > 1 ? `
+        <div class="pagination">
+          <button class="page-btn" onclick="changePage(-1)" ${currentPage === 0 ? 'disabled' : ''}>← 前へ</button>
+          <span class="page-info">${currentPage + 1} / ${totalPages}ページ（全${allDays.length}日）</span>
+          <button class="page-btn" onclick="changePage(1)" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>次へ →</button>
+        </div>` : '';
+      content.innerHTML = paginationHtml + pageDays.map(d => renderDay(d)).join('') + paginationHtml;
     }
 
+    function changePage(delta) {
+      const totalPages = Math.ceil(allDays.length / PAGE_SIZE);
+      currentPage = Math.max(0, Math.min(totalPages - 1, currentPage + delta));
+      renderPage();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── 1日レンダリング ────────────────────────────────────────────────────────
     function renderDay(day) {
       const dateObj = new Date(day.date + 'T00:00:00');
       const weekdays = ['日','月','火','水','木','金','土'];
@@ -144,28 +187,22 @@
       const t = day.totals;
       const pct = calorieGoal > 0 ? Math.min((t.calories / calorieGoal) * 100, 100) : 0;
       const over = t.calories > calorieGoal;
-
       const weightStr = day.weight
         ? [day.weight.morning ? `朝 ${day.weight.morning}kg` : '',
-           day.weight.evening ? `夜 ${day.weight.evening}kg` : '']
-            .filter(Boolean).join('　')
+           day.weight.evening ? `夜 ${day.weight.evening}kg` : ''].filter(Boolean).join('　')
         : '';
       const stepsStr = day.steps ? `👟 ${day.steps.toLocaleString()}歩` : '';
-
       const mealsHtml = day.meals.length
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
-
       return `
         <div class="day-section">
           <div class="day-header">
             <span class="day-date">${label}</span>
             <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g</span>
           </div>
-          <div class="calorie-bar-wrap">
-            <div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div>
-          </div>
-          ${(weightStr || stepsStr) ? `<div class="day-meta">${weightStr ? `⚖️ ${weightStr}` : ''}${stepsStr ? stepsStr : ''}</div>` : ''}
+          <div class="calorie-bar-wrap"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
+          ${(weightStr || stepsStr) ? `<div class="day-meta">${weightStr ? `⚖️ ${weightStr}` : ''}${stepsStr}</div>` : ''}
           ${mealsHtml}
         </div>`;
     }
@@ -173,15 +210,11 @@
     function renderMeal(m) {
       const type = MEAL_TYPE_JA[m.meal_type] || m.meal_type;
       const cal = m.calories != null ? `${m.calories} kcal` : '—';
-      const pfcParts = [];
-      if (m.protein != null) pfcParts.push(`<span>P: ${m.protein}g</span>`);
-      if (m.fat != null)     pfcParts.push(`<span>F: ${m.fat}g</span>`);
-      if (m.carbs != null)   pfcParts.push(`<span>C: ${m.carbs}g</span>`);
-      if (m.sodium != null)  pfcParts.push(`<span>塩: ${m.sodium}g</span>`);
-      const notesHtml = m.notes ? `<div class="meal-notes">${escHtml(m.notes)}</div>` : '';
-      const imgHtml = m.image_count > 0
-        ? `<div class="meal-image"><img src="/api/image/${m.id}" loading="lazy" alt="食事画像"></div>`
-        : '';
+      const pfc = [];
+      if (m.protein != null) pfc.push(`<span>P: ${m.protein}g</span>`);
+      if (m.fat != null)     pfc.push(`<span>F: ${m.fat}g</span>`);
+      if (m.carbs != null)   pfc.push(`<span>C: ${m.carbs}g</span>`);
+      if (m.sodium != null)  pfc.push(`<span>塩: ${m.sodium}g</span>`);
       return `
         <div class="meal-card">
           <div class="meal-header">
@@ -189,9 +222,9 @@
             <span class="meal-desc">${escHtml(m.description)}</span>
             <span class="meal-cal">${cal}</span>
           </div>
-          ${pfcParts.length ? `<div class="meal-pfc">${pfcParts.join('')}</div>` : ''}
-          ${notesHtml}
-          ${imgHtml}
+          ${pfc.length ? `<div class="meal-pfc">${pfc.join('')}</div>` : ''}
+          ${m.notes ? `<div class="meal-notes">${escHtml(m.notes)}</div>` : ''}
+          ${m.image_count > 0 ? `<div class="meal-image"><img src="/api/image/${m.id}" loading="lazy" alt="食事画像"></div>` : ''}
         </div>`;
     }
 
@@ -199,13 +232,44 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    // ── 期間ボタン ──────────────────────────────────────────────────────────────
     function setPeriod(days, btn) {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      load(days);
+      load(days, null, null);
     }
 
-    load(7);
+    // ── 期間指定モーダル ───────────────────────────────────────────────────────
+    function openDateModal() {
+      const today = new Date().toISOString().slice(0, 10);
+      const oneMonthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      document.getElementById('startDate').value = oneMonthAgo;
+      document.getElementById('endDate').value = today;
+      document.getElementById('dateModal').style.display = 'flex';
+    }
+
+    function closeDateModal() {
+      document.getElementById('dateModal').style.display = 'none';
+    }
+
+    function handleOverlayClick(e) {
+      if (e.target === document.getElementById('dateModal')) closeDateModal();
+    }
+
+    function applyDateRange() {
+      const start = document.getElementById('startDate').value;
+      const end = document.getElementById('endDate').value;
+      if (!start || !end) { alert('開始日と終了日を入力してください'); return; }
+      if (start > end) { alert('開始日は終了日より前にしてください'); return; }
+      closeDateModal();
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('customBtn').classList.add('active');
+      document.getElementById('customBtn').textContent =
+        `📅 ${start.slice(5).replace('-','/')} 〜 ${end.slice(5).replace('-','/')}`;
+      load(null, start, end);
+    }
+
+    load(7, null, null);
   </script>
 </body>
 </html>
