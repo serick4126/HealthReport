@@ -180,33 +180,48 @@
         options: { ...defaults, scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } } }
       });
 
-      // 体重推移
-      const hasWeight = [...(data.weights_morning||[]), ...(data.weights_evening||[])].some(v => v != null);
-      const allW = [...(data.weights_morning||[]), ...(data.weights_evening||[])].filter(v => v != null);
-      const wMin = allW.length ? Math.floor(Math.min(...allW) - 1) : 0;
-      const wMax = allW.length ? Math.ceil(Math.max(...allW) + 1) : 100;
+      // 体重推移（朝→夜→朝→夜 の時系列1本線）
+      const wLabels = [], wData = [], wPointColors = [];
+      for (let i = 0; i < data.dates.length; i++) {
+        const d = shortDate(data.dates[i]);
+        const wm = (data.weights_morning||[])[i] ?? null;
+        const we = (data.weights_evening||[])[i] ?? null;
+        wLabels.push(d + '朝'); wData.push(wm); wPointColors.push('#34c759');
+        wLabels.push(d + '夜'); wData.push(we); wPointColors.push('#ff9500');
+      }
+      const allW = wData.filter(v => v != null);
+      const wMin = allW.length ? Math.floor(Math.min(...allW) - 1) : undefined;
+      const wMax = allW.length ? Math.ceil(Math.max(...allW) + 1) : undefined;
       charts.weight = new Chart(document.getElementById('chartWeight'), {
         type: 'line',
         data: {
-          labels,
-          datasets: [
-            {
-              label: '朝', data: data.weights_morning,
-              borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,0.1)',
-              tension: 0.3, fill: false, spanGaps: true, pointRadius: 4,
-            },
-            {
-              label: '夜', data: data.weights_evening,
-              borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.1)',
-              tension: 0.3, fill: false, spanGaps: true, pointRadius: 4,
-            }
-          ]
+          labels: wLabels,
+          datasets: [{
+            label: '体重',
+            data: wData,
+            borderColor: '#8e8e93',
+            tension: 0.3, fill: false, spanGaps: true,
+            pointRadius: 5, pointBackgroundColor: wPointColors, pointBorderColor: wPointColors,
+          }]
         },
         options: {
           ...defaults,
+          plugins: {
+            ...defaults.plugins,
+            legend: {
+              ...defaults.plugins.legend,
+              labels: {
+                ...defaults.plugins.legend.labels,
+                generateLabels: () => [
+                  { text: '朝', fillStyle: '#34c759', strokeStyle: '#34c759', lineWidth: 2 },
+                  { text: '夜', fillStyle: '#ff9500', strokeStyle: '#ff9500', lineWidth: 2 },
+                ]
+              }
+            }
+          },
           scales: {
-            ...defaults.scales,
-            y: { ...defaults.scales.y, min: hasWeight ? wMin : undefined, max: hasWeight ? wMax : undefined }
+            x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
+            y: { ticks: { font: { size: 11 } }, min: wMin, max: wMax }
           }
         }
       });
