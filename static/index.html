@@ -120,20 +120,33 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
-      margin-top: 8px;
+      margin-top: 10px;
+    }
+    .choices-question {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--bubble-ai-text);
+      margin-bottom: 4px;
     }
     .choice-btn {
-      padding: 11px 16px;
-      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border: 1.5px solid var(--border);
       border-radius: 12px;
-      background: #f9f9f9;
+      background: #fff;
       text-align: left;
       cursor: pointer;
       font-size: 15px;
-      transition: background 0.1s;
+      line-height: 1.4;
+      transition: background 0.1s, border-color 0.1s;
       color: var(--bubble-ai-text);
+      width: 100%;
     }
-    .choice-btn:active { background: #e5e5ea; }
+    .choice-btn:active,
+    .choice-btn:hover { background: #f0f0f5; border-color: var(--accent); }
+    .choice-btn.no-match {
+      color: var(--text-secondary);
+      border-style: dashed;
+    }
 
     /* 画像プレビュー */
     .image-preview {
@@ -544,6 +557,17 @@ async function sendMessage() {
           aiTextEl.innerHTML = DOMPurify.sanitize(marked.parse(currentText));
           scrollBottom();
 
+        } else if (data.type === 'choices') {
+          // 選択肢ボタンを表示
+          if (!aiMsgEl) {
+            if (typingEl.parentElement) typingEl.remove();
+            const r = createAiMessage('');
+            aiMsgEl = r.msgEl;
+            aiTextEl = r.textEl;
+          }
+          showChoiceButtons(aiMsgEl, data.question, data.options);
+          scrollBottom();
+
         } else if (data.type === 'done') {
           if (typingEl.parentElement) typingEl.remove();
           break;
@@ -606,6 +630,36 @@ function addTyping() {
   wrap.appendChild(div);
   scrollBottom();
   return div;
+}
+
+// ── 選択肢ボタン ─────────────────────────────────────────────────────────────
+function showChoiceButtons(parentEl, question, options) {
+  const wrap = document.createElement('div');
+  wrap.className = 'choices';
+
+  if (question) {
+    const q = document.createElement('div');
+    q.className = 'choices-question';
+    q.textContent = question;
+    wrap.appendChild(q);
+  }
+
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn' + (opt.value === '該当なし' ? ' no-match' : '');
+    btn.textContent = opt.label;
+    btn.onclick = () => {
+      // ボタンを非活性化（二重送信防止）
+      wrap.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
+      wrap.style.opacity = '0.5';
+      // 選択値をテキスト入力にセットして送信
+      document.getElementById('textInput').value = opt.value;
+      sendMessage();
+    };
+    wrap.appendChild(btn);
+  });
+
+  parentEl.appendChild(wrap);
 }
 
 function appendError(msg) {

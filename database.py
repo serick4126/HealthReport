@@ -249,6 +249,30 @@ def save_steps(log_date: str, steps: int) -> dict:
 
 # ── 日次サマリー ───────────────────────────────────────────────────────────────
 
+# ── 食事画像 ───────────────────────────────────────────────────────────────────
+
+def save_meal_image(
+    meal_id: int,
+    image_data: bytes,
+    mime_type: str,
+    source_type: str,
+    notes: Optional[str] = None,
+) -> int:
+    """
+    meal_images テーブルに画像を保存する。
+    source_type: 'photo'（料理写真）/ 'label'（栄養成分ラベル）/ 'barcode'（バーコード）
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO meal_images (meal_id, image_data, mime_type, source_type, notes)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (meal_id, image_data, mime_type, source_type, notes),
+        )
+        return cur.lastrowid
+
+
 def get_daily_summary(target_date: Optional[str] = None) -> dict:
     target_date = target_date or today_jst()
     with get_conn() as conn:
