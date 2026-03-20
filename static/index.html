@@ -343,7 +343,7 @@
   <div class="login-box">
     <h2>🍱 食事記録</h2>
     <p>パスワードを入力してください</p>
-    <input class="login-input" type="password" id="passwordInput" placeholder="••••" />
+    <input class="login-input" type="password" id="passwordInput" />
     <button class="login-btn" id="loginBtn" onclick="doLogin()">ログイン</button>
     <div class="login-error" id="loginError"></div>
   </div>
@@ -364,8 +364,8 @@
 
 <div class="messages" id="messages">
   <div class="message ai">
-    <div class="bubble">
-      こんにちは、Serickさん！😊<br>
+    <div class="bubble" id="greetingBubble">
+      こんにちは！😊<br>
       食事・体重・歩数を報告してください。<br>
       記録のほか、食事の提案も可能です。
     </div>
@@ -393,12 +393,25 @@ let isStreaming = false;
 async function checkAuth() {
   try {
     const r = await fetch('/api/me');
-    if (r.ok) hideLogin();
+    if (r.ok) { hideLogin(); await updateGreeting(); }
   } catch (_) {}
 }
 
 function hideLogin() {
   document.getElementById('loginOverlay').style.display = 'none';
+}
+
+async function updateGreeting() {
+  try {
+    const r = await fetch('/api/settings');
+    if (!r.ok) return;
+    const s = await r.json();
+    const name = s.user_name && s.user_name !== 'DefaultName' ? s.user_name : null;
+    const el = document.getElementById('greetingBubble');
+    if (el && name) {
+      el.innerHTML = `こんにちは、${name}さん！😊<br>食事・体重・歩数を報告してください。<br>記録のほか、食事の提案も可能です。`;
+    }
+  } catch (_) {}
 }
 
 async function doLogin() {
@@ -412,7 +425,7 @@ async function doLogin() {
       body: JSON.stringify({ password: pw }),
     });
     if (r.ok) {
-      hideLogin();
+      hideLogin(); await updateGreeting();
     } else {
       document.getElementById('loginError').textContent = 'パスワードが違います';
     }

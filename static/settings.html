@@ -118,11 +118,11 @@
           <div class="card">
             <div class="row">
               <span class="row-label">ユーザー名</span>
-              <input type="text" id="user_name" value="${escVal(s.user_name)}" placeholder="例: Serick" />
+              <input type="text" id="user_name" value="${escVal(s.user_name)}" placeholder="例: 健康太郎" />
             </div>
             <div class="row">
               <span class="row-label">身長</span>
-              <input type="number" id="user_height_cm" value="${escVal(s.user_height_cm)}" placeholder="180" min="100" max="250" />
+              <input type="number" id="user_height_cm" value="${escVal(s.user_height_cm)}" placeholder="160" min="100" max="250" />
               <span class="row-unit">cm</span>
             </div>
           </div>
@@ -134,8 +134,23 @@
           <div class="card">
             <div class="row">
               <span class="row-label">カロリー目標</span>
-              <input type="number" id="daily_calorie_goal" value="${escVal(s.daily_calorie_goal)}" placeholder="1500" min="500" max="5000" />
+              <input type="number" id="daily_calorie_goal" value="${escVal(s.daily_calorie_goal)}" placeholder="1800" min="500" max="5000" />
               <span class="row-unit">kcal/日</span>
+            </div>
+            <div class="row" style="align-items:flex-start">
+              <span class="row-label" style="padding-top:6px">注意事項</span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                <textarea id="user_notes" rows="4" placeholder="例: 目標とする体重や持病の有無 / 塩分制限量1日6g以下 / 水分2L/日を目標として摂取 / 糖質は少量に抑える / アレルギー情報 など" style="padding:6px 10px;border:1px solid #d1d1d6;border-radius:8px;font-size:14px;resize:vertical">${escVal(s.user_notes)}</textarea>
+                <div style="font-size:12px;color:#666;line-height:1.6;background:#f9f9fb;border-radius:6px;padding:8px 10px">
+                  ⚠️ ここに入力した内容は <strong>Claudeへのプロンプトに含まれ、回答・記録内容に反映</strong> されます。<br>
+                  入力が推奨される項目の例：<br>
+                  ・ 疾患・体質（例: メタボリックシンドローム、高血圧）<br>
+                  ・ 食事制限（例: 塩分制限、糖質制限、アレルギー）<br>
+                  ・ 水分・栄養の目標（例: 水分2L/日、タンパク質80g/日）<br>
+                  ・ 医師の指示（例: 主食は毎食100g以下、脂質は控えめに）
+                  ・ その他Claudeに伝えておきたいこと（例: 運動習慣、食の好みなど）
+                  </div>
+              </div>
             </div>
           </div>
         </div>
@@ -160,11 +175,25 @@
         <!-- 食品デフォルト -->
         <div class="section" style="margin-top:28px">
           <div class="section-title">食品デフォルト設定</div>
+          <div style="font-size:12px;color:#555;line-height:1.7;background:#f9f9fb;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+            <strong>📌 使い方</strong><br>
+            「キーワード」に食品名や料理名を登録しておくと、Claudeへの入力時にそのキーワードを言うだけで
+            <strong>詳細の栄養情報・食材・調理法を自動的に参照</strong>して記録します。
+            毎回説明しなくても一言で正確な記録が可能になります。
+            例) キーワード: 鶏胸肉　詳細: 皮無し などと記載しておくと、鶏胸肉とだけ指定してたときにデフォルト皮なしでのカロリーを計算します。<br><br>
+            <strong>💡 便利な使い方 — 自家製レシピの登録</strong><br>
+            キーワードに独自の料理名（例:「自家製鶏ハム」）を設定し、詳細欄に食材・分量・調味料・調理法を
+            詳しく記載しておくと、その料理を食べたときに一言伝えるだけでClaudeが正確にカロリー・PFCを推定して記録できます。<br>
+            <span style="color:#888">
+              例）キーワード:「自家製プロテインボウル」／詳細:「オートミール50g・ゆで卵2個・鶏むね肉100g（皮無し）・
+              ブロッコリー80g・オリーブオイル小さじ1／電子レンジ調理・味付けなし」
+            </span>
+          </div>
           <div class="card" style="padding:12px 14px">
             <div id="foodTable"></div>
             <div class="add-row" style="margin-top:12px">
               <input type="text" id="newKeyword" placeholder="キーワード（例: 鶏胸肉）" />
-              <input type="text" id="newDesc" placeholder="詳細（例: 皮無し・100g）" />
+              <input type="text" id="newDesc" placeholder="詳細（例: 皮無し100g）" />
               <input type="text" id="newNotes" placeholder="メモ（任意）" />
               <button class="add-btn" onclick="addFoodDefault()">追加</button>
             </div>
@@ -210,6 +239,7 @@
         user_name:          document.getElementById('user_name').value.trim(),
         user_height_cm:     document.getElementById('user_height_cm').value.trim(),
         daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
+        user_notes:         document.getElementById('user_notes').value.trim(),
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }

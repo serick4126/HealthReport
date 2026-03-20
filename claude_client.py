@@ -175,9 +175,10 @@ def build_system_prompt() -> str:
     today = now_jst.date().isoformat()
     weekday = ["月", "火", "水", "木", "金", "土", "日"][now_jst.weekday()]
 
-    calorie_goal = database.get_setting("daily_calorie_goal") or "1500"
-    user_name = database.get_setting("user_name") or "Serick"
-    height_cm = database.get_setting("user_height_cm") or "180"
+    calorie_goal = database.get_setting("daily_calorie_goal") or "1800"
+    user_name = database.get_setting("user_name") or "DefaultName"
+    height_cm = database.get_setting("user_height_cm") or "160"
+    user_notes = database.get_setting("user_notes") or ""
 
     food_defaults = database.get_food_defaults()
     fd_lines = "\n".join(
@@ -191,8 +192,7 @@ def build_system_prompt() -> str:
 今日の日付: {today}（{weekday}曜日）
 
 【ユーザー情報】
-- 身長: {height_cm}cm / 1日の目標カロリー: {calorie_goal}kcal
-- 注意事項: インスリン抵抗性・メタボリックシンドローム / 1日1500kcal・塩分管理・水分3L/日（糖分なし）
+- 身長: {height_cm}cm / 1日の目標カロリー: {calorie_goal}kcal{chr(10) + "- 注意事項: " + user_notes if user_notes else ""}
 
 【記録ルール】
 - 日付指定なし → 今日（{today}）の日付を使用
@@ -205,8 +205,8 @@ def build_system_prompt() -> str:
 
 【確認メッセージの形式】
 ✅ 朝食を記録しました
-メニュー：オートミール50g、ヤクルト1000
-220kcal / P:8g F:4g C:38g 塩分:0.2g
+メニュー：白米150g、味噌汁
+420kcal / P:10g F:5g C:80g 塩分:1.2g
 
 【カロリー検索フロー（Phase 2）】
 ブランド品・パッケージ食品・飲料が報告された場合：

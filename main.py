@@ -79,7 +79,7 @@ async def logout(request: Request, response: Response):
 @app.get("/api/me")
 async def me(request: Request):
     require_auth(request)
-    return JSONResponse({"user_name": database.get_setting("user_name") or "Serick"})
+    return JSONResponse({"user_name": database.get_setting("user_name") or "DefaultName"})
 
 
 # ── チャットエンドポイント ─────────────────────────────────────────────────────

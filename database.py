@@ -82,10 +82,11 @@ def init_db():
         conn.executemany(
             "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
             [
-                ("daily_calorie_goal", "1500"),
-                ("user_name", "Serick"),
-                ("user_height_cm", "180"),
+                ("daily_calorie_goal", "1800"),
+                ("user_name", "DefaultName"),
+                ("user_height_cm", "160"),
                 ("app_password", "1234"),
+                ("user_notes", ""),
             ],
         )
 
