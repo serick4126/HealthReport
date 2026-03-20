@@ -37,7 +37,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone <repository-url>
 cd HealthReport
 
-# 2. 仮想環境の作成と依存パッケージのインストール
+# 2. Python 3.11 のインストール（システムの Python を変更しません）
+uv python install 3.11
+
+# 3. 仮想環境の作成と依存パッケージのインストール
 uv sync
 
 # 3. 環境変数の設定
@@ -77,6 +80,9 @@ sudo apt install -y fonts-noto-cjk
 # uv のインストール
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env   # またはシェルを再起動
+
+# Python 3.11 のインストール（システムの Python を変更しません）
+uv python install 3.11
 ```
 
 ### 2. アプリのデプロイ
