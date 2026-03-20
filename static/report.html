@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>レポート出力</title>
+  <style>
+    :root {
+      --bg: #f2f2f7; --header-bg: rgba(255,255,255,0.85); --card-bg: #ffffff;
+      --border: #e5e5ea; --accent: #007aff; --text-secondary: #8e8e93; --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif; background: var(--bg); min-height: 100dvh; }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--header-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border); padding: 10px 16px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-nav { display: flex; gap: 6px; }
+    .nav-btn {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
+      text-decoration: none; display: inline-flex; align-items: center;
+    }
+    .nav-btn:active { background: #e5e5ea; }
+    .content { padding: 16px; max-width: 680px; margin: 0 auto; }
+    .card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px; margin-bottom: 16px; }
+    .section-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
+    select {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 15px; background: var(--bg); color: #1c1c1e; outline: none;
+    }
+    .btn-row { display: flex; gap: 10px; margin-top: 12px; }
+    .btn {
+      flex: 1; padding: 12px; border-radius: 10px; border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .btn-preview { background: #e5e5ea; color: #1c1c1e; }
+    .btn-pdf { background: var(--accent); color: #fff; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:active:not(:disabled) { opacity: 0.8; }
+    .preview-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
+    .preview-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    iframe { width: 100%; border: none; display: block; background: #fff; }
+    .empty { text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 14px; }
+    .loading-msg { text-align: center; padding: 16px; color: var(--text-secondary); font-size: 14px; }
+    .spinner {
+      display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">📄 レポート出力</div>
+    <div class="header-nav">
+      <a href="/stats" class="nav-btn">📊 集計</a>
+      <a href="/" class="nav-btn">💬 チャット</a>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="card">
+      <div class="section-label">出力する週を選択</div>
+      <select id="weekSelect" onchange="onWeekChange()">
+        <option value="">-- 週を選択してください --</option>
+      </select>
+      <div class="btn-row">
+        <button class="btn btn-preview" id="previewBtn" onclick="loadPreview()" disabled>👁 プレビュー</button>
+        <button class="btn btn-pdf" id="printBtn" onclick="openPrint()" disabled>🖨 印刷 / PDF保存</button>
+      </div>
+    </div>
+
+    <div id="previewArea"></div>
+  </div>
+
+  <script>
+    let selectedStart = '';
+
+    async function init() {
+      const res = await fetch('/api/report/weeks');
+      if (res.status === 401) { location.href = '/'; return; }
+      const weeks = await res.json();
+      const sel = document.getElementById('weekSelect');
+      if (!weeks.length) {
+        sel.innerHTML = '<option value="">記録がありません</option>';
+        return;
+      }
+      weeks.forEach(w => {
+        const label = formatWeekLabel(w.start, w.end);
+        const opt = document.createElement('option');
+        opt.value = w.start;
+        opt.textContent = label;
+        sel.appendChild(opt);
+      });
+    }
+
+    function formatWeekLabel(start, end) {
+      const s = new Date(start + 'T00:00:00');
+      const e = new Date(end   + 'T00:00:00');
+      const wd = ['日','月','火','水','木','金','土'];
+      const fmt = d => `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${wd[d.getDay()]}）`;
+      return `${fmt(s)} 〜 ${e.getMonth()+1}月${e.getDate()}日（${wd[e.getDay()]}）`;
+    }
+
+    function onWeekChange() {
+      selectedStart = document.getElementById('weekSelect').value;
+      const hasWeek = !!selectedStart;
+      document.getElementById('previewBtn').disabled = !hasWeek;
+      document.getElementById('printBtn').disabled = !hasWeek;
+      document.getElementById('previewArea').innerHTML = '';
+    }
+
+    async function loadPreview() {
+      if (!selectedStart) return;
+      const area = document.getElementById('previewArea');
+      area.innerHTML = '<div class="loading-msg"><span class="spinner"></span>プレビューを生成中...</div>';
+      setButtons(true);
+      try {
+        const res = await fetch(`/api/report/preview?start=${selectedStart}`);
+        if (!res.ok) throw new Error();
+        const html = await res.text();
+        area.innerHTML = `
+          <div class="preview-card">
+            <div class="preview-title">プレビュー（A4横）</div>
+            <iframe id="previewFrame" srcdoc="" style="height:520px"></iframe>
+          </div>`;
+        document.getElementById('previewFrame').srcdoc = html;
+      } catch(e) {
+        area.innerHTML = '<div class="empty">プレビューの生成に失敗しました</div>';
+      } finally {
+        setButtons(false);
+      }
+    }
+
+    function openPrint() {
+      if (!selectedStart) return;
+      window.open(`/api/report/preview?start=${selectedStart}`, '_blank');
+    }
+
+    function setButtons(loading) {
+      document.getElementById('previewBtn').disabled = loading;
+      document.getElementById('printBtn').disabled = loading;
+    }
+
+    init();
+  </script>
+</body>
+</html>

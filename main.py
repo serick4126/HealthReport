@@ -13,6 +13,7 @@ load_dotenv()
 
 import claude_client
 import database
+import report_generator
 
 # ── セッション管理（シングルユーザー・インメモリ） ────────────────────────────
 
@@ -225,6 +226,32 @@ async def stats_page():
 @app.get("/settings")
 async def settings_page():
     return FileResponse(STATIC_DIR / "settings.html")
+
+
+# ── レポートエンドポイント ─────────────────────────────────────────────────────
+
+@app.get("/api/report/weeks")
+async def report_weeks(request: Request):
+    require_auth(request)
+    return JSONResponse(database.get_report_weeks())
+
+
+@app.get("/api/report/preview")
+async def report_preview(request: Request, start: str):
+    require_auth(request)
+    from datetime import date as _date, timedelta
+    end = (_date.fromisoformat(start) + timedelta(days=6)).isoformat()
+    data = database.get_report_data(start, end)
+    charts = report_generator.generate_charts_base64(data)
+    comment = await report_generator.generate_claude_comment(data)
+    html = report_generator.generate_report_html(data, charts, comment)
+    return Response(content=html, media_type="text/html; charset=utf-8")
+
+
+
+@app.get("/report")
+async def report_page():
+    return FileResponse(STATIC_DIR / "report.html")
 
 
 # ── 起動コマンド（参考） ───────────────────────────────────────────────────────

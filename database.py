@@ -428,6 +428,93 @@ def get_stats(
     }
 
 
+def get_report_weeks() -> list[dict]:
+    """記録が存在する週（日曜〜土曜）のリストを降順で返す"""
+    with get_conn() as conn:
+        dates: set[str] = set()
+        for row in conn.execute("SELECT DISTINCT meal_date FROM meals").fetchall():
+            dates.add(row["meal_date"])
+        for row in conn.execute("SELECT DISTINCT log_date FROM weight_logs").fetchall():
+            dates.add(row["log_date"])
+        for row in conn.execute("SELECT DISTINCT log_date FROM steps_logs").fetchall():
+            dates.add(row["log_date"])
+    if not dates:
+        return []
+    weeks: set[tuple[str, str]] = set()
+    for d in dates:
+        dt = _date.fromisoformat(d)
+        days_since_sunday = (dt.weekday() + 1) % 7
+        sunday = dt - timedelta(days=days_since_sunday)
+        saturday = sunday + timedelta(days=6)
+        weeks.add((sunday.isoformat(), saturday.isoformat()))
+    return sorted(
+        [{"start": s, "end": e} for s, e in weeks],
+        key=lambda x: x["start"],
+        reverse=True,
+    )
+
+
+def get_report_data(start_date: str, end_date: str) -> dict:
+    """レポート用1週間データを取得"""
+    with get_conn() as conn:
+        meals = conn.execute(
+            """
+            SELECT meal_date, meal_type, description,
+                   calories, protein, fat, carbs, sodium
+            FROM meals WHERE meal_date BETWEEN ? AND ?
+            ORDER BY meal_date, meal_type, recorded_at
+            """,
+            (start_date, end_date),
+        ).fetchall()
+        weights = conn.execute(
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_date, end_date),
+        ).fetchall()
+        steps_rows = conn.execute(
+            "SELECT log_date, steps FROM steps_logs WHERE log_date BETWEEN ? AND ?",
+            (start_date, end_date),
+        ).fetchall()
+
+    meal_map: dict = {}
+    for m in meals:
+        meal_map.setdefault((m["meal_date"], m["meal_type"]), []).append(dict(m))
+    w_map: dict = {}
+    for w in weights:
+        w_map.setdefault(w["log_date"], {})[w["time_of_day"]] = w["weight_kg"]
+    s_map = {r["log_date"]: r["steps"] for r in steps_rows}
+
+    MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "late_night"]
+    start = _date.fromisoformat(start_date)
+    days = []
+    for i in range(7):
+        d = (start + timedelta(days=i)).isoformat()
+        day_meals = {mt: meal_map.get((d, mt), []) for mt in MEAL_TYPES}
+        all_m = [m for ms in day_meals.values() for m in ms]
+        cal = sum(m.get("calories") or 0 for m in all_m) if all_m else None
+        p   = round(sum(m.get("protein") or 0 for m in all_m), 1) if all_m else None
+        f   = round(sum(m.get("fat")     or 0 for m in all_m), 1) if all_m else None
+        c   = round(sum(m.get("carbs")   or 0 for m in all_m), 1) if all_m else None
+        sod = round(sum(m.get("sodium")  or 0 for m in all_m), 2) if all_m else None
+        days.append({
+            "date": d,
+            "meals": day_meals,
+            "calories": cal,
+            "protein": p, "fat": f, "carbs": c, "sodium": sod,
+            "weight_morning": w_map.get(d, {}).get("morning"),
+            "weight_evening": w_map.get(d, {}).get("evening"),
+            "steps": s_map.get(d),
+        })
+
+    return {
+        "start": start_date,
+        "end": end_date,
+        "days": days,
+        "user_name":    get_setting("user_name") or "—",
+        "height_cm":    get_setting("user_height_cm") or "—",
+        "calorie_goal": int(get_setting("daily_calorie_goal") or 1500),
+    }
+
+
 def get_daily_summary(target_date: Optional[str] = None) -> dict:
     target_date = target_date or today_jst()
     with get_conn() as conn:
