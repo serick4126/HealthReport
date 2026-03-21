@@ -7,7 +7,7 @@
   <style>
     :root {
       --bg: #f2f2f7; --header-bg: rgba(255,255,255,0.85); --card-bg: #ffffff;
-      --border: #e5e5ea; --accent: #007aff; --success: #34c759;
+      --border: #e5e5ea; --accent: #007aff; --success: #34c759; --danger: #ff3b30;
       --text-secondary: #8e8e93; --radius: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -19,14 +19,21 @@
       padding-top: max(10px, env(safe-area-inset-top));
       display: flex; align-items: center; justify-content: space-between;
     }
-    .header-title { font-size: 17px; font-weight: 700; }
-    .header-nav { display: flex; gap: 6px; }
+    .header-title { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+    .header-nav { display: flex; gap: 6px; flex-shrink: 0; }
     .nav-btn {
       padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
       background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
-      text-decoration: none; display: inline-flex; align-items: center;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
     }
     .nav-btn:active { background: #e5e5ea; }
+    .nav-btn.current { background: var(--bg); color: #555; pointer-events: none; border-color: transparent; }
+    @media (max-width: 480px) {
+      .header-title { display: none; }
+      .nl { display: none; }
+      .header-nav { gap: 4px; }
+      .nav-btn { padding: 6px 8px; }
+    }
     .period-bar { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--header-bg); flex-wrap: wrap; }
     .period-btn {
       padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
@@ -48,7 +55,8 @@
     .day-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
     .day-date { font-size: 15px; font-weight: 700; }
     .day-totals { font-size: 12px; color: var(--text-secondary); }
-    .day-meta { font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; margin-bottom: 8px; padding: 0 4px; }
+    .day-meta { font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; margin-bottom: 8px; padding: 0 4px; flex-wrap: wrap; align-items: center; }
+    .meta-item { display: flex; align-items: center; gap: 4px; }
     .meal-card { background: var(--card-bg); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--border); }
     .meal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
     .meal-type-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #e5f0ff; color: var(--accent); white-space: nowrap; flex-shrink: 0; }
@@ -57,43 +65,86 @@
     .meal-pfc { font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
     .meal-pfc span { background: var(--bg); padding: 2px 6px; border-radius: 6px; }
     .meal-notes { font-size: 11px; color: var(--text-secondary); margin-top: 6px; font-style: italic; }
-    .meal-image { margin-top: 8px; }
-    .meal-image img { max-width: 100%; max-height: 180px; border-radius: 8px; object-fit: cover; display: block; }
+    /* 画像グリッド */
+    .meal-images { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .meal-img-wrap { position: relative; display: inline-block; }
+    .meal-img-wrap img { width: 90px; height: 90px; border-radius: 8px; object-fit: cover; display: block; }
+    .img-del-btn {
+      position: absolute; top: 4px; right: 4px;
+      background: rgba(0,0,0,0.55); color: #fff; border: none; border-radius: 50%;
+      width: 22px; height: 22px; font-size: 12px; cursor: pointer; line-height: 22px; text-align: center; padding: 0;
+    }
+    /* アクションボタン行 */
+    .card-actions { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+    .action-btn {
+      padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; font-size: 12px; cursor: pointer; color: var(--text-secondary);
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .action-btn:hover { background: var(--bg); }
+    .action-btn.danger { color: var(--danger); border-color: #ffd0ce; }
+    .action-btn.danger:hover { background: #fff0ef; }
+    .action-btn.photo { color: var(--accent); border-color: #c5deff; }
+    .action-btn.photo:hover { background: #eaf3ff; }
+    /* カロリーバー */
     .empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 15px; }
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
     .calorie-bar-wrap { margin: 4px 0 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
     .calorie-bar { height: 100%; border-radius: 2px; background: var(--success); transition: width 0.3s; }
-    .calorie-bar.over { background: #ff3b30; }
-    /* モーダル */
+    .calorie-bar.over { background: var(--danger); }
+    /* ── モーダル共通 ── */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.45);
       z-index: 100; display: flex; align-items: center; justify-content: center;
+      padding: 16px;
     }
     .modal-box {
       background: var(--card-bg); border-radius: 16px; padding: 24px;
-      width: min(360px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      width: min(420px, 100%); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      max-height: 90dvh; overflow-y: auto;
     }
     .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
-    .modal-row { margin-bottom: 14px; }
+    .modal-row { margin-bottom: 12px; }
     .modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
-    .modal-row input[type=date] {
+    .modal-row input, .modal-row select, .modal-row textarea {
       width: 100%; padding: 8px 10px; border: 1px solid var(--border);
       border-radius: 8px; font-size: 15px; background: var(--bg);
+      font-family: inherit;
     }
+    .modal-row input[readonly], .modal-row select[disabled] {
+      opacity: 0.55; cursor: default;
+    }
+    .field-error { font-size: 12px; color: var(--danger); margin-top: 3px; display: none; }
+    .field-error.show { display: block; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
     .modal-actions button {
       padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer;
       border: 1px solid var(--border); background: transparent; color: var(--accent);
     }
     .modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .modal-actions button.danger-btn { background: var(--danger); color: #fff; border-color: var(--danger); }
+    /* ローディングスピナー（保存中） */
+    .saving-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.3);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+    }
+    .saving-box {
+      background: #fff; border-radius: 12px; padding: 20px 32px;
+      font-size: 15px; color: #333;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-title">📋 記録履歴</div>
     <div class="header-nav">
-      <a href="/stats" class="nav-btn">📊 集計</a>
-      <a href="/" class="nav-btn">💬 チャット</a>
+      <a href="/" class="nav-btn" title="チャット">💬<span class="nl"> チャット</span></a>
+      <span class="nav-btn current" title="記録履歴">📋<span class="nl"> 履歴</span></span>
+      <a href="/stats" class="nav-btn" title="集計・グラフ">📊<span class="nl"> 集計</span></a>
+      <a href="/report" class="nav-btn" title="レポート出力">📄<span class="nl"> レポート</span></a>
+      <a href="/settings" class="nav-btn" title="設定">⚙️<span class="nl"> 設定</span></a>
+      <button class="nav-btn" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>
+      <button class="nav-btn" onclick="doLogout()" title="ログアウト">🚪<span class="nl"> ログアウト</span></button>
     </div>
   </div>
   <div class="period-bar">
@@ -105,8 +156,8 @@
     <div class="loading">読み込み中...</div>
   </div>
 
-  <!-- 期間指定モーダル -->
-  <div class="modal-overlay" id="dateModal" style="display:none" onclick="handleOverlayClick(event)">
+  <!-- ── 期間指定モーダル ── -->
+  <div class="modal-overlay" id="dateModal" style="display:none">
     <div class="modal-box">
       <div class="modal-title">📅 期間を指定</div>
       <div class="modal-row">
@@ -124,22 +175,136 @@
     </div>
   </div>
 
+  <!-- ── 食事編集モーダル ── -->
+  <div class="modal-overlay" id="mealModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">✏️ 食事記録を編集</div>
+      <input type="hidden" id="editMealId" />
+      <div class="modal-row">
+        <label>食事日 <span style="color:var(--danger)">*</span></label>
+        <input type="date" id="editMealDate" />
+        <div class="field-error" id="err-meal-date">日付を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>食事区分 <span style="color:var(--danger)">*</span></label>
+        <select id="editMealType">
+          <option value="breakfast">朝食</option>
+          <option value="lunch">昼食</option>
+          <option value="dinner">夕食</option>
+          <option value="snack">間食</option>
+          <option value="late_night">夜食</option>
+        </select>
+      </div>
+      <div class="modal-row">
+        <label>内容 <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="editMealDesc" maxlength="200" placeholder="例: ご飯、味噌汁、焼き魚" />
+        <div class="field-error" id="err-meal-desc">内容を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>カロリー (kcal)</label>
+        <input type="number" id="editMealCal" min="0" max="9999" step="1" placeholder="例: 600" />
+        <div class="field-error" id="err-meal-cal">0〜9999の整数を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>タンパク質 (g)</label>
+        <input type="number" id="editMealProtein" min="0" max="999.9" step="0.1" placeholder="例: 20.5" />
+        <div class="field-error" id="err-meal-protein">0〜999.9の数値を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>脂質 (g)</label>
+        <input type="number" id="editMealFat" min="0" max="999.9" step="0.1" placeholder="例: 15.0" />
+        <div class="field-error" id="err-meal-fat">0〜999.9の数値を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>炭水化物 (g)</label>
+        <input type="number" id="editMealCarbs" min="0" max="999.9" step="0.1" placeholder="例: 80.0" />
+        <div class="field-error" id="err-meal-carbs">0〜999.9の数値を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>食塩相当量 (g)</label>
+        <input type="number" id="editMealSodium" min="0" max="99.99" step="0.01" placeholder="例: 2.50" />
+        <div class="field-error" id="err-meal-sodium">0〜99.99の数値を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>メモ</label>
+        <input type="text" id="editMealNotes" maxlength="200" />
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeMealModal()">キャンセル</button>
+        <button class="primary" onclick="saveMeal()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 体重編集モーダル ── -->
+  <div class="modal-overlay" id="weightModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">✏️ 体重を編集</div>
+      <input type="hidden" id="editWeightId" />
+      <div class="modal-row">
+        <label>日付</label>
+        <input type="text" id="editWeightDate" readonly />
+      </div>
+      <div class="modal-row">
+        <label>時間帯</label>
+        <input type="text" id="editWeightTimeLabel" readonly />
+      </div>
+      <div class="modal-row">
+        <label>体重 (kg) <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="editWeightKg" min="20" max="200" step="0.1" placeholder="例: 65.3" />
+        <div class="field-error" id="err-weight-kg">20.0〜200.0 kg の数値を入力してください</div>
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeWeightModal()">キャンセル</button>
+        <button class="primary" onclick="saveWeight()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 歩数編集モーダル ── -->
+  <div class="modal-overlay" id="stepsModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">✏️ 歩数を編集</div>
+      <input type="hidden" id="editStepsId" />
+      <div class="modal-row">
+        <label>日付</label>
+        <input type="text" id="editStepsDate" readonly />
+      </div>
+      <div class="modal-row">
+        <label>歩数 <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="editStepsVal" min="0" max="99999" step="1" placeholder="例: 8000" />
+        <div class="field-error" id="err-steps-val">0〜99999の整数を入力してください</div>
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeStepsModal()">キャンセル</button>
+        <button class="primary" onclick="saveSteps()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 保存中オーバーレイ ── -->
+  <div class="saving-overlay" id="savingOverlay" style="display:none">
+    <div class="saving-box">保存中...</div>
+  </div>
+
+  <!-- 画像アップロード用隠しinput -->
+  <input type="file" id="imageFileInput" accept="image/*" style="display:none" />
+
   <script>
     const MEAL_TYPE_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食', late_night: '夜食' };
+    const TIME_OF_DAY_JA = { morning: '朝', evening: '夜' };
     const PAGE_SIZE = 10;
     let calorieGoal = 1500;
     let allDays = [];
     let currentPage = 0;
+    let currentPeriod = { days: 7, start: null, end: null };
 
     // ── データ取得 ─────────────────────────────────────────────────────────────
     async function load(days, start, end) {
+      currentPeriod = { days, start, end };
       document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
-      let url = start && end
-        ? `/api/history?start=${start}&end=${end}`
-        : `/api/history?days=${days}`;
-      let statsUrl = start && end
-        ? `/api/stats?start=${start}&end=${end}`
-        : `/api/stats?days=${days}`;
+      const url = start && end ? `/api/history?start=${start}&end=${end}` : `/api/history?days=${days}`;
+      const statsUrl = start && end ? `/api/stats?start=${start}&end=${end}` : `/api/stats?days=${days}`;
       try {
         const [histRes, statsRes] = await Promise.all([fetch(url), fetch(statsUrl)]);
         if (histRes.status === 401) { location.href = '/'; return; }
@@ -151,6 +316,10 @@
       } catch(e) {
         document.getElementById('content').innerHTML = '<div class="empty">データの取得に失敗しました</div>';
       }
+    }
+
+    function reload() {
+      load(currentPeriod.days, currentPeriod.start, currentPeriod.end);
     }
 
     // ── ページ描画 ─────────────────────────────────────────────────────────────
@@ -187,14 +356,38 @@
       const t = day.totals;
       const pct = calorieGoal > 0 ? Math.min((t.calories / calorieGoal) * 100, 100) : 0;
       const over = t.calories > calorieGoal;
-      const weightStr = day.weight
-        ? [day.weight.morning ? `朝 ${day.weight.morning}kg` : '',
-           day.weight.evening ? `夜 ${day.weight.evening}kg` : ''].filter(Boolean).join('　')
-        : '';
-      const stepsStr = day.steps ? `👟 ${day.steps.toLocaleString()}歩` : '';
+
+      // 体重メタ
+      let weightHtml = '';
+      if (day.weight) {
+        for (const [tod, wdata] of Object.entries(day.weight)) {
+          const label_ja = TIME_OF_DAY_JA[tod] || tod;
+          const wid = wdata.id;
+          const wkg = wdata.weight_kg;
+          weightHtml += `
+            <span class="meta-item">
+              ⚖️ ${label_ja} ${wkg}kg
+              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(${wid},'${day.date}','${tod}',${wkg})" title="編集">✏️</button>
+              <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteWeight(${wid})" title="削除">🗑️</button>
+            </span>`;
+        }
+      }
+
+      // 歩数メタ
+      let stepsHtml = '';
+      if (day.steps != null) {
+        stepsHtml = `
+          <span class="meta-item">
+            👟 ${day.steps.toLocaleString()}歩
+            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(${day.steps_id},'${day.date}',${day.steps})" title="編集">✏️</button>
+            <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteSteps(${day.steps_id})" title="削除">🗑️</button>
+          </span>`;
+      }
+
       const mealsHtml = day.meals.length
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
+
       return `
         <div class="day-section">
           <div class="day-header">
@@ -202,7 +395,7 @@
             <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g</span>
           </div>
           <div class="calorie-bar-wrap"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
-          ${(weightStr || stepsStr) ? `<div class="day-meta">${weightStr ? `⚖️ ${weightStr}` : ''}${stepsStr}</div>` : ''}
+          ${(weightHtml || stepsHtml) ? `<div class="day-meta">${weightHtml}${stepsHtml}</div>` : ''}
           ${mealsHtml}
         </div>`;
     }
@@ -215,8 +408,16 @@
       if (m.fat != null)     pfc.push(`<span>F: ${m.fat}g</span>`);
       if (m.carbs != null)   pfc.push(`<span>C: ${m.carbs}g</span>`);
       if (m.sodium != null)  pfc.push(`<span>塩: ${m.sodium}g</span>`);
+
+      // 画像（複数対応）
+      let imagesHtml = '';
+      if (m.image_count > 0) {
+        // 画像は動的に読み込む。data属性に meal_id を持たせ、DOMに挿入後に loadMealImages() で取得
+        imagesHtml = `<div class="meal-images" id="imgs-${m.id}" data-meal-id="${m.id}" data-loaded="false"></div>`;
+      }
+
       return `
-        <div class="meal-card">
+        <div class="meal-card" id="meal-card-${m.id}">
           <div class="meal-header">
             <span class="meal-type-badge">${type}</span>
             <span class="meal-desc">${escHtml(m.description)}</span>
@@ -224,12 +425,348 @@
           </div>
           ${pfc.length ? `<div class="meal-pfc">${pfc.join('')}</div>` : ''}
           ${m.notes ? `<div class="meal-notes">${escHtml(m.notes)}</div>` : ''}
-          ${m.image_count > 0 ? `<div class="meal-image"><img src="/api/image/${m.id}" loading="lazy" alt="食事画像"></div>` : ''}
+          ${imagesHtml}
+          <div class="card-actions">
+            <button class="action-btn" onclick="openMealModal(${m.id})">✏️ 編集</button>
+            <button class="action-btn danger" onclick="confirmDeleteMeal(${m.id})">🗑️ 削除</button>
+            <button class="action-btn photo" onclick="triggerImageUpload(${m.id})">📷 写真追加</button>
+          </div>
         </div>`;
     }
 
     function escHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── 画像遅延読み込み (IntersectionObserver) ────────────────────────────────
+    const imgObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          if (el.dataset.loaded === 'false') {
+            loadMealImages(el);
+            el.dataset.loaded = 'true';
+            imgObserver.unobserve(el);
+          }
+        }
+      });
+    }, { rootMargin: '200px' });
+
+    function observeImageContainers() {
+      document.querySelectorAll('.meal-images[data-loaded="false"]').forEach(el => {
+        imgObserver.observe(el);
+      });
+    }
+
+    async function loadMealImages(container) {
+      const mealId = container.dataset.mealId;
+      try {
+        const res = await fetch(`/api/meals/${mealId}/images`);
+        if (!res.ok) return;
+        const images = await res.json();
+        container.innerHTML = images.map(img => `
+          <div class="meal-img-wrap" id="imgwrap-${img.id}">
+            <img src="/api/images/${img.id}" loading="lazy" alt="食事画像" />
+            <button class="img-del-btn" onclick="confirmDeleteImage(${img.id})" title="削除">✕</button>
+          </div>`).join('');
+      } catch(e) { /* 無視 */ }
+    }
+
+    // ── 画像アップロード ────────────────────────────────────────────────────────
+    let uploadTargetMealId = null;
+
+    function triggerImageUpload(mealId) {
+      uploadTargetMealId = mealId;
+      const inp = document.getElementById('imageFileInput');
+      inp.value = '';
+      inp.click();
+    }
+
+    document.getElementById('imageFileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file || !uploadTargetMealId) return;
+      showSaving();
+      try {
+        const b64 = await fileToBase64(file);
+        const res = await fetch(`/api/meals/${uploadTargetMealId}/images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_b64: b64 }),
+        });
+        if (!res.ok) throw new Error('upload failed');
+        // 画像コンテナを再読み込み
+        const container = document.getElementById(`imgs-${uploadTargetMealId}`);
+        if (container) {
+          container.dataset.loaded = 'true';
+          await loadMealImages(container);
+        } else {
+          // meal-card内に画像コンテナがなかった場合（image_count=0だった）、カードを再描画
+          reload();
+        }
+      } catch(e) {
+        alert('画像のアップロードに失敗しました');
+      } finally {
+        hideSaving();
+      }
+    });
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ── 画像削除 ───────────────────────────────────────────────────────────────
+    function confirmDeleteImage(imageId) {
+      if (!confirm('この写真を削除しますか？')) return;
+      deleteImage(imageId);
+    }
+
+    async function deleteImage(imageId) {
+      showSaving();
+      try {
+        const res = await fetch(`/api/images/${imageId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        const wrap = document.getElementById(`imgwrap-${imageId}`);
+        if (wrap) wrap.remove();
+      } catch(e) {
+        alert('削除に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    // ── 食事編集モーダル ───────────────────────────────────────────────────────
+    async function openMealModal(mealId) {
+      // 全データから該当meal を探す
+      let meal = null;
+      for (const day of allDays) {
+        meal = day.meals.find(m => m.id === mealId);
+        if (meal) break;
+      }
+      if (!meal) { alert('データが見つかりません'); return; }
+
+      document.getElementById('editMealId').value = mealId;
+      // meal_date は meals に含まれていないので day から取得
+      let mealDate = '';
+      for (const day of allDays) {
+        if (day.meals.find(m => m.id === mealId)) { mealDate = day.date; break; }
+      }
+      document.getElementById('editMealDate').value = mealDate;
+      document.getElementById('editMealType').value = meal.meal_type;
+      document.getElementById('editMealDesc').value = meal.description;
+      document.getElementById('editMealCal').value = meal.calories ?? '';
+      document.getElementById('editMealProtein').value = meal.protein ?? '';
+      document.getElementById('editMealFat').value = meal.fat ?? '';
+      document.getElementById('editMealCarbs').value = meal.carbs ?? '';
+      document.getElementById('editMealSodium').value = meal.sodium ?? '';
+      document.getElementById('editMealNotes').value = meal.notes ?? '';
+      clearMealErrors();
+      document.getElementById('mealModal').style.display = 'flex';
+    }
+
+    function closeMealModal() {
+      document.getElementById('mealModal').style.display = 'none';
+    }
+
+    function clearMealErrors() {
+      ['meal-date','meal-desc','meal-cal','meal-protein','meal-fat','meal-carbs','meal-sodium'].forEach(id => {
+        document.getElementById('err-' + id).classList.remove('show');
+      });
+    }
+
+    async function saveMeal() {
+      clearMealErrors();
+      let valid = true;
+
+      const mealId = parseInt(document.getElementById('editMealId').value);
+      const mealDate = document.getElementById('editMealDate').value;
+      const mealType = document.getElementById('editMealType').value;
+      const desc = document.getElementById('editMealDesc').value.trim();
+      const calStr = document.getElementById('editMealCal').value;
+      const proteinStr = document.getElementById('editMealProtein').value;
+      const fatStr = document.getElementById('editMealFat').value;
+      const carbsStr = document.getElementById('editMealCarbs').value;
+      const sodiumStr = document.getElementById('editMealSodium').value;
+      const notes = document.getElementById('editMealNotes').value.trim();
+
+      if (!mealDate) { document.getElementById('err-meal-date').classList.add('show'); valid = false; }
+      if (!desc) { document.getElementById('err-meal-desc').classList.add('show'); valid = false; }
+
+      const calories = calStr !== '' ? parseInt(calStr) : null;
+      if (calStr !== '' && (isNaN(calories) || calories < 0 || calories > 9999 || String(calories) !== String(calStr.trim()))) {
+        document.getElementById('err-meal-cal').classList.add('show'); valid = false;
+      }
+      const protein = proteinStr !== '' ? parseFloat(proteinStr) : null;
+      if (proteinStr !== '' && (isNaN(protein) || protein < 0 || protein > 999.9)) {
+        document.getElementById('err-meal-protein').classList.add('show'); valid = false;
+      }
+      const fat = fatStr !== '' ? parseFloat(fatStr) : null;
+      if (fatStr !== '' && (isNaN(fat) || fat < 0 || fat > 999.9)) {
+        document.getElementById('err-meal-fat').classList.add('show'); valid = false;
+      }
+      const carbs = carbsStr !== '' ? parseFloat(carbsStr) : null;
+      if (carbsStr !== '' && (isNaN(carbs) || carbs < 0 || carbs > 999.9)) {
+        document.getElementById('err-meal-carbs').classList.add('show'); valid = false;
+      }
+      const sodium = sodiumStr !== '' ? parseFloat(sodiumStr) : null;
+      if (sodiumStr !== '' && (isNaN(sodium) || sodium < 0 || sodium > 99.99)) {
+        document.getElementById('err-meal-sodium').classList.add('show'); valid = false;
+      }
+
+      if (!valid) return;
+
+      closeMealModal();
+      showSaving();
+      try {
+        const res = await fetch(`/api/meals/${mealId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meal_date: mealDate, meal_type: mealType, description: desc,
+            calories, protein, fat, carbs, sodium, notes: notes || null }),
+        });
+        if (!res.ok) throw new Error();
+        reload();
+      } catch(e) {
+        alert('保存に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    // ── 食事削除 ───────────────────────────────────────────────────────────────
+    function confirmDeleteMeal(mealId) {
+      if (!confirm('この食事記録を削除しますか？\nこの操作は元に戻せません。')) return;
+      deleteMeal(mealId);
+    }
+
+    async function deleteMeal(mealId) {
+      showSaving();
+      try {
+        const res = await fetch(`/api/meals/${mealId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        reload();
+      } catch(e) {
+        alert('削除に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    // ── 体重編集モーダル ───────────────────────────────────────────────────────
+    function openWeightModal(weightId, date, tod, weightKg) {
+      document.getElementById('editWeightId').value = weightId;
+      document.getElementById('editWeightDate').value = date;
+      document.getElementById('editWeightTimeLabel').value = TIME_OF_DAY_JA[tod] || tod;
+      document.getElementById('editWeightKg').value = weightKg;
+      document.getElementById('err-weight-kg').classList.remove('show');
+      document.getElementById('weightModal').style.display = 'flex';
+    }
+
+    function closeWeightModal() {
+      document.getElementById('weightModal').style.display = 'none';
+    }
+
+    async function saveWeight() {
+      const weightId = parseInt(document.getElementById('editWeightId').value);
+      const kgStr = document.getElementById('editWeightKg').value;
+      const kg = parseFloat(kgStr);
+      if (kgStr === '' || isNaN(kg) || kg < 20 || kg > 200) {
+        document.getElementById('err-weight-kg').classList.add('show');
+        return;
+      }
+      closeWeightModal();
+      showSaving();
+      try {
+        const res = await fetch(`/api/weight/${weightId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ weight_kg: kg }),
+        });
+        if (!res.ok) throw new Error();
+        reload();
+      } catch(e) {
+        alert('保存に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    function confirmDeleteWeight(weightId) {
+      if (!confirm('この体重記録を削除しますか？\nこの操作は元に戻せません。')) return;
+      deleteWeight(weightId);
+    }
+
+    async function deleteWeight(weightId) {
+      showSaving();
+      try {
+        const res = await fetch(`/api/weight/${weightId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        reload();
+      } catch(e) {
+        alert('削除に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    // ── 歩数編集モーダル ───────────────────────────────────────────────────────
+    function openStepsModal(stepsId, date, steps) {
+      document.getElementById('editStepsId').value = stepsId;
+      document.getElementById('editStepsDate').value = date;
+      document.getElementById('editStepsVal').value = steps;
+      document.getElementById('err-steps-val').classList.remove('show');
+      document.getElementById('stepsModal').style.display = 'flex';
+    }
+
+    function closeStepsModal() {
+      document.getElementById('stepsModal').style.display = 'none';
+    }
+
+    async function saveSteps() {
+      const stepsId = parseInt(document.getElementById('editStepsId').value);
+      const valStr = document.getElementById('editStepsVal').value;
+      const steps = parseInt(valStr);
+      if (valStr === '' || isNaN(steps) || steps < 0 || steps > 99999 || String(steps) !== String(valStr.trim())) {
+        document.getElementById('err-steps-val').classList.add('show');
+        return;
+      }
+      closeStepsModal();
+      showSaving();
+      try {
+        const res = await fetch(`/api/steps/${stepsId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ steps }),
+        });
+        if (!res.ok) throw new Error();
+        reload();
+      } catch(e) {
+        alert('保存に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    function confirmDeleteSteps(stepsId) {
+      if (!confirm('この歩数記録を削除しますか？\nこの操作は元に戻せません。')) return;
+      deleteSteps(stepsId);
+    }
+
+    async function deleteSteps(stepsId) {
+      showSaving();
+      try {
+        const res = await fetch(`/api/steps/${stepsId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        reload();
+      } catch(e) {
+        alert('削除に失敗しました');
+      } finally {
+        hideSaving();
+      }
     }
 
     // ── 期間ボタン ──────────────────────────────────────────────────────────────
@@ -252,10 +789,6 @@
       document.getElementById('dateModal').style.display = 'none';
     }
 
-    function handleOverlayClick(e) {
-      if (e.target === document.getElementById('dateModal')) closeDateModal();
-    }
-
     function applyDateRange() {
       const start = document.getElementById('startDate').value;
       const end = document.getElementById('endDate').value;
@@ -269,7 +802,28 @@
       load(null, start, end);
     }
 
+    // ── 保存中オーバーレイ ─────────────────────────────────────────────────────
+    function showSaving() { document.getElementById('savingOverlay').style.display = 'flex'; }
+    function hideSaving() { document.getElementById('savingOverlay').style.display = 'none'; }
+
+    // ── renderPage後に画像Observerをセット ────────────────────────────────────
+    const _origRenderPage = renderPage;
+    // renderPage呼び出し後にObserver登録（MutationObserverで監視）
+    const mutObs = new MutationObserver(() => observeImageContainers());
+    mutObs.observe(document.getElementById('content'), { childList: true, subtree: true });
+
     load(7, null, null);
+
+    // ── 共通：会話リセット・ログアウト ────────────────────────────────────────
+    async function clearHistory() {
+      if (!confirm('会話履歴をリセットしますか？（記録済みのデータは消えません）')) return;
+      await fetch('/api/chat/history', { method: 'DELETE' });
+      location.href = '/';
+    }
+    async function doLogout() {
+      await fetch('/api/logout', { method: 'POST' });
+      location.href = '/';
+    }
   </script>
 </body>
 </html>

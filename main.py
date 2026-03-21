@@ -2,7 +2,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 from dotenv import load_dotenv
 from fastapi import Cookie, FastAPI, HTTPException, Request, Response
@@ -272,6 +272,131 @@ async def meal_image(request: Request, meal_id: int):
         raise HTTPException(status_code=404, detail="画像が見つかりません")
     image_data, mime_type = result
     return Response(content=image_data, media_type=mime_type)
+
+
+# ── 食事記録 CRUD ──────────────────────────────────────────────────────────────
+
+class MealUpdateRequest(BaseModel):
+    meal_date: str
+    meal_type: str
+    description: str
+    calories: Optional[int] = None
+    protein: Optional[float] = None
+    fat: Optional[float] = None
+    carbs: Optional[float] = None
+    sodium: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@app.put("/api/meals/{meal_id}")
+async def update_meal(request: Request, meal_id: int, body: MealUpdateRequest):
+    require_auth(request)
+    ok = database.update_meal_full(
+        meal_id, body.meal_date, body.meal_type, body.description,
+        body.calories, body.protein, body.fat, body.carbs, body.sodium, body.notes,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="食事記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/meals/{meal_id}")
+async def delete_meal(request: Request, meal_id: int):
+    require_auth(request)
+    ok = database.delete_meal(meal_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="食事記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+# ── 体重記録 CRUD ──────────────────────────────────────────────────────────────
+
+class WeightUpdateRequest(BaseModel):
+    weight_kg: float
+
+
+@app.put("/api/weight/{weight_id}")
+async def update_weight(request: Request, weight_id: int, body: WeightUpdateRequest):
+    require_auth(request)
+    ok = database.update_weight_by_id(weight_id, body.weight_kg)
+    if not ok:
+        raise HTTPException(status_code=404, detail="体重記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/weight/{weight_id}")
+async def delete_weight(request: Request, weight_id: int):
+    require_auth(request)
+    ok = database.delete_weight_by_id(weight_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="体重記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+# ── 歩数記録 CRUD ──────────────────────────────────────────────────────────────
+
+class StepsUpdateRequest(BaseModel):
+    steps: int
+
+
+@app.put("/api/steps/{steps_id}")
+async def update_steps(request: Request, steps_id: int, body: StepsUpdateRequest):
+    require_auth(request)
+    ok = database.update_steps_by_id(steps_id, body.steps)
+    if not ok:
+        raise HTTPException(status_code=404, detail="歩数記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/steps/{steps_id}")
+async def delete_steps(request: Request, steps_id: int):
+    require_auth(request)
+    ok = database.delete_steps_by_id(steps_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="歩数記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+# ── 食事画像 CRUD ──────────────────────────────────────────────────────────────
+
+class ImageUploadRequest(BaseModel):
+    image_b64: str  # base64エンコード済み画像データ
+
+
+@app.get("/api/meals/{meal_id}/images")
+async def list_meal_images(request: Request, meal_id: int):
+    require_auth(request)
+    return JSONResponse(database.get_meal_images(meal_id))
+
+
+@app.post("/api/meals/{meal_id}/images")
+async def add_meal_image(request: Request, meal_id: int, body: ImageUploadRequest):
+    require_auth(request)
+    import image_utils
+    processed_b64 = image_utils.process_image_b64(body.image_b64)
+    import base64
+    image_bytes = base64.b64decode(processed_b64)
+    image_id = database.save_meal_image(meal_id, image_bytes, "image/jpeg", "photo")
+    return JSONResponse({"success": True, "image_id": image_id})
+
+
+@app.get("/api/images/{image_id}")
+async def get_image_by_id(request: Request, image_id: int):
+    require_auth(request)
+    result = database.get_meal_image_by_id(image_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="画像が見つかりません")
+    image_data, mime_type = result
+    return Response(content=image_data, media_type=mime_type)
+
+
+@app.delete("/api/images/{image_id}")
+async def delete_image(request: Request, image_id: int):
+    require_auth(request)
+    ok = database.delete_meal_image(image_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="画像が見つかりません")
+    return JSONResponse({"success": True})
 
 
 # ── 静的ファイル / フロントエンド ──────────────────────────────────────────────

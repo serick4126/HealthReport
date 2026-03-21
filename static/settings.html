@@ -19,14 +19,21 @@
       padding-top: max(10px, env(safe-area-inset-top));
       display: flex; align-items: center; justify-content: space-between;
     }
-    .header-title { font-size: 17px; font-weight: 700; }
-    .header-nav { display: flex; gap: 6px; }
+    .header-title { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
+    .header-nav { display: flex; gap: 6px; flex-shrink: 0; }
     .nav-btn {
       padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
       background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
-      text-decoration: none; display: inline-flex; align-items: center;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
     }
     .nav-btn:active { background: #e5e5ea; }
+    .nav-btn.current { background: var(--bg); color: #555; pointer-events: none; border-color: transparent; }
+    @media (max-width: 480px) {
+      .header-title { display: none; }
+      .nl { display: none; }
+      .header-nav { gap: 4px; }
+      .nav-btn { padding: 6px 8px; }
+    }
     .content { padding: 16px; max-width: 600px; margin: 0 auto; }
     .section { margin-bottom: 24px; }
     .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding: 0 4px; }
@@ -98,7 +105,13 @@
   <div class="header">
     <div class="header-title">⚙️ 設定</div>
     <div class="header-nav">
-      <a href="/" class="nav-btn">💬 チャット</a>
+      <a href="/" class="nav-btn" title="チャット">💬<span class="nl"> チャット</span></a>
+      <a href="/history" class="nav-btn" title="記録履歴">📋<span class="nl"> 履歴</span></a>
+      <a href="/stats" class="nav-btn" title="集計・グラフ">📊<span class="nl"> 集計</span></a>
+      <a href="/report" class="nav-btn" title="レポート出力">📄<span class="nl"> レポート</span></a>
+      <span class="nav-btn current" title="設定">⚙️<span class="nl"> 設定</span></span>
+      <button class="nav-btn" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>
+      <button class="nav-btn" onclick="doLogout()" title="ログアウト">🚪<span class="nl"> ログアウト</span></button>
     </div>
   </div>
 
@@ -360,6 +373,17 @@
     function escVal(s) { return escHtml(s || ''); }
 
     loadAll();
+
+    // ── 共通：会話リセット・ログアウト ────────────────────────────────────────
+    async function clearHistory() {
+      if (!confirm('会話履歴をリセットしますか？（記録済みのデータは消えません）')) return;
+      await fetch('/api/chat/history', { method: 'DELETE' });
+      location.href = '/';
+    }
+    async function doLogout() {
+      await fetch('/api/logout', { method: 'POST' });
+      location.href = '/';
+    }
   </script>
 </body>
 </html>

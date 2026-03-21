@@ -280,6 +280,38 @@ def update_meal(meal_id: int, **kwargs) -> bool:
     return True
 
 
+def update_meal_full(
+    meal_id: int,
+    meal_date: str,
+    meal_type: str,
+    description: str,
+    calories: Optional[int],
+    protein: Optional[float],
+    fat: Optional[float],
+    carbs: Optional[float],
+    sodium: Optional[float],
+    notes: Optional[str],
+) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE meals SET
+                meal_date=?, meal_type=?, description=?,
+                calories=?, protein=?, fat=?, carbs=?, sodium=?, notes=?
+            WHERE id=?
+            """,
+            (meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes, meal_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_meal(meal_id: int) -> bool:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM meal_images WHERE meal_id = ?", (meal_id,))
+        cur = conn.execute("DELETE FROM meals WHERE id = ?", (meal_id,))
+    return cur.rowcount > 0
+
+
 def get_meals_by_date(meal_date: str) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
@@ -313,6 +345,21 @@ def save_weight(log_date: str, time_of_day: str, weight_kg: float) -> int:
             (log_date, time_of_day, weight_kg),
         )
         return cur.lastrowid
+
+
+def update_weight_by_id(weight_id: int, weight_kg: float) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE weight_logs SET weight_kg=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
+            (weight_kg, weight_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_weight_by_id(weight_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM weight_logs WHERE id=?", (weight_id,))
+    return cur.rowcount > 0
 
 
 def get_previous_weight(time_of_day: str, before_date: Optional[str] = None) -> Optional[float]:
@@ -351,6 +398,21 @@ def save_steps(log_date: str, steps: int) -> dict:
             return {"id": cur.lastrowid, "updated": False}
 
 
+def update_steps_by_id(steps_id: int, steps: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE steps_logs SET steps=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
+            (steps, steps_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_steps_by_id(steps_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM steps_logs WHERE id=?", (steps_id,))
+    return cur.rowcount > 0
+
+
 # ── 日次サマリー ───────────────────────────────────────────────────────────────
 
 # ── 食事画像 ───────────────────────────────────────────────────────────────────
@@ -387,6 +449,32 @@ def get_meal_image(meal_id: int) -> Optional[tuple[bytes, str]]:
     return (bytes(row["image_data"]), row["mime_type"]) if row else None
 
 
+def get_meal_image_by_id(image_id: int) -> Optional[tuple[bytes, str]]:
+    """image_id指定で画像を (image_data, mime_type) で返す"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT image_data, mime_type FROM meal_images WHERE id = ?",
+            (image_id,),
+        ).fetchone()
+    return (bytes(row["image_data"]), row["mime_type"]) if row else None
+
+
+def get_meal_images(meal_id: int) -> list[dict]:
+    """食事に紐づく全画像を [{id, mime_type}, ...] で返す"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, mime_type FROM meal_images WHERE meal_id = ? ORDER BY id",
+            (meal_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_meal_image(image_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM meal_images WHERE id = ?", (image_id,))
+    return cur.rowcount > 0
+
+
 def get_history(
     days: int = 30,
     start_date: Optional[str] = None,
@@ -413,22 +501,23 @@ def get_history(
             (since, until),
         ).fetchall()
         weights = conn.execute(
-            "SELECT log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
+            "SELECT id, log_date, time_of_day, weight_kg FROM weight_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
             (since, until),
         ).fetchall()
         steps_rows = conn.execute(
-            "SELECT log_date, steps FROM steps_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
+            "SELECT id, log_date, steps FROM steps_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
             (since, until),
         ).fetchall()
 
     from collections import defaultdict
-    days_map: dict = defaultdict(lambda: {"meals": [], "weight": {}, "steps": None})
+    days_map: dict = defaultdict(lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None})
     for m in meals:
         days_map[m["meal_date"]]["meals"].append(dict(m))
     for w in weights:
-        days_map[w["log_date"]]["weight"][w["time_of_day"]] = w["weight_kg"]
+        days_map[w["log_date"]]["weight"][w["time_of_day"]] = {"id": w["id"], "weight_kg": w["weight_kg"]}
     for s in steps_rows:
         days_map[s["log_date"]]["steps"] = s["steps"]
+        days_map[s["log_date"]]["steps_id"] = s["id"]
 
     result = []
     for date in sorted(days_map.keys(), reverse=True):
@@ -439,6 +528,7 @@ def get_history(
             "meals": ml,
             "weight": d["weight"],
             "steps": d["steps"],
+            "steps_id": d["steps_id"],
             "totals": {
                 "calories": int(sum(m.get("calories") or 0 for m in ml)),
                 "protein": round(sum(m.get("protein") or 0 for m in ml), 1),
