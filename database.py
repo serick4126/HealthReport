@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timezone, timedelta, date as _date
 from pathlib import Path
@@ -78,6 +79,22 @@ def init_db():
             );
         """)
 
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                role         TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS conversation_summary (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary_text  TEXT NOT NULL,
+                covered_up_to INTEGER,
+                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
         # 初期設定
         conn.executemany(
             "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
@@ -87,6 +104,7 @@ def init_db():
                 ("user_height_cm", "160"),
                 ("app_password", "1234"),
                 ("user_notes", ""),
+                ("savings_mode", "false"),
             ],
         )
 
@@ -113,6 +131,82 @@ def save_setting(key: str, value: str):
             """,
             (key, value),
         )
+
+
+# ── 会話履歴永続化 ────────────────────────────────────────────────────────────
+
+def save_conversation_message(role: str, content: list) -> int:
+    """会話メッセージをDBに保存し、IDを返す"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO conversation_messages (role, content_json) VALUES (?, ?)",
+            (role, json.dumps(content, ensure_ascii=False)),
+        )
+        return cur.lastrowid
+
+
+def load_recent_conversation(limit: int = 10) -> list[dict]:
+    """直近N件の会話メッセージをDBから読み込む（古い順）"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT role, content_json FROM (
+                SELECT id, role, content_json FROM conversation_messages
+                ORDER BY id DESC LIMIT ?
+            ) ORDER BY id ASC
+            """,
+            (limit,),
+        ).fetchall()
+    return [{"role": r["role"], "content": json.loads(r["content_json"])} for r in rows]
+
+
+def trim_conversation_history(keep: int = 10):
+    """直近N件のみ残して古いメッセージを削除する"""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            DELETE FROM conversation_messages
+            WHERE id NOT IN (
+                SELECT id FROM conversation_messages ORDER BY id DESC LIMIT ?
+            )
+            """,
+            (keep,),
+        )
+
+
+def clear_conversation_history():
+    """会話履歴を全件削除する"""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM conversation_messages")
+
+
+def save_conversation_summary(summary_text: str, covered_up_to: Optional[int] = None):
+    """会話サマリーを保存（1件のみ保持、上書き）"""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM conversation_summary")
+        conn.execute(
+            "INSERT INTO conversation_summary (summary_text, covered_up_to) VALUES (?, ?)",
+            (summary_text, covered_up_to),
+        )
+
+
+def load_conversation_summary() -> Optional[str]:
+    """最新の会話サマリーを返す"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT summary_text FROM conversation_summary ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return row["summary_text"] if row else None
+
+
+def get_latest_conversation_message_id() -> Optional[int]:
+    """最新の会話メッセージIDを返す"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT MAX(id) AS max_id FROM conversation_messages"
+        ).fetchone()
+    return row["max_id"] if row else None
+
 
 
 # ── 食品デフォルト ─────────────────────────────────────────────────────────────

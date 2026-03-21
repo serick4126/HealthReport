@@ -27,9 +27,40 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 # ── アプリ初期化 ───────────────────────────────────────────────────────────────
 
+HISTORY_KEEP_ON_SESSION_END = 10  # セッション切れ時に保持する件数
+
+
+def _sanitize_loaded_history(messages: list[dict]) -> list[dict]:
+    """
+    DBからロードした会話履歴をClaude APIに送信できる形に修正する。
+    - 先頭のassistantメッセージを削除（APIはuserメッセージから始まる必要がある）
+    - 先頭のtool_resultのみのuserメッセージを削除（対応するtool_useが存在しない）
+    """
+    msgs = list(messages)
+    while msgs:
+        msg = msgs[0]
+        if msg["role"] == "assistant":
+            msgs.pop(0)
+            continue
+        if msg["role"] == "user":
+            content = msg.get("content", [])
+            if isinstance(content, list) and content and all(
+                isinstance(b, dict) and b.get("type") == "tool_result"
+                for b in content
+            ):
+                msgs.pop(0)
+                continue
+        break
+    return msgs
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.init_db()
+    # サーバー起動時：DBから直近履歴とサマリーを復元し、無効な先頭メッセージを除去
+    saved = database.load_recent_conversation(HISTORY_KEEP_ON_SESSION_END)
+    saved = _sanitize_loaded_history(saved)
+    conversation_history.extend(saved)
     yield
 
 
@@ -70,6 +101,9 @@ async def login(body: LoginRequest):
 @app.post("/api/logout")
 async def logout(request: Request, response: Response):
     sid = get_session_id(request)
+    if sid and sid in sessions:
+        # ログアウト時：直近N件のみDBに残してトリミング
+        database.trim_conversation_history(HISTORY_KEEP_ON_SESSION_END)
     sessions.discard(sid)
     resp = JSONResponse({"success": True})
     resp.delete_cookie("session_id")
@@ -104,10 +138,44 @@ async def chat(request: Request, body: ChatRequest):
     )
 
 
+@app.get("/api/chat/messages")
+async def get_chat_messages(request: Request):
+    """チャット画面の再描画用に、表示可能なメッセージ一覧を返す"""
+    require_auth(request)
+    raw = database.load_recent_conversation(40)
+    result = []
+    for msg in raw:
+        role = msg["role"]
+        content = msg["content"]
+        if not isinstance(content, list):
+            continue
+        # tool_result のみのメッセージ（ツール実行結果）は表示しない
+        if all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+            continue
+        texts = []
+        has_image = False
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                t = block.get("text", "").strip()
+                if t:
+                    texts.append(t)
+            elif block.get("type") == "image":
+                has_image = True
+            # tool_use ブロックは表示しない
+        text = "\n".join(texts)
+        if not text and not has_image:
+            continue
+        result.append({"role": role, "text": text, "has_image": has_image})
+    return JSONResponse(result)
+
+
 @app.delete("/api/chat/history")
 async def clear_history(request: Request):
     require_auth(request)
     conversation_history.clear()
+    database.clear_conversation_history()
     return JSONResponse({"success": True})
 
 
@@ -121,7 +189,7 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key"}
@@ -130,7 +198,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "user_notes", "savings_mode"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:

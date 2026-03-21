@@ -2,16 +2,14 @@
 カロリー検索モジュール
 検索順: カロリーSlism → 空リスト返却（Claude推定へフォールバック）
 
-Slism 検索仕様（2024年調査済み）:
+Slism 検索仕様（2026年調査済み）:
   URL    : https://calorie.slism.jp/?searchWord={food_name}&search=検索
-  結果表  : table.searchItemList (または table.searchItemArea) > tr.searchItem
-  データ  : 各行の hidden input から取得
-              searchNameVal   ... 食品名
-              searchKcalVal   ... カロリー（デフォルト分量あたり）
-              searchNo        ... 食品ID（個別ページ /FOODID/ に使用）
-              searchAmount_comment  ... 分量説明（例: "65ml", "200ml"）
-              searchAmount_original ... グラム換算値
-  PFC/塩分: 個別ページ https://calorie.slism.jp/{searchNo}/ のテーブルから取得
+  結果領域: div.searchItemArea > ul.ccdskobetsuList > li
+  データ  : 各 li 要素から取得
+              a.soshoku_a2        ... 食品名（テキスト）、href="/FOODID/" → food_id
+              strong.soshoku_c2   ... カロリー
+              span.soshoku_b2     ... 分量説明（例: "555g(一杯)"）
+  PFC/塩分: 個別ページ https://calorie.slism.jp/{food_id}/ のテーブルから取得
 """
 import asyncio
 import re
@@ -51,50 +49,48 @@ async def search_slism(food_name: str) -> list[dict]:
             if resp.status_code != 200:
                 return []
 
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(resp.content.decode("utf-8", errors="replace"), "html.parser")
 
-            # 検索結果テーブル: table.searchItemList または table.searchItemArea
-            table = (
-                soup.find("table", class_="searchItemList")
-                or soup.find("table", class_="searchItemArea")
-            )
-            if not table:
-                return []
-
-            rows = table.find_all("tr", class_="searchItem")
-            if not rows:
+            # 検索結果: ul.ccdskobetsuList > li
+            items = soup.select("ul.ccdskobetsuList li")
+            if not items:
                 return []
 
             # 個別ページPFC取得（上位5件のみ並行取得）
-            top_rows = rows[:5]
-            search_nos = []
-            for row in top_rows:
-                no_inp = row.find("input", attrs={"name": "searchNo"})
-                search_nos.append(no_inp.get("value", "") if no_inp else "")
+            food_ids = []
+            for item in items[:5]:
+                a = item.find("a", class_="soshoku_a2")
+                if a and a.get("href"):
+                    m = re.search(r"/(\d+)/", a["href"])
+                    food_ids.append(m.group(1) if m else "")
+                else:
+                    food_ids.append("")
 
             async def _empty() -> dict:
                 return {}
 
             detail_tasks = [
-                _fetch_slism_detail(client, f"https://calorie.slism.jp/{no}/")
-                if no else _empty()
-                for no in search_nos
+                _fetch_slism_detail(client, f"https://calorie.slism.jp/{fid}/")
+                if fid else _empty()
+                for fid in food_ids
             ]
             details = await asyncio.gather(*detail_tasks, return_exceptions=True)
 
             results: list[dict] = []
-            for i, row in enumerate(rows[:10]):
-                # hidden inputs から情報取得
-                def _inp(name: str) -> str:
-                    el = row.find("input", attrs={"name": name})
-                    return el.get("value", "") if el else ""
-
-                name = _inp("searchNameVal")
+            for i, item in enumerate(items[:10]):
+                a = item.find("a", class_="soshoku_a2")
+                if not a:
+                    continue
+                name = a.get_text(strip=True)
                 if not name:
                     continue
-                cal_str = _inp("searchKcalVal")
+
+                strong = item.find("strong", class_="soshoku_c2")
+                cal_str = strong.get_text(strip=True) if strong else ""
                 cal = _to_float(cal_str) if cal_str else None
-                unit = _inp("searchAmount_comment")  # 例: "65ml", "200ml"
+
+                span = item.find("span", class_="soshoku_b2")
+                unit = span.get_text(strip=True) if span else ""
 
                 # PFC（個別ページ取得済み分のみ）
                 detail = details[i] if i < len(details) and isinstance(details[i], dict) else {}
@@ -124,7 +120,7 @@ async def _fetch_slism_detail(client: httpx.AsyncClient, url: str) -> dict:
         resp = await client.get(url)
         if resp.status_code != 200:
             return {}
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(resp.content.decode("utf-8", errors="replace"), "html.parser")
         result: dict = {}
 
         for row in soup.select("table tr"):

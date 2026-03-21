@@ -76,6 +76,22 @@
     }
     .loading { text-align: center; padding: 20px; color: var(--text-secondary); }
     .empty-food { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px; }
+    /* トグルスイッチ */
+    .toggle-wrap { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    .toggle { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; border-radius: 31px;
+      background: #e5e5ea; transition: background 0.2s; cursor: pointer;
+    }
+    .toggle-slider::before {
+      content: ""; position: absolute;
+      width: 27px; height: 27px; left: 2px; top: 2px; border-radius: 50%;
+      background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
   </style>
 </head>
 <body>
@@ -150,6 +166,31 @@
                   ・ 医師の指示（例: 主食は毎食100g以下、脂質は控えめに）
                   ・ その他Claudeに伝えておきたいこと（例: 運動習慣、食の好みなど）
                   </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- API・節約設定 -->
+        <div class="section">
+          <div class="section-title">API・節約設定</div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <div class="row-label" style="font-size:15px">節約モード</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">直近3件のみ保持・APIコスト削減</div>
+              </div>
+              <div class="toggle-wrap">
+                <label class="toggle">
+                  <input type="checkbox" id="savings_mode" ${s.savings_mode === 'true' ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div id="savingsNote" class="row" style="background:#fff9e6;border-radius:0;display:${s.savings_mode === 'true' ? 'block' : 'none'};padding:10px 14px">
+              <div style="font-size:12px;color:#7a5c00;line-height:1.7">
+                ⚠️ <strong>節約モードON：</strong>直近3件より前の会話は参照されません。<br>
+                食事デフォルト一覧は都度検索されます（わずかな遅延が生じることがあります）。
               </div>
             </div>
           </div>
@@ -234,12 +275,20 @@
       `;
     }
 
+    // 節約モードトグルの変更時に注意書きを表示/非表示
+    document.addEventListener('change', e => {
+      if (e.target.id === 'savings_mode') {
+        document.getElementById('savingsNote').style.display = e.target.checked ? 'block' : 'none';
+      }
+    });
+
     async function saveSettings() {
       const settings = {
         user_name:          document.getElementById('user_name').value.trim(),
         user_height_cm:     document.getElementById('user_height_cm').value.trim(),
         daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
         user_notes:         document.getElementById('user_notes').value.trim(),
+        savings_mode:       document.getElementById('savings_mode').checked ? 'true' : 'false',
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }
