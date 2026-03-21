@@ -315,6 +315,21 @@ class WeightUpdateRequest(BaseModel):
     weight_kg: float
 
 
+class WeightCreateRequest(BaseModel):
+    log_date: str
+    time_of_day: str
+    weight_kg: float
+
+
+@app.post("/api/weight")
+async def create_weight(request: Request, body: WeightCreateRequest):
+    require_auth(request)
+    if body.time_of_day not in ("morning", "evening"):
+        raise HTTPException(status_code=422, detail="time_of_day は morning/evening のみ有効です")
+    weight_id = database.save_weight(body.log_date, body.time_of_day, body.weight_kg)
+    return JSONResponse({"success": True, "id": weight_id})
+
+
 @app.put("/api/weight/{weight_id}")
 async def update_weight(request: Request, weight_id: int, body: WeightUpdateRequest):
     require_auth(request)
@@ -337,6 +352,18 @@ async def delete_weight(request: Request, weight_id: int):
 
 class StepsUpdateRequest(BaseModel):
     steps: int
+
+
+class StepsCreateRequest(BaseModel):
+    log_date: str
+    steps: int
+
+
+@app.post("/api/steps")
+async def create_steps(request: Request, body: StepsCreateRequest):
+    require_auth(request)
+    result = database.save_steps(body.log_date, body.steps)
+    return JSONResponse({"success": True, "id": result["id"]})
 
 
 @app.put("/api/steps/{steps_id}")

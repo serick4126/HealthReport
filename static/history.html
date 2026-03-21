@@ -357,11 +357,12 @@
       const pct = calorieGoal > 0 ? Math.min((t.calories / calorieGoal) * 100, 100) : 0;
       const over = t.calories > calorieGoal;
 
-      // 体重メタ
+      // 体重メタ（朝・夜を常に表示）
       let weightHtml = '';
-      if (day.weight) {
-        for (const [tod, wdata] of Object.entries(day.weight)) {
-          const label_ja = TIME_OF_DAY_JA[tod] || tod;
+      for (const tod of ['morning', 'evening']) {
+        const label_ja = TIME_OF_DAY_JA[tod] || tod;
+        const wdata = day.weight ? day.weight[tod] : null;
+        if (wdata) {
           const wid = wdata.id;
           const wkg = wdata.weight_kg;
           weightHtml += `
@@ -370,10 +371,16 @@
               <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(${wid},'${day.date}','${tod}',${wkg})" title="編集">✏️</button>
               <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteWeight(${wid})" title="削除">🗑️</button>
             </span>`;
+        } else {
+          weightHtml += `
+            <span class="meta-item" style="color:var(--text-secondary)">
+              ⚖️ ${label_ja} <span style="font-style:italic">未入力</span>
+              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(null,'${day.date}','${tod}',null)" title="入力">✏️</button>
+            </span>`;
         }
       }
 
-      // 歩数メタ
+      // 歩数メタ（未入力でも表示）
       let stepsHtml = '';
       if (day.steps != null) {
         stepsHtml = `
@@ -381,6 +388,12 @@
             👟 ${day.steps.toLocaleString()}歩
             <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(${day.steps_id},'${day.date}',${day.steps})" title="編集">✏️</button>
             <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteSteps(${day.steps_id})" title="削除">🗑️</button>
+          </span>`;
+      } else {
+        stepsHtml = `
+          <span class="meta-item" style="color:var(--text-secondary)">
+            👟 <span style="font-style:italic">未入力</span>
+            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(null,'${day.date}',null)" title="入力">✏️</button>
           </span>`;
       }
 
@@ -395,7 +408,7 @@
             <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g</span>
           </div>
           <div class="calorie-bar-wrap"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
-          ${(weightHtml || stepsHtml) ? `<div class="day-meta">${weightHtml}${stepsHtml}</div>` : ''}
+          <div class="day-meta">${weightHtml}${stepsHtml}</div>
           ${mealsHtml}
         </div>`;
     }
@@ -657,12 +670,17 @@
     }
 
     // ── 体重編集モーダル ───────────────────────────────────────────────────────
+    let _weightTod = null;  // time_of_day を保持（新規作成時に使用）
+
     function openWeightModal(weightId, date, tod, weightKg) {
-      document.getElementById('editWeightId').value = weightId;
+      document.getElementById('editWeightId').value = weightId ?? '';
       document.getElementById('editWeightDate').value = date;
       document.getElementById('editWeightTimeLabel').value = TIME_OF_DAY_JA[tod] || tod;
-      document.getElementById('editWeightKg').value = weightKg;
+      document.getElementById('editWeightKg').value = weightKg ?? '';
       document.getElementById('err-weight-kg').classList.remove('show');
+      document.getElementById('weightModal').querySelector('.modal-title').textContent =
+        weightId ? '✏️ 体重を編集' : '➕ 体重を入力';
+      _weightTod = tod;
       document.getElementById('weightModal').style.display = 'flex';
     }
 
@@ -671,7 +689,9 @@
     }
 
     async function saveWeight() {
-      const weightId = parseInt(document.getElementById('editWeightId').value);
+      const weightIdStr = document.getElementById('editWeightId').value;
+      const weightId = weightIdStr !== '' ? parseInt(weightIdStr) : null;
+      const date = document.getElementById('editWeightDate').value;
       const kgStr = document.getElementById('editWeightKg').value;
       const kg = parseFloat(kgStr);
       if (kgStr === '' || isNaN(kg) || kg < 20 || kg > 200) {
@@ -681,11 +701,20 @@
       closeWeightModal();
       showSaving();
       try {
-        const res = await fetch(`/api/weight/${weightId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ weight_kg: kg }),
-        });
+        let res;
+        if (weightId) {
+          res = await fetch(`/api/weight/${weightId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ weight_kg: kg }),
+          });
+        } else {
+          res = await fetch('/api/weight', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ log_date: date, time_of_day: _weightTod, weight_kg: kg }),
+          });
+        }
         if (!res.ok) throw new Error();
         reload();
       } catch(e) {
@@ -715,10 +744,12 @@
 
     // ── 歩数編集モーダル ───────────────────────────────────────────────────────
     function openStepsModal(stepsId, date, steps) {
-      document.getElementById('editStepsId').value = stepsId;
+      document.getElementById('editStepsId').value = stepsId ?? '';
       document.getElementById('editStepsDate').value = date;
-      document.getElementById('editStepsVal').value = steps;
+      document.getElementById('editStepsVal').value = steps ?? '';
       document.getElementById('err-steps-val').classList.remove('show');
+      document.getElementById('stepsModal').querySelector('.modal-title').textContent =
+        stepsId ? '✏️ 歩数を編集' : '➕ 歩数を入力';
       document.getElementById('stepsModal').style.display = 'flex';
     }
 
@@ -727,7 +758,9 @@
     }
 
     async function saveSteps() {
-      const stepsId = parseInt(document.getElementById('editStepsId').value);
+      const stepsIdStr = document.getElementById('editStepsId').value;
+      const stepsId = stepsIdStr !== '' ? parseInt(stepsIdStr) : null;
+      const date = document.getElementById('editStepsDate').value;
       const valStr = document.getElementById('editStepsVal').value;
       const steps = parseInt(valStr);
       if (valStr === '' || isNaN(steps) || steps < 0 || steps > 99999 || String(steps) !== String(valStr.trim())) {
@@ -737,11 +770,20 @@
       closeStepsModal();
       showSaving();
       try {
-        const res = await fetch(`/api/steps/${stepsId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ steps }),
-        });
+        let res;
+        if (stepsId) {
+          res = await fetch(`/api/steps/${stepsId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ steps }),
+          });
+        } else {
+          res = await fetch('/api/steps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ log_date: date, steps }),
+          });
+        }
         if (!res.ok) throw new Error();
         reload();
       } catch(e) {
