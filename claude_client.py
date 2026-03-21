@@ -572,7 +572,8 @@ async def stream_chat(
                 _last_error = e
                 if _attempt < MAX_API_RETRIES - 1:
                     wait_sec = 2 ** _attempt
-                    yield f"data: {json.dumps({'type': 'text', 'content': f'⏳ APIが混み合っています。{wait_sec}秒後に再試行します…\\n'}, ensure_ascii=False)}\n\n"
+                    _retry_msg = f'⏳ APIが混み合っています。{wait_sec}秒後に再試行します…\n'
+                    yield f"data: {json.dumps({'type': 'text', 'content': _retry_msg}, ensure_ascii=False)}\n\n"
                     await asyncio.sleep(wait_sec)
 
             except Exception as e:
