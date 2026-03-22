@@ -105,6 +105,8 @@ def init_db():
                 ("app_password", "1234"),
                 ("user_notes", ""),
                 ("savings_mode", "false"),
+                ("normal_model", "claude-sonnet-4-6"),
+                ("savings_model", "claude-haiku-4-5-20251001"),
             ],
         )
 

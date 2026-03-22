@@ -189,7 +189,7 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key"}
@@ -198,7 +198,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "user_notes", "savings_mode"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "user_notes", "savings_mode", "normal_model", "savings_model"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -218,6 +218,26 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
             raise HTTPException(status_code=400, detail=f"編集不可のキーです: {key}")
         database.save_setting(key, value)
     return JSONResponse({"success": True})
+
+
+# ── AIモデル一覧エンドポイント ─────────────────────────────────────────────────
+
+@app.get("/api/models")
+async def list_models(request: Request):
+    """Anthropic APIから利用可能なモデル一覧を取得する"""
+    require_auth(request)
+    try:
+        client = claude_client.get_client()
+        models_page = await client.models.list()
+        models = [
+            {"id": m.id, "display_name": getattr(m, "display_name", m.id)}
+            for m in models_page.data
+        ]
+        # IDでソート（新しいものが上に来るよう降順）
+        models.sort(key=lambda m: m["id"], reverse=True)
+        return JSONResponse({"models": models})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── food-defaults エンドポイント ───────────────────────────────────────────────

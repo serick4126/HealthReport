@@ -13,6 +13,7 @@ from image_utils import process_image_b64
 
 JST = timezone(timedelta(hours=9))
 MODEL = "claude-sonnet-4-6"
+MODEL_SAVINGS = "claude-haiku-4-5-20251001"
 MAX_API_RETRIES = 3  # 429エラー時の最大リトライ回数
 
 
@@ -216,6 +217,21 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
         summary = database.load_conversation_summary()
     summary_section = f"\n【会話サマリー（自動生成）】\n{summary}\n" if summary else ""
 
+    # 節約モードでは食品検索せず推定に切り替え
+    if savings_mode:
+        search_flow_section = "（節約モード）すべての食品はClaudeの知識で直接推定してrecord_mealを呼ぶこと。search_food_nutritionは使用しない。notesに '[推定値] カロリー・PFCはClaudeによる推定' を記載すること。"
+    else:
+        search_flow_section = (
+            "ブランド品・パッケージ食品・飲料が報告された場合：\n"
+            "1. search_food_nutrition で検索する\n"
+            "2. 複数候補 → show_choices で表示（必ず最後に「\U0001f50d 該当する商品がない」を追加）\n"
+            "3. 1候補のみ → そのまま採用して record_meal を呼ぶ\n"
+            "4. 0候補（見つからない）→ Claudeの知識で推定して自動的に record_meal を呼ぶ。ユーザーに確認しない。\n"
+            "   notesに '[推定値] カロリー・PFCはClaudeによる推定' を記載すること。\n"
+            "鶏むね肉・白米・卵などの一般食材はClaudeの知識で推定してよい。\n"
+            "show_choicesを呼び出した後は余分なテキストを出力しないこと。"
+        )
+
     return f"""あなたは食事記録アシスタントです。ユーザー {user_name} の食事・体重・歩数を記録します。
 
 【今日の情報】
@@ -239,15 +255,7 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 メニュー：白米150g、味噌汁
 420kcal / P:10g F:5g C:80g 塩分:1.2g
 
-【カロリー検索フロー（Phase 2）】
-ブランド品・パッケージ食品・飲料が報告された場合：
-1. search_food_nutrition で検索する
-2. 複数候補 → show_choices で表示（必ず最後に「🔍 該当する商品がない」を追加）
-3. 1候補のみ → そのまま採用して record_meal を呼ぶ
-4. 0候補（見つからない）→ Claudeの知識で推定して自動的に record_meal を呼ぶ。ユーザーに確認しない。
-   notesに '[推定値] カロリー・PFCはClaudeによる推定' を記載すること。
-鶏むね肉・白米・卵などの一般食材はClaudeの知識で推定してよい。
-show_choicesを呼び出した後は余分なテキストを出力しないこと。
+{search_flow_section}
 
 【food_defaults自動保存】
 推定値([推定値])またはSlism検索([Slism])でrecord_mealが成功した場合、
@@ -491,6 +499,13 @@ async def stream_chat(
     savings_mode = database.get_setting("savings_mode") == "true"
     token_compress_threshold = 8000 if savings_mode else 20000
     keep_recent = 3 if savings_mode else 10
+    active_model = (
+        database.get_setting("savings_model") or MODEL_SAVINGS
+        if savings_mode else
+        database.get_setting("normal_model") or MODEL
+    )
+    # 節約モードでは食品検索ツールを除外（Claude推定に切り替え）
+    active_tools = [t for t in TOOLS if t["name"] != "search_food_nutrition"] if savings_mode else TOOLS
 
     # 今回のリクエストで添付された画像（record_meal後にDB保存する）
     pending_images: list[str] = []  # 処理済みbase64
@@ -532,11 +547,11 @@ async def stream_chat(
 
             try:
                 async with client.messages.stream(
-                    model=MODEL,
+                    model=active_model,
                     max_tokens=4096,
                     system=system_prompt,
                     messages=conversation_history,
-                    tools=TOOLS,
+                    tools=active_tools,
                 ) as stream:
                     async for event in stream:
                         etype = event.type

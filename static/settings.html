@@ -99,6 +99,18 @@
     }
     .toggle input:checked + .toggle-slider { background: var(--accent); }
     .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+    /* モデルセレクター */
+    .model-select-wrap { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: flex-end; }
+    .model-select {
+      flex: 1; max-width: 280px; border: none; outline: none; font-size: 14px;
+      background: transparent; color: #1c1c1e; text-align: right; cursor: pointer;
+      appearance: none; -webkit-appearance: none;
+    }
+    .model-reload-btn {
+      background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 4px;
+      color: var(--accent); flex-shrink: 0;
+    }
+    .model-reload-btn:disabled { opacity: 0.4; cursor: default; }
   </style>
 </head>
 <body>
@@ -123,6 +135,7 @@
 
   <script>
     let foodDefaults = [];
+    let availableModels = [];
 
     async function loadAll() {
       try {
@@ -188,6 +201,19 @@
         <div class="section">
           <div class="section-title">API・節約設定</div>
           <div class="card">
+            <div class="row">
+              <span class="row-label">通常モード モデル</span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="normal_model">${buildModelOptions(s.normal_model || 'claude-sonnet-4-6')}</select>
+                <button class="model-reload-btn" id="reloadModelsBtn" onclick="reloadModels()" title="モデル一覧を更新">↻</button>
+              </div>
+            </div>
+            <div class="row">
+              <span class="row-label">節約モード モデル</span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="savings_model">${buildModelOptions(s.savings_model || 'claude-haiku-4-5-20251001')}</select>
+              </div>
+            </div>
             <div class="row" style="justify-content:space-between">
               <div>
                 <div class="row-label" style="font-size:15px">節約モード</div>
@@ -203,7 +229,7 @@
             <div id="savingsNote" class="row" style="background:#fff9e6;border-radius:0;display:${s.savings_mode === 'true' ? 'block' : 'none'};padding:10px 14px">
               <div style="font-size:12px;color:#7a5c00;line-height:1.7">
                 ⚠️ <strong>節約モードON：</strong>直近3件より前の会話は参照されません。<br>
-                食事デフォルト一覧は都度検索されます（わずかな遅延が生じることがあります）。
+                節約モードのモデル・食品推定を使用します。
               </div>
             </div>
           </div>
@@ -295,6 +321,40 @@
       }
     });
 
+    function buildModelOptions(currentId) {
+      // 現在の設定値が一覧になければ先頭に追加する
+      const list = availableModels.length ? availableModels : [{ id: currentId, display_name: currentId }];
+      const ids = list.map(m => m.id);
+      const allModels = ids.includes(currentId) ? list : [{ id: currentId, display_name: currentId }, ...list];
+      return allModels.map(m =>
+        `<option value="${escHtml(m.id)}" ${m.id === currentId ? 'selected' : ''}>${escHtml(m.display_name || m.id)}</option>`
+      ).join('');
+    }
+
+    async function reloadModels() {
+      const btn = document.getElementById('reloadModelsBtn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/models');
+        if (!res.ok) throw new Error('取得失敗');
+        const data = await res.json();
+        availableModels = data.models || [];
+        const normalSel = document.getElementById('normal_model');
+        const savingsSel = document.getElementById('savings_model');
+        if (normalSel && savingsSel) {
+          const normalCur = normalSel.value;
+          const savingsCur = savingsSel.value;
+          normalSel.innerHTML = buildModelOptions(normalCur);
+          savingsSel.innerHTML = buildModelOptions(savingsCur);
+        }
+        showToast('モデル一覧を更新しました ✓');
+      } catch(e) {
+        showToast('モデル一覧の取得に失敗しました');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     async function saveSettings() {
       const settings = {
         user_name:          document.getElementById('user_name').value.trim(),
@@ -302,6 +362,8 @@
         daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
         user_notes:         document.getElementById('user_notes').value.trim(),
         savings_mode:       document.getElementById('savings_mode').checked ? 'true' : 'false',
+        normal_model:       document.getElementById('normal_model').value,
+        savings_model:      document.getElementById('savings_model').value,
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }
