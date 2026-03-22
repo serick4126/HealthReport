@@ -202,6 +202,22 @@
           <div class="section-title">API・節約設定</div>
           <div class="card">
             <div class="row">
+              <span class="row-label">キャッシュTTL</span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="cache_ttl">
+                  <option value="5min" ${(s.cache_ttl || '5min') === '5min' ? 'selected' : ''}>5分（標準）</option>
+                  <option value="1hour" ${s.cache_ttl === '1hour' ? 'selected' : ''}>1時間（拡張β）</option>
+                </select>
+              </div>
+            </div>
+            <div id="cacheTtlNote1hour" class="row" style="background:#f0f7ff;border-radius:0;display:${s.cache_ttl === '1hour' ? 'block' : 'none'};padding:10px 14px">
+              <div style="font-size:12px;color:#1a4a7a;line-height:1.7">
+                ℹ️ <strong>1時間TTL（ベータ）：</strong>キャッシュ書き込みコストが×2になりますが、<br>
+                1時間以内に再利用できれば2ターン目から90%オフが続きます。<br>
+                朝・昼・夜と時間を空けて使う場合に特に効果的です。
+              </div>
+            </div>
+            <div class="row">
               <span class="row-label">通常モード モデル</span>
               <div class="model-select-wrap">
                 <select class="model-select" id="normal_model">${buildModelOptions(s.normal_model || 'claude-sonnet-4-6')}</select>
@@ -212,6 +228,21 @@
               <span class="row-label">節約モード モデル</span>
               <div class="model-select-wrap">
                 <select class="model-select" id="savings_model">${buildModelOptions(s.savings_model || 'claude-haiku-4-5-20251001')}</select>
+              </div>
+            </div>
+            <div class="row" style="justify-content:space-between">
+              <div style="flex:1;margin-right:12px">
+                <div class="row-label" style="font-size:15px">食品デフォルト自動登録</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5">
+                  食事記録後に栄養データを自動保存します。<br>
+                  ⚠️ 登録件数が増えると毎回のトークン使用量が増加します
+                </div>
+              </div>
+              <div class="toggle-wrap">
+                <label class="toggle">
+                  <input type="checkbox" id="auto_save_food_defaults" ${s.auto_save_food_defaults !== 'false' ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
             </div>
             <div class="row" style="justify-content:space-between">
@@ -314,10 +345,13 @@
       `;
     }
 
-    // 節約モードトグルの変更時に注意書きを表示/非表示
+    // 節約モードトグル・キャッシュTTL変更時に注意書きを表示/非表示
     document.addEventListener('change', e => {
       if (e.target.id === 'savings_mode') {
         document.getElementById('savingsNote').style.display = e.target.checked ? 'block' : 'none';
+      }
+      if (e.target.id === 'cache_ttl') {
+        document.getElementById('cacheTtlNote1hour').style.display = e.target.value === '1hour' ? 'block' : 'none';
       }
     });
 
@@ -364,6 +398,8 @@
         savings_mode:       document.getElementById('savings_mode').checked ? 'true' : 'false',
         normal_model:       document.getElementById('normal_model').value,
         savings_model:      document.getElementById('savings_model').value,
+        cache_ttl:          document.getElementById('cache_ttl').value,
+        auto_save_food_defaults: document.getElementById('auto_save_food_defaults').checked ? 'true' : 'false',
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }
