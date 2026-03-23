@@ -46,6 +46,14 @@
     .edit-btn {
       background: none; border: none; cursor: pointer; font-size: 16px; color: var(--accent); padding: 2px 6px;
     }
+    .fav-btn {
+      background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 6px;
+      color: #ccc;
+    }
+    .fav-btn.active {
+      color: #c8860a;
+      text-shadow: 0 0 1px rgba(0,0,0,0.25);
+    }
     /* food-default 編集モーダル（共通スタイルはcommon.cssに移動）*/
     .add-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
     .add-row input {
@@ -116,6 +124,10 @@
       <div class="modal-row">
         <label>メモ（任意）</label>
         <input type="text" id="fdEditNotes" />
+      </div>
+      <div class="modal-row" style="align-items:center">
+        <label>お気に入り（クイックパレット）</label>
+        <input type="checkbox" id="fdEditFavorite" style="width:20px;height:20px;margin:0;accent-color:var(--accent)" />
       </div>
       <div class="modal-actions">
         <button onclick="closeFdEditModal()">キャンセル</button>
@@ -330,6 +342,7 @@
         <table class="food-table">
           <thead>
             <tr>
+              <th>★</th>
               <th>キーワード</th>
               <th>詳細</th>
               <th>メモ</th>
@@ -337,17 +350,22 @@
             </tr>
           </thead>
           <tbody>
-            ${foodDefaults.map(f => `
+            ${foodDefaults.map(f => {
+              const kw = escHtml(f.keyword);
+              return `
               <tr>
-                <td class="td-keyword">${escHtml(f.keyword)}</td>
+                <td style="width:36px;text-align:center">
+                  <button class="fav-btn${f.is_favorite ? ' active' : ''}" onclick="toggleFavorite('${kw}')" title="お気に入り">★</button>
+                </td>
+                <td class="td-keyword">${kw}</td>
                 <td class="td-desc">${escHtml(f.description)}</td>
                 <td class="td-notes">${escHtml(f.notes || '')}</td>
                 <td class="td-action">
-                  <button class="edit-btn" onclick="openFdEditModal('${escHtml(f.keyword)}')" title="編集">✏️</button>
-                  <button class="del-btn" onclick="deleteFoodDefault('${escHtml(f.keyword)}')" title="削除">🗑</button>
+                  <button class="edit-btn" onclick="openFdEditModal('${kw}')" title="編集">✏️</button>
+                  <button class="del-btn" onclick="deleteFoodDefault('${kw}')" title="削除">🗑</button>
                 </td>
-              </tr>
-            `).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
       `;
@@ -463,6 +481,7 @@
       document.getElementById('fdEditKeyword').value = entry.keyword;
       document.getElementById('fdEditDesc').value = entry.description;
       document.getElementById('fdEditNotes').value = entry.notes || '';
+      document.getElementById('fdEditFavorite').checked = !!entry.is_favorite;
       document.getElementById('fdEditModal').style.display = 'flex';
     }
 
@@ -474,12 +493,13 @@
       const keyword = document.getElementById('fdEditKeyword').value.trim();
       const desc = document.getElementById('fdEditDesc').value.trim();
       const notes = document.getElementById('fdEditNotes').value.trim();
+      const is_favorite = document.getElementById('fdEditFavorite').checked;
       if (!keyword || !desc) { showToast('キーワードと詳細を入力してください'); return; }
       try {
         const res = await fetch(`/api/food-defaults/${encodeURIComponent(fdEditOriginalKeyword)}`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ keyword, description: desc, notes }),
+          body: JSON.stringify({ keyword, description: desc, notes, is_favorite }),
         });
         if (!res.ok) throw new Error();
         const fd = await fetch('/api/food-defaults');
@@ -487,6 +507,19 @@
         renderFoodTable();
         closeFdEditModal();
         showToast('更新しました ✓');
+      } catch(e) {
+        showToast('更新に失敗しました');
+      }
+    }
+
+    async function toggleFavorite(keyword) {
+      try {
+        const res = await fetch(`/api/food-defaults/${encodeURIComponent(keyword)}/favorite`, { method: 'POST' });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const entry = foodDefaults.find(f => f.keyword === keyword);
+        if (entry) entry.is_favorite = data.is_favorite ? 1 : 0;
+        renderFoodTable();
       } catch(e) {
         showToast('更新に失敗しました');
       }

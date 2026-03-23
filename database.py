@@ -102,6 +102,14 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_steps_date    ON steps_logs(log_date);
         """)
 
+        # food_defaults に is_favorite カラムを追加（既存DBの移行）
+        try:
+            conn.execute(
+                "ALTER TABLE food_defaults ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception:
+            pass  # カラムが既に存在する場合は無視
+
         # 初期設定
         conn.executemany(
             "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
@@ -226,9 +234,34 @@ def get_latest_conversation_message_id() -> Optional[int]:
 def get_food_defaults() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT keyword, description, notes FROM food_defaults ORDER BY id"
+            "SELECT keyword, description, notes, is_favorite FROM food_defaults ORDER BY id"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_favorite_food_defaults() -> list[dict]:
+    """お気に入りのfood_defaultsを返す"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT keyword, description, notes, is_favorite FROM food_defaults WHERE is_favorite = 1 ORDER BY id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def toggle_food_default_favorite(keyword: str) -> Optional[bool]:
+    """お気に入り状態をトグル。更新後の状態(bool)を返す。見つからなければNone"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT is_favorite FROM food_defaults WHERE keyword = ?", (keyword,)
+        ).fetchone()
+        if row is None:
+            return None
+        new_val = 0 if row["is_favorite"] else 1
+        conn.execute(
+            "UPDATE food_defaults SET is_favorite=?, updated_at=CURRENT_TIMESTAMP WHERE keyword=?",
+            (new_val, keyword),
+        )
+        return bool(new_val)
 
 
 def delete_food_default(keyword: str) -> bool:
@@ -237,22 +270,47 @@ def delete_food_default(keyword: str) -> bool:
         return cur.rowcount > 0
 
 
-def save_food_default(keyword: str, description: str, notes: Optional[str] = None):
+def save_food_default(
+    keyword: str,
+    description: str,
+    notes: Optional[str] = None,
+    is_favorite: Optional[bool] = None,
+):
     """food_defaultsに保存（同一keywordは上書き）"""
     with get_conn() as conn:
         existing = conn.execute(
-            "SELECT id FROM food_defaults WHERE keyword = ?", (keyword,)
+            "SELECT id, is_favorite FROM food_defaults WHERE keyword = ?", (keyword,)
         ).fetchone()
         if existing:
+            fav = int(is_favorite) if is_favorite is not None else existing["is_favorite"]
             conn.execute(
-                "UPDATE food_defaults SET description=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE keyword=?",
-                (description, notes, keyword),
+                "UPDATE food_defaults SET description=?, notes=?, is_favorite=?, updated_at=CURRENT_TIMESTAMP WHERE keyword=?",
+                (description, notes, fav, keyword),
             )
         else:
+            fav = int(is_favorite) if is_favorite is not None else 0
             conn.execute(
-                "INSERT INTO food_defaults (keyword, description, notes) VALUES (?, ?, ?)",
-                (keyword, description, notes),
+                "INSERT INTO food_defaults (keyword, description, notes, is_favorite) VALUES (?, ?, ?, ?)",
+                (keyword, description, notes, fav),
             )
+
+
+def get_frequent_meals(days: int = 30, limit: int = 10) -> list[dict]:
+    """直近N日間で頻出の食事をランキング形式で返す"""
+    cutoff = (datetime.now(JST).date() - timedelta(days=days)).isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT description, meal_type, COUNT(*) AS cnt, AVG(calories) AS avg_cal
+            FROM meals
+            WHERE meal_date >= ?
+            GROUP BY description
+            ORDER BY cnt DESC
+            LIMIT ?
+            """,
+            (cutoff, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ── 食事記録 ───────────────────────────────────────────────────────────────────

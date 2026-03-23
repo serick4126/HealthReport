@@ -287,12 +287,13 @@ class FoodDefaultRequest(BaseModel):
     keyword: str
     description: str
     notes: str = ""
+    is_favorite: Optional[bool] = None
 
 
 @app.post("/api/food-defaults")
 async def upsert_food_default(request: Request, body: FoodDefaultRequest):
     require_auth(request)
-    database.save_food_default(body.keyword, body.description, body.notes or None)
+    database.save_food_default(body.keyword, body.description, body.notes or None, body.is_favorite)
     return JSONResponse({"success": True})
 
 
@@ -302,7 +303,7 @@ async def edit_food_default(request: Request, keyword: str, body: FoodDefaultReq
     # キーワードが変わった場合は旧エントリを削除してから新規作成
     if keyword != body.keyword:
         database.delete_food_default(keyword)
-    database.save_food_default(body.keyword, body.description, body.notes or None)
+    database.save_food_default(body.keyword, body.description, body.notes or None, body.is_favorite)
     return JSONResponse({"success": True})
 
 
@@ -313,6 +314,23 @@ async def remove_food_default(request: Request, keyword: str):
     if not deleted:
         raise HTTPException(status_code=404, detail="見つかりません")
     return JSONResponse({"success": True})
+
+
+@app.post("/api/food-defaults/{keyword}/favorite")
+async def toggle_favorite(request: Request, keyword: str):
+    require_auth(request)
+    result = database.toggle_food_default_favorite(keyword)
+    if result is None:
+        raise HTTPException(status_code=404, detail="見つかりません")
+    return JSONResponse({"is_favorite": result})
+
+
+@app.get("/api/quick-entries")
+async def get_quick_entries(request: Request):
+    require_auth(request)
+    favorites = database.get_favorite_food_defaults()
+    frequent = database.get_frequent_meals(days=30, limit=10)
+    return JSONResponse({"favorites": favorites, "frequent": frequent})
 
 
 # ── 履歴・集計・画像エンドポイント ────────────────────────────────────────────

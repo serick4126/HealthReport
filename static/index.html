@@ -333,6 +333,67 @@
       .dash-toggle-row { padding: 5px 10px; }
       .dash-body { padding: 0 10px 6px; }
     }
+
+    /* ── クイックパレット ── */
+    .quick-palette {
+      background: var(--input-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 5px 12px;
+      flex-shrink: 0;
+    }
+    .qp-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      max-height: 144px; /* 4行分 (約31px × 4 + gap × 3) */
+      overflow: hidden;
+    }
+    .qp-chip {
+      padding: 5px 12px;
+      border-radius: 16px;
+      border: 1.5px solid var(--border);
+      background: var(--bg);
+      font-size: 13px;
+      white-space: nowrap;
+      cursor: pointer;
+      font-family: inherit;
+      max-width: min(200px, 42vw);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .qp-chip:active { background: #e5e5ea; }
+    .qp-chip.meal { border-color: #a0a0a8; background: #f2f2f7; font-weight: 600; }
+    .qp-chip.fav { border-color: #f5a623; background: #fffbf0; }
+    .qp-chip.action { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .qp-chip.action:active { opacity: 0.8; }
+
+    /* ── 体重・歩数クイック入力モーダル ── */
+    .qp-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center; z-index: 200;
+    }
+    .qp-modal-box {
+      background: #fff; border-radius: 16px; padding: 24px 20px;
+      width: min(320px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .qp-modal-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+    .qp-modal-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .qp-modal-row label { font-size: 14px; color: var(--text-secondary); flex-shrink: 0; min-width: 60px; }
+    .qp-modal-row input[type=number],
+    .qp-modal-row select {
+      flex: 1; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 16px; outline: none;
+    }
+    .qp-modal-row input[type=number]:focus,
+    .qp-modal-row select:focus { border-color: var(--accent); }
+    .qp-modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .qp-modal-actions button {
+      flex: 1; padding: 11px; border-radius: 10px; border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .qp-modal-actions .cancel { background: #e5e5ea; color: #1c1c1e; }
+    .qp-modal-actions .submit { background: var(--accent); color: #fff; }
+    .qp-modal-actions .submit:active { opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -372,6 +433,11 @@
   </div>
 </div>
 
+<!-- クイックパレット -->
+<div class="quick-palette" id="quickPalette" style="display:none">
+  <div class="qp-chips" id="qpChips"></div>
+</div>
+
 <div class="messages" id="messages">
   <div class="message ai">
     <div class="bubble" id="greetingBubble">
@@ -389,6 +455,45 @@
   <input type="file" id="fileInput" accept="image/*" multiple hidden />
   <textarea class="text-input" id="textInput" placeholder="メッセージを入力…" rows="1"></textarea>
   <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="送信">↑</button>
+</div>
+
+<!-- 体重クイック入力モーダル -->
+<div class="qp-modal" id="weightModal" style="display:none" onclick="if(event.target===this)closeWeightModal()">
+  <div class="qp-modal-box">
+    <div class="qp-modal-title">⚖️ 体重を記録</div>
+    <div class="qp-modal-row">
+      <label>時間帯</label>
+      <select id="weightTimeOfDay">
+        <option value="朝">朝</option>
+        <option value="夜">夜</option>
+      </select>
+    </div>
+    <div class="qp-modal-row">
+      <label>体重</label>
+      <input type="number" id="weightValue" step="0.1" min="20" max="300" placeholder="70.5" />
+      <span style="font-size:14px;color:var(--text-secondary);flex-shrink:0;margin-left:4px">kg</span>
+    </div>
+    <div class="qp-modal-actions">
+      <button class="cancel" onclick="closeWeightModal()">キャンセル</button>
+      <button class="submit" onclick="submitQuickWeight()">記録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 歩数クイック入力モーダル -->
+<div class="qp-modal" id="stepsModal" style="display:none" onclick="if(event.target===this)closeStepsModal()">
+  <div class="qp-modal-box">
+    <div class="qp-modal-title">👟 歩数を記録</div>
+    <div class="qp-modal-row">
+      <label>歩数</label>
+      <input type="number" id="stepsValue" step="100" min="0" max="100000" placeholder="8000" />
+      <span style="font-size:14px;color:var(--text-secondary);flex-shrink:0;margin-left:4px">歩</span>
+    </div>
+    <div class="qp-modal-actions">
+      <button class="cancel" onclick="closeStepsModal()">キャンセル</button>
+      <button class="submit" onclick="submitQuickSteps()">記録する</button>
+    </div>
+  </div>
 </div>
 
 <script src="/static/common.js"></script>
@@ -423,6 +528,7 @@ async function refreshDashboard() {
     const todayData = await todayRes.json();
     const settings = await settRes.json();
     updateDashboard(todayData, settings);
+    loadQuickPalette();
   } catch (_) {}
 }
 
@@ -843,6 +949,83 @@ function appendError(msg) {
 function scrollBottom() {
   const m = document.getElementById('messages');
   m.scrollTop = m.scrollHeight;
+}
+
+// ── クイックパレット ──────────────────────────────────────────────────────────
+async function loadQuickPalette() {
+  try {
+    const res = await fetch('/api/quick-entries');
+    if (!res.ok) return;
+    const data = await res.json();
+    const chips = document.getElementById('qpChips');
+    const palette = document.getElementById('quickPalette');
+    let html = '<button class="qp-chip action" onclick="openWeightModal()">⚖️ 体重</button>';
+    html += '<button class="qp-chip action" onclick="openStepsModal()">👟 歩数</button>';
+    ['朝食', '昼食', '夕食', '間食'].forEach(function(m) {
+      html += '<button class="qp-chip meal" onclick="sendQuick(this)" data-text="' + m + '">' + m + '</button>';
+    });
+    for (const f of (data.favorites || [])) {
+      const attr = escHtml(f.keyword);
+      html += '<button class="qp-chip fav" onclick="sendQuick(this)" data-text="' + attr + '">★ ' + attr + '</button>';
+    }
+    const favSet = new Set((data.favorites || []).map(function(f) { return f.keyword; }));
+    for (const m of (data.frequent || [])) {
+      if (!favSet.has(m.description)) {
+        const attr = escHtml(m.description);
+        html += '<button class="qp-chip" onclick="sendQuick(this)" data-text="' + attr + '">' + attr + '</button>';
+      }
+    }
+    chips.innerHTML = html;
+    palette.style.display = 'block';
+  } catch (_) {}
+}
+
+function sendQuick(el) {
+  const val = el.dataset.text;
+  const inp = document.getElementById('textInput');
+  const cur = inp.value.trimEnd();
+  inp.value = cur ? cur + '、' + val : val;
+  inp.dispatchEvent(new Event('input'));
+  inp.focus();
+}
+
+// ── 体重クイック入力 ──────────────────────────────────────────────────────────
+function openWeightModal() {
+  document.getElementById('weightValue').value = '';
+  document.getElementById('weightModal').style.display = 'flex';
+  setTimeout(function() { document.getElementById('weightValue').focus(); }, 100);
+}
+
+function closeWeightModal() {
+  document.getElementById('weightModal').style.display = 'none';
+}
+
+function submitQuickWeight() {
+  const val = parseFloat(document.getElementById('weightValue').value);
+  if (!val || val < 20 || val > 300) { return; }
+  const tod = document.getElementById('weightTimeOfDay').value;
+  closeWeightModal();
+  document.getElementById('textInput').value = tod + 'の体重 ' + val + 'kg';
+  sendMessage();
+}
+
+// ── 歩数クイック入力 ──────────────────────────────────────────────────────────
+function openStepsModal() {
+  document.getElementById('stepsValue').value = '';
+  document.getElementById('stepsModal').style.display = 'flex';
+  setTimeout(function() { document.getElementById('stepsValue').focus(); }, 100);
+}
+
+function closeStepsModal() {
+  document.getElementById('stepsModal').style.display = 'none';
+}
+
+function submitQuickSteps() {
+  const val = parseInt(document.getElementById('stepsValue').value);
+  if (!val || val < 0 || val > 100000) { return; }
+  closeStepsModal();
+  document.getElementById('textInput').value = '今日の歩数 ' + val + '歩';
+  sendMessage();
 }
 
 // ── パスワード入力でEnter ────────────────────────────────────────────────────
