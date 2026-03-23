@@ -1,4 +1,6 @@
+import hmac
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,6 +26,14 @@ sessions: set[str] = set()
 conversation_history: list[dict] = []
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# ── ログインレート制限 ─────────────────────────────────────────────────────────
+_login_attempts: dict[str, list[float]] = {}
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW_SEC = 300  # 5分間
+
+# ── Cookie設定 ────────────────────────────────────────────────────────────────
+SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() == "true"
 
 
 # ── アプリ初期化 ───────────────────────────────────────────────────────────────
@@ -88,15 +98,38 @@ class LoginRequest(BaseModel):
 
 
 @app.post("/api/login")
-async def login(body: LoginRequest):
+async def login(request: Request, body: LoginRequest):
+    # ── S2: レート制限 ─────────────────────────────────────────────────────────
+    # X-Forwarded-For（Cloudflare Tunnel等のプロキシ経由）を優先
+    forwarded = request.headers.get("x-forwarded-for")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+    now = time.time()
+    # 直近5分以内の失敗記録のみ保持
+    attempts = [t for t in _login_attempts.get(client_ip, []) if now - t < LOGIN_WINDOW_SEC]
+    if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="試行回数が上限に達しました。しばらく待ってから再試行してください。")
+
+    # ── S1: タイミング攻撃対策 ────────────────────────────────────────────────
     correct = database.get_setting("app_password") or os.getenv("APP_PASSWORD", "1234")
-    if body.password != correct:
+    if not hmac.compare_digest(body.password.encode(), correct.encode()):
+        attempts.append(now)
+        _login_attempts[client_ip] = attempts
         raise HTTPException(status_code=401, detail="パスワードが違います")
+
+    # 認証成功: カウンタをクリア
+    _login_attempts.pop(client_ip, None)
 
     sid = str(uuid.uuid4())
     sessions.add(sid)
     resp = JSONResponse({"success": True})
-    resp.set_cookie("session_id", sid, httponly=True, max_age=86400 * 30, samesite="lax")
+    # ── S3+S4: SameSite=strict、SECURE_COOKIEが有効な場合のみsecure=True ─────
+    resp.set_cookie(
+        "session_id", sid,
+        httponly=True,
+        max_age=86400 * 30,
+        samesite="strict",
+        secure=SECURE_COOKIE,
+    )
     return resp
 
 

@@ -95,6 +95,13 @@ def init_db():
             );
         """)
 
+        # インデックス（既存DBでも安全に追加）
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_meals_date    ON meals(meal_date);
+            CREATE INDEX IF NOT EXISTS idx_weight_date   ON weight_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_steps_date    ON steps_logs(log_date);
+        """)
+
         # 初期設定
         conn.executemany(
             "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)",
