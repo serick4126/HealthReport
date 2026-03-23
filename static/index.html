@@ -64,7 +64,7 @@
     .message.ai .bubble li { margin-bottom: 2px; }
     .message.ai .bubble strong { font-weight: 700; }
     .message.ai .bubble code {
-      background: #f2f2f7;
+      background: var(--bg);
       border-radius: 4px;
       padding: 1px 4px;
       font-size: 14px;
@@ -87,7 +87,7 @@
       padding: 12px 16px;
       border: 1.5px solid var(--border);
       border-radius: 12px;
-      background: #fff;
+      background: var(--card-bg);
       text-align: left;
       cursor: pointer;
       font-size: 15px;
@@ -97,7 +97,7 @@
       width: 100%;
     }
     .choice-btn:active,
-    .choice-btn:hover { background: #f0f0f5; border-color: var(--accent); }
+    .choice-btn:hover { background: var(--bg); border-color: var(--accent); }
     .choice-btn.no-match {
       color: var(--text-secondary);
       border-style: dashed;
@@ -169,7 +169,7 @@
       justify-content: center;
       border-radius: 50%;
     }
-    .attach-btn:active { background: #e5e5ea; }
+    .attach-btn:active { background: var(--toggle-off); }
 
     .text-input {
       flex: 1;
@@ -184,6 +184,7 @@
       line-height: 1.45;
       font-family: inherit;
       background: var(--bg);
+      color: var(--text-primary);
       overflow-y: auto;
     }
     .text-input:focus { border-color: var(--accent); }
@@ -250,14 +251,14 @@
       padding: 5px 14px;
       border: 1px solid var(--border);
       border-radius: 10px;
-      background: #fff;
+      background: var(--card-bg);
       font-size: 13px;
       cursor: pointer;
       color: var(--text-secondary);
       transition: opacity 0.5s;
       font-family: inherit;
     }
-    .undo-btn:hover { background: #f0f0f5; color: var(--accent); }
+    .undo-btn:hover { background: var(--bg); color: var(--accent); }
     .undo-btn.fading { opacity: 0; pointer-events: none; }
 
     /* ── ログイン画面 ── */
@@ -271,7 +272,7 @@
       z-index: 100;
     }
     .login-box {
-      background: #fff;
+      background: var(--card-bg);
       border-radius: 20px;
       padding: 36px 32px;
       width: min(340px, 90vw);
@@ -291,6 +292,8 @@
       letter-spacing: 6px;
       outline: none;
       transition: border-color 0.2s;
+      background: var(--bg);
+      color: var(--text-primary);
     }
     .login-input:focus { border-color: var(--accent); }
     .login-btn {
@@ -323,7 +326,7 @@
       user-select: none;
       gap: 8px;
     }
-    .dash-toggle-row:active { background: #f0f0f5; }
+    .dash-toggle-row:active { background: var(--bg); }
     .dash-date { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
     .dash-compact { font-size: 12px; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dash-arrow { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
@@ -390,7 +393,7 @@
       display: flex; align-items: center; justify-content: center; z-index: 200;
     }
     .qp-modal-box {
-      background: #fff; border-radius: 16px; padding: 24px 20px;
+      background: var(--card-bg); border-radius: 16px; padding: 24px 20px;
       width: min(320px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
     }
     .qp-modal-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; text-align: center; }
@@ -400,6 +403,7 @@
     .qp-modal-row select {
       flex: 1; padding: 8px 10px; border: 1px solid var(--border);
       border-radius: 8px; font-size: 16px; outline: none;
+      background: var(--bg); color: var(--text-primary);
     }
     .qp-modal-row input[type=number]:focus,
     .qp-modal-row select:focus { border-color: var(--accent); }

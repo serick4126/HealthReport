@@ -75,6 +75,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+input, select, textarea, button { color: inherit; font-family: inherit; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
@@ -115,8 +116,8 @@ body {
   align-items: center;
   gap: 3px;
 }
-.nav-btn:active { background: #e5e5ea; }
-.nav-btn.current { background: var(--bg); color: #555; pointer-events: none; border-color: transparent; }
+.nav-btn:active { background: var(--toggle-off); }
+.nav-btn.current { background: var(--bg); color: var(--text-secondary); pointer-events: none; border-color: transparent; }
 
 @media (max-width: 480px) {
   .header-title { display: none; }
@@ -141,7 +142,7 @@ body {
 .modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
 .modal-row input, .modal-row select, .modal-row textarea {
   width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-  border-radius: 8px; font-size: 15px; background: var(--bg); font-family: inherit;
+  border-radius: 8px; font-size: 15px; background: var(--bg); color: var(--text-primary); font-family: inherit;
 }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 .modal-actions button {

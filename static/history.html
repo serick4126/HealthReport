@@ -78,10 +78,10 @@
       display: inline-flex; align-items: center; gap: 4px;
     }
     .action-btn:hover { background: var(--bg); }
-    .action-btn.danger { color: var(--danger); border-color: #ffd0ce; }
-    .action-btn.danger:hover { background: #fff0ef; }
-    .action-btn.photo { color: var(--accent); border-color: #c5deff; }
-    .action-btn.photo:hover { background: #eaf3ff; }
+    .action-btn.danger { color: var(--danger); border-color: var(--danger); }
+    .action-btn.danger:hover { background: var(--bg); }
+    .action-btn.photo { color: var(--accent); border-color: var(--accent); }
+    .action-btn.photo:hover { background: var(--bg); }
     /* カロリーバー */
     .empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); font-size: 15px; }
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
@@ -100,8 +100,8 @@
       z-index: 200; display: flex; align-items: center; justify-content: center;
     }
     .saving-box {
-      background: #fff; border-radius: 12px; padding: 20px 32px;
-      font-size: 15px; color: #333;
+      background: var(--card-bg); border-radius: 12px; padding: 20px 32px;
+      font-size: 15px;
     }
   </style>
 </head>
