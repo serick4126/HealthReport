@@ -243,6 +243,23 @@
       padding: 6px;
     }
 
+    /* 取り消しボタン */
+    .undo-btn {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 5px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: opacity 0.5s;
+      font-family: inherit;
+    }
+    .undo-btn:hover { background: #f0f0f5; color: var(--accent); }
+    .undo-btn.fading { opacity: 0; pointer-events: none; }
+
     /* ── ログイン画面 ── */
     .login-overlay {
       position: fixed;
@@ -838,6 +855,12 @@ async function sendMessage() {
           showChoiceButtons(aiMsgEl, data.question, data.options);
           scrollBottom();
 
+        } else if (data.type === 'record_done') {
+          // 取り消しボタンを現在のAIバブルに追加
+          if (aiMsgEl) {
+            addUndoButton(aiMsgEl, data.record_type, data.record_id);
+          }
+
         } else if (data.type === 'done') {
           if (typingEl.parentElement) typingEl.remove();
           break;
@@ -944,6 +967,48 @@ function appendError(msg) {
   div.textContent = '⚠️ ' + msg;
   wrap.appendChild(div);
   scrollBottom();
+}
+
+// ── 取り消しボタン ────────────────────────────────────────────────────────────
+function addUndoButton(msgEl, recordType, recordId) {
+  const bubble = msgEl.querySelector('.bubble');
+  if (!bubble) return;
+  const btn = document.createElement('button');
+  btn.className = 'undo-btn';
+  btn.textContent = '↩ 取り消し';
+  btn.onclick = function() { undoRecord(recordType, recordId, btn); };
+  bubble.appendChild(document.createElement('br'));
+  bubble.appendChild(btn);
+  scrollBottom();
+  // 30秒後にフェードアウト
+  setTimeout(function() {
+    btn.classList.add('fading');
+    setTimeout(function() { btn.remove(); }, 600);
+  }, 30000);
+}
+
+async function undoRecord(recordType, recordId, btn) {
+  btn.disabled = true;
+  btn.textContent = '取り消し中...';
+  const pathMap = { meal: 'meals', weight: 'weight', steps: 'steps' };
+  const path = pathMap[recordType];
+  if (!path) return;
+  try {
+    const res = await fetch('/api/' + path + '/' + recordId, { method: 'DELETE' });
+    if (!res.ok) throw new Error();
+    btn.textContent = '取り消しました';
+    btn.style.color = '#8e8e93';
+    btn.style.cursor = 'default';
+    btn.onclick = null;
+    refreshDashboard();
+    setTimeout(function() {
+      btn.classList.add('fading');
+      setTimeout(function() { btn.remove(); }, 600);
+    }, 2000);
+  } catch(_) {
+    btn.textContent = '取り消し失敗';
+    btn.disabled = false;
+  }
 }
 
 function scrollBottom() {

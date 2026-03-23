@@ -388,6 +388,7 @@ async def execute_tool(name: str, input_data: dict) -> dict:
             return {
                 "success": True,
                 "tool": "record_steps",
+                "id": result["id"],
                 "steps": input_data["steps"],
                 "updated": result["updated"],
                 "previous_steps": result.get("previous_steps"),
@@ -734,6 +735,35 @@ async def stream_chat(
                     "tool_use_id": tc["id"],
                     "content": json.dumps(result, ensure_ascii=False),
                 })
+                record_done_event = json.dumps(
+                    {"type": "record_done", "record_type": "meal", "record_id": meal_id},
+                    ensure_ascii=False,
+                )
+                yield f"data: {record_done_event}\n\n"
+
+            elif tc["name"] == "record_weight" and result.get("success"):
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tc["id"],
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+                record_done_event = json.dumps(
+                    {"type": "record_done", "record_type": "weight", "record_id": result["weight_id"]},
+                    ensure_ascii=False,
+                )
+                yield f"data: {record_done_event}\n\n"
+
+            elif tc["name"] == "record_steps" and result.get("success"):
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tc["id"],
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+                record_done_event = json.dumps(
+                    {"type": "record_done", "record_type": "steps", "record_id": result["id"]},
+                    ensure_ascii=False,
+                )
+                yield f"data: {record_done_event}\n\n"
 
             else:
                 tool_results.append({
