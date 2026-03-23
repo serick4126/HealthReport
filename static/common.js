@@ -41,6 +41,17 @@ function escHtml(s) {
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// ── テーマ初期化 ──────────────────────────────────────────────────────────────
+async function initTheme() {
+  try {
+    var r = await fetch('/api/settings');
+    if (!r.ok) return;
+    var s = await r.json();
+    var theme = s.theme || 'auto';
+    document.documentElement.dataset.theme = theme;
+  } catch (_) {}
+}
+
 // ── 認証チェック（未認証なら / へリダイレクト）──────────────────────────────
 async function checkAuthOrRedirect() {
   try {

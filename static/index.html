@@ -324,7 +324,7 @@
       gap: 8px;
     }
     .dash-toggle-row:active { background: #f0f0f5; }
-    .dash-date { font-size: 13px; font-weight: 700; color: #1c1c1e; white-space: nowrap; }
+    .dash-date { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
     .dash-compact { font-size: 12px; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dash-arrow { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
 
@@ -339,7 +339,7 @@
     .dash-pct { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
 
     /* 体重・歩数行 */
-    .dash-meta-row { font-size: 12px; color: #1c1c1e; margin-bottom: 5px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .dash-meta-row { font-size: 12px; color: var(--text-primary); margin-bottom: 5px; display: flex; gap: 12px; flex-wrap: wrap; }
     .dash-meta-item { white-space: nowrap; }
 
     /* 食事区分行 */
@@ -378,9 +378,9 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .qp-chip:active { background: #e5e5ea; }
-    .qp-chip.meal { border-color: #a0a0a8; background: #f2f2f7; font-weight: 600; }
-    .qp-chip.fav { border-color: #f5a623; background: #fffbf0; }
+    .qp-chip:active { background: var(--toggle-off); }
+    .qp-chip.meal { border-color: var(--text-secondary); background: var(--bg); font-weight: 600; }
+    .qp-chip.fav { border-color: #f5a623; background: var(--bg); }
     .qp-chip.action { background: var(--accent); color: #fff; border-color: var(--accent); }
     .qp-chip.action:active { opacity: 0.8; }
 
@@ -408,7 +408,7 @@
       flex: 1; padding: 11px; border-radius: 10px; border: none;
       font-size: 15px; font-weight: 600; cursor: pointer;
     }
-    .qp-modal-actions .cancel { background: #e5e5ea; color: #1c1c1e; }
+    .qp-modal-actions .cancel { background: var(--toggle-off); color: var(--text-primary); }
     .qp-modal-actions .submit { background: var(--accent); color: #fff; }
     .qp-modal-actions .submit:active { opacity: 0.8; }
   </style>
@@ -520,6 +520,7 @@ marked.setOptions({ breaks: true, gfm: true });
 
 // ナビバー初期化
 initNav('chat');
+initTheme();
 
 // ── 状態 ─────────────────────────────────────────────────────────────────────
 let pendingImages = []; // { base64: string, previewUrl: string }

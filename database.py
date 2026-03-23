@@ -125,6 +125,7 @@ def init_db():
                 ("cache_ttl", "5min"),
                 ("use_food_defaults", "true"),
                 ("auto_save_food_defaults", "true"),
+                ("theme", "auto"),
             ],
         )
 

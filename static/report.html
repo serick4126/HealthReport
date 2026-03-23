@@ -11,14 +11,14 @@
     .section-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
     select {
       width: 100%; padding: 10px 12px; border: 1px solid var(--border);
-      border-radius: 8px; font-size: 15px; background: var(--bg); color: #1c1c1e; outline: none;
+      border-radius: 8px; font-size: 15px; background: var(--bg); color: var(--text-primary); outline: none;
     }
     .btn-row { display: flex; gap: 10px; margin-top: 12px; }
     .btn {
       flex: 1; padding: 12px; border-radius: 10px; border: none;
       font-size: 15px; font-weight: 600; cursor: pointer;
     }
-    .btn-preview { background: #e5e5ea; color: #1c1c1e; }
+    .btn-preview { background: var(--toggle-off); color: var(--text-primary); }
     .btn-pdf { background: var(--accent); color: #fff; }
     .btn:disabled { opacity: 0.4; cursor: default; }
     .btn:active:not(:disabled) { opacity: 0.8; }
@@ -130,6 +130,7 @@
   <script src="/static/common.js"></script>
   <script>
     initNav('report');
-  </script>
+    initTheme();
+</script>
 </body>
 </html>

@@ -21,7 +21,7 @@
       background: var(--card-bg); border-radius: var(--radius);
       border: 1px solid var(--border); padding: 16px; margin-bottom: 16px;
     }
-    .chart-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #1c1c1e; }
+    .chart-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--bubble-ai-text, #1c1c1e); }
     .chart-wrap { position: relative; height: 200px; }
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
     .summary-row {
@@ -148,11 +148,17 @@
       const period = data.period || labels.length;
       const isLong = period > 60;
       const xMaxTicks = period <= 14 ? period : period <= 31 ? 10 : period <= 90 ? 12 : 13;
+
+      // CSS変数からダークモード対応の色を取得
+      const rootStyle = getComputedStyle(document.documentElement);
+      const chartTextColor = rootStyle.getPropertyValue('--text-secondary').trim() || '#8e8e93';
+      const chartGridColor = rootStyle.getPropertyValue('--border').trim() || '#e5e5ea';
+
       const defaults = { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } } },
+        plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12, color: chartTextColor } } },
         scales: {
-          x: { ticks: { font: { size: 11 }, maxTicksLimit: xMaxTicks, maxRotation: period > 30 ? 45 : 0 } },
-          y: { ticks: { font: { size: 11 } } }
+          x: { ticks: { font: { size: 11 }, maxTicksLimit: xMaxTicks, maxRotation: period > 30 ? 45 : 0, color: chartTextColor }, grid: { color: chartGridColor } },
+          y: { ticks: { font: { size: 11 }, color: chartTextColor }, grid: { color: chartGridColor } }
         }
       };
 
@@ -329,6 +335,7 @@
   <script src="/static/common.js"></script>
   <script>
     initNav('stats');
-  </script>
+    initTheme();
+</script>
 </body>
 </html>
