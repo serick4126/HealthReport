@@ -4,45 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>集計・グラフ</title>
+  <link rel="stylesheet" href="/static/common.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
-    :root {
-      --bg: #f2f2f7;
-      --header-bg: rgba(255,255,255,0.85);
-      --card-bg: #ffffff;
-      --border: #e5e5ea;
-      --accent: #007aff;
-      --text-secondary: #8e8e93;
-      --radius: 12px;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
-      background: var(--bg); min-height: 100dvh;
-    }
-    .header {
-      position: sticky; top: 0; z-index: 10;
-      background: var(--header-bg); backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .header-title { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
-    .header-nav { display: flex; gap: 6px; flex-shrink: 0; }
-    .nav-btn {
-      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
-      background: transparent; font-size: 13px; cursor: pointer; color: var(--accent);
-      text-decoration: none; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
-    }
-    .nav-btn:active { background: #e5e5ea; }
-    .nav-btn.current { background: var(--bg); color: #555; pointer-events: none; border-color: transparent; }
-    @media (max-width: 480px) {
-      .header-title { display: none; }
-      .nl { display: none; }
-      .header-nav { gap: 4px; }
-      .nav-btn { padding: 6px 8px; }
-    }
     .period-bar {
       display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap;
       border-bottom: 1px solid var(--border); background: var(--header-bg);
@@ -69,42 +33,15 @@
     }
     .summary-val { font-size: 22px; font-weight: 700; color: var(--accent); }
     .summary-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
-    /* モーダル */
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-      z-index: 100; display: flex; align-items: center; justify-content: center;
-    }
-    .modal-box {
-      background: var(--card-bg); border-radius: 16px; padding: 24px;
-      width: min(360px, 90vw); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    }
-    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+    /* モーダルサイズのみ上書き（stats固有: 小さめサイズ） */
+    .modal-box { width: min(360px, 90vw); max-height: unset; }
     .modal-row { margin-bottom: 14px; }
-    .modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
-    .modal-row input[type=date] {
-      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-      border-radius: 8px; font-size: 15px; background: var(--bg);
-    }
-    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-    .modal-actions button {
-      padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer;
-      border: 1px solid var(--border); background: transparent; color: var(--accent);
-    }
-    .modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-title">📊 集計・グラフ</div>
-    <div class="header-nav">
-      <a href="/" class="nav-btn" title="チャット">💬<span class="nl"> チャット</span></a>
-      <a href="/history" class="nav-btn" title="記録履歴">📋<span class="nl"> 履歴</span></a>
-      <span class="nav-btn current" title="集計・グラフ">📊<span class="nl"> 集計</span></span>
-      <a href="/report" class="nav-btn" title="レポート出力">📄<span class="nl"> レポート</span></a>
-      <a href="/settings" class="nav-btn" title="設定">⚙️<span class="nl"> 設定</span></a>
-      <button class="nav-btn" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>
-      <button class="nav-btn" onclick="doLogout()" title="ログアウト">🚪<span class="nl"> ログアウト</span></button>
-    </div>
+    <div class="header-nav" id="headerNav"></div>
   </div>
   <div class="period-bar">
     <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
@@ -388,17 +325,10 @@
     }
 
     load(7, null, null);
-
-    // ── 共通：会話リセット・ログアウト ────────────────────────────────────────
-    async function clearHistory() {
-      if (!confirm('会話履歴をリセットしますか？（記録済みのデータは消えません）')) return;
-      await fetch('/api/chat/history', { method: 'DELETE' });
-      location.href = '/';
-    }
-    async function doLogout() {
-      await fetch('/api/logout', { method: 'POST' });
-      location.href = '/';
-    }
+  </script>
+  <script src="/static/common.js"></script>
+  <script>
+    initNav('stats');
   </script>
 </body>
 </html>

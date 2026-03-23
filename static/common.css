@@ -1,0 +1,95 @@
+/* HealthReport 共通スタイルシート */
+
+:root {
+  --bg: #f2f2f7;
+  --header-bg: rgba(255,255,255,0.85);
+  --card-bg: #ffffff;
+  --bubble-user: #007aff;
+  --bubble-user-text: #fff;
+  --bubble-ai: #ffffff;
+  --bubble-ai-text: #1c1c1e;
+  --input-bg: #ffffff;
+  --border: #e5e5ea;
+  --accent: #007aff;
+  --success: #34c759;
+  --danger: #ff3b30;
+  --error-color: #ff3b30;
+  --text-secondary: #8e8e93;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  background: var(--bg);
+  min-height: 100dvh;
+}
+
+/* ── ヘッダー ── */
+.header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--header-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.header-title {
+  font-size: 17px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; flex-shrink: 1;
+}
+.header-nav { display: flex; gap: 6px; flex-shrink: 0; }
+.nav-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--accent);
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.nav-btn:active { background: #e5e5ea; }
+.nav-btn.current { background: var(--bg); color: #555; pointer-events: none; border-color: transparent; }
+
+@media (max-width: 480px) {
+  .header-title { display: none; }
+  .nl { display: none; }
+  .header-nav { gap: 4px; }
+  .nav-btn { padding: 6px 8px; }
+}
+
+/* ── モーダル共通 ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 100; display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.modal-box {
+  background: var(--card-bg); border-radius: 16px; padding: 24px;
+  width: min(420px, 100%); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  max-height: 90dvh; overflow-y: auto;
+}
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+.modal-row { margin-bottom: 12px; }
+.modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.modal-row input, .modal-row select, .modal-row textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 15px; background: var(--bg); font-family: inherit;
+}
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.modal-actions button {
+  padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--accent);
+}
+.modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.modal-actions button.danger-btn { background: var(--danger); color: #fff; border-color: var(--danger); }

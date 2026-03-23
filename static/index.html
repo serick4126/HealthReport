@@ -4,73 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>食事記録アシスタント</title>
+  <link rel="stylesheet" href="/static/common.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
-    :root {
-      --bg: #f2f2f7;
-      --header-bg: rgba(255,255,255,0.85);
-      --bubble-user: #007aff;
-      --bubble-user-text: #fff;
-      --bubble-ai: #ffffff;
-      --bubble-ai-text: #1c1c1e;
-      --input-bg: #ffffff;
-      --border: #e5e5ea;
-      --accent: #007aff;
-      --success: #34c759;
-      --error-color: #ff3b30;
-      --text-secondary: #8e8e93;
-      --radius: 18px;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
+    /* index固有: bodyをflex列レイアウト・スクロール禁止 */
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
-      background: var(--bg);
       height: 100dvh;
+      min-height: unset;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-    }
-
-    /* ── ヘッダー ── */
-    .header {
-      background: var(--header-bg);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 16px;
-      padding-top: max(10px, env(safe-area-inset-top));
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-      z-index: 10;
-    }
-    .header-title { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
-    .header-nav { display: flex; gap: 6px; flex-shrink: 0; }
-    .nav-btn {
-      padding: 5px 10px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: transparent;
-      font-size: 13px;
-      cursor: pointer;
-      color: var(--accent);
-      white-space: nowrap;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-    }
-    .nav-btn:active { background: #e5e5ea; }
-    .nav-btn.current { background: var(--bg); color: #555; pointer-events: none; border-color: transparent; }
-    @media (max-width: 480px) {
-      .header-title { display: none; }
-      .nl { display: none; }
-      .header-nav { gap: 4px; }
-      .nav-btn { padding: 6px 8px; }
     }
 
     /* ── メッセージエリア ── */
@@ -363,15 +307,7 @@
 <!-- メインUI -->
 <div class="header">
   <div class="header-title">🍱 食事記録アシスタント</div>
-  <div class="header-nav">
-    <span class="nav-btn current" title="チャット">💬<span class="nl"> チャット</span></span>
-    <a href="/history" class="nav-btn" title="記録履歴">📋<span class="nl"> 履歴</span></a>
-    <a href="/stats" class="nav-btn" title="集計・グラフ">📊<span class="nl"> 集計</span></a>
-    <a href="/report" class="nav-btn" title="レポート出力">📄<span class="nl"> レポート</span></a>
-    <a href="/settings" class="nav-btn" title="設定">⚙️<span class="nl"> 設定</span></a>
-    <button class="nav-btn" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>
-    <button class="nav-btn" onclick="doLogout()" title="ログアウト">🚪<span class="nl"> ログアウト</span></button>
-  </div>
+  <div class="header-nav" id="headerNav"></div>
 </div>
 
 <div class="messages" id="messages">
@@ -393,9 +329,13 @@
   <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="送信">↑</button>
 </div>
 
+<script src="/static/common.js"></script>
 <script>
 // ── 設定 ─────────────────────────────────────────────────────────────────────
 marked.setOptions({ breaks: true, gfm: true });
+
+// ナビバー初期化
+initNav('chat');
 
 // ── 状態 ─────────────────────────────────────────────────────────────────────
 let pendingImages = []; // { base64: string, previewUrl: string }
@@ -484,6 +424,7 @@ async function doLogin() {
   }
 }
 
+// index.html固有: ログアウトはリダイレクトせずログインオーバーレイを表示
 async function doLogout() {
   await fetch('/api/logout', { method: 'POST' });
   document.getElementById('loginOverlay').style.display = 'flex';
@@ -492,6 +433,7 @@ async function doLogout() {
 }
 
 // ── 会話リセット ──────────────────────────────────────────────────────────────
+// index.html固有: リセット後はDOMをクリアする（リダイレクトしない）
 async function clearHistory() {
   if (!confirm('会話履歴をリセットしますか？（記録済みのデータは消えません）')) return;
   await fetch('/api/chat/history', { method: 'DELETE' });
@@ -745,11 +687,6 @@ function appendError(msg) {
 function scrollBottom() {
   const m = document.getElementById('messages');
   m.scrollTop = m.scrollHeight;
-}
-
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── パスワード入力でEnter ────────────────────────────────────────────────────
