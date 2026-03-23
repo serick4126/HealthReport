@@ -6,6 +6,7 @@
   <title>集計・グラフ</title>
   <link rel="stylesheet" href="/static/common.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
     .period-bar {
       display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap;
@@ -72,6 +73,10 @@
   </div>
 
   <script>
+    // datalabels プラグインを登録・デフォルト無効（必要なチャートのみ有効化）
+    Chart.register(ChartDataLabels);
+    Chart.defaults.plugins.datalabels.display = false;
+
     let charts = {};
 
     function destroyCharts() {
@@ -277,7 +282,22 @@
             backgroundColor: 'rgba(90,200,250,0.7)', borderColor: '#5ac8fa', borderWidth: 1,
           }]
         },
-        options: { ...defaults, scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: true } } }
+        options: {
+          ...defaults,
+          layout: { padding: { top: 20 } },
+          plugins: {
+            ...defaults.plugins,
+            datalabels: {
+              display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] != null; },
+              anchor: 'end',
+              align: 'top',
+              color: chartTextColor,
+              font: { size: 10, weight: '600' },
+              formatter: function(v) { return v != null ? v.toLocaleString() : ''; },
+            }
+          },
+          scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: true } }
+        }
       });
 
       // PFCバランス
@@ -291,7 +311,33 @@
             { label: '炭水化物(g)',   data: data.carbs,   backgroundColor: 'rgba(0,122,255,0.8)',  stack: 'pfc' },
           ]
         },
-        options: { ...defaults, scales: { ...defaults.scales, x: { ...defaults.scales.x, stacked: true }, y: { ...defaults.scales.y, stacked: true, beginAtZero: true } } }
+        options: {
+          ...defaults,
+          plugins: {
+            ...defaults.plugins,
+            datalabels: {
+              display: function(ctx) {
+                var v = ctx.dataset.data[ctx.dataIndex];
+                return v != null && v >= 5;
+              },
+              anchor: 'center',
+              align: 'center',
+              color: '#fff',
+              font: { size: 10, weight: '600' },
+              textAlign: 'center',
+              formatter: function(v, ctx) {
+                if (v == null || v === 0) return '';
+                var i = ctx.dataIndex;
+                var datasets = ctx.chart.data.datasets;
+                var total = datasets.reduce(function(s, ds) { return s + (ds.data[i] || 0); }, 0);
+                if (total === 0) return '';
+                var pct = Math.round(v / total * 100);
+                return v + 'g\n(' + pct + '%)';
+              },
+            }
+          },
+          scales: { ...defaults.scales, x: { ...defaults.scales.x, stacked: true }, y: { ...defaults.scales.y, stacked: true, beginAtZero: true } }
+        }
       });
     }
 
