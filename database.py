@@ -545,6 +545,24 @@ def delete_meal_image(image_id: int) -> bool:
     return cur.rowcount > 0
 
 
+def search_meals(query: str, limit: int = 50) -> list[dict]:
+    """食事記録をキーワード検索（description・notes の部分一致）"""
+    pattern = "%" + query + "%"
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, meal_date, meal_type, description,
+                   calories, protein, fat, carbs, sodium, notes
+            FROM meals
+            WHERE description LIKE ? OR notes LIKE ?
+            ORDER BY meal_date DESC, id DESC
+            LIMIT ?
+            """,
+            (pattern, pattern, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_history(
     days: int = 30,
     start_date: Optional[str] = None,

@@ -341,6 +341,14 @@ async def history_api(request: Request, days: int = 30, start: str = None, end: 
     return JSONResponse(database.get_history(days, start, end))
 
 
+@app.get("/api/history/search")
+async def search_history(request: Request, q: str = ""):
+    require_auth(request)
+    if not q.strip():
+        return JSONResponse([])
+    return JSONResponse(database.search_meals(q.strip()))
+
+
 @app.get("/api/stats")
 async def stats_api(request: Request, days: int = 7, start: str = None, end: str = None):
     require_auth(request)
