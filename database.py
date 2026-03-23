@@ -108,6 +108,7 @@ def init_db():
                 ("normal_model", "claude-sonnet-4-6"),
                 ("savings_model", "claude-haiku-4-5-20251001"),
                 ("cache_ttl", "5min"),
+                ("use_food_defaults", "true"),
                 ("auto_save_food_defaults", "true"),
             ],
         )

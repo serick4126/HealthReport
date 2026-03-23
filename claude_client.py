@@ -189,6 +189,32 @@ TOOLS: list[anthropic.types.ToolParam] = [
 ]
 
 
+# ── food_defaults スマートマッチング ───────────────────────────────────────────
+
+def _match_food_defaults(user_message: str, food_defaults: list[dict]) -> list[dict]:
+    """
+    ユーザーメッセージに含まれるキーワードに一致するfood_defaultsエントリを返す。
+    非AI・部分文字列マッチングのみ使用（トークン節約）。
+
+    重複除外: 他のマッチ済みキーワードのサブストリングになっている短いキーワードは除外する。
+    例: 「ヤクルト1000」にマッチした場合、「ヤクルト100」（サブストリング）は除外。
+    """
+    if not food_defaults:
+        return []
+    msg = user_message.lower()
+    matched = [fd for fd in food_defaults if fd["keyword"].lower() in msg]
+
+    # より長いマッチ済みキーワードに包含されている短いキーワードを除外
+    matched_kws = {fd["keyword"].lower() for fd in matched}
+    return [
+        fd for fd in matched
+        if not any(
+            fd["keyword"].lower() != other and fd["keyword"].lower() in other
+            for other in matched_kws
+        )
+    ]
+
+
 # ── システムプロンプト ──────────────────────────────────────────────────────────
 
 def build_system_prompt(savings_mode: bool = False, summary: str | None = None) -> list[dict]:
@@ -206,17 +232,6 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
     height_cm = database.get_setting("user_height_cm") or "160"
     user_notes = database.get_setting("user_notes") or ""
     cache_ttl = database.get_setting("cache_ttl") or "5min"
-
-    # 節約モードでは food_defaults をシステムプロンプトに含めない
-    if savings_mode:
-        fd_section = ""
-    else:
-        food_defaults = database.get_food_defaults()
-        fd_lines = "\n".join(
-            f"- {fd['keyword']}: {fd['description']}" + (f"（{fd['notes']}）" if fd.get("notes") else "")
-            for fd in food_defaults
-        ) if food_defaults else "（設定なし）"
-        fd_section = f"\n【食品デフォルト設定】\n以下の食品が報告された場合、設定値を自動適用（表記ゆれも対応）:\n{fd_lines}\n"
 
     # 会話サマリー（圧縮済み履歴）
     if summary is None:
@@ -293,7 +308,11 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 【食事提案】
 ユーザーが食事の提案を求めた場合のみ提案する。
 get_daily_summary で当日の記録を取得し、残りカロリーに基づいて3候補を提案する。
-{fd_section}
+
+【関連食品情報について】
+ユーザーメッセージに「【関連食品情報】」セクションが含まれる場合、その情報はユーザーが事前登録した食品データです。
+入力内容と関連すると判断した場合のみ使用してください。関連しない場合は無視して構いません。
+
 すべての返答を日本語で行うこと。"""
 
     # ── Block 2: キャッシュ対象外 ────────────────────────────────────────────
@@ -562,6 +581,25 @@ async def stream_chat(
     user_content.append({"type": "text", "text": user_message})
     conversation_history.append({"role": "user", "content": user_content})
     database.save_conversation_message("user", user_content)
+
+    # food_defaults スマートマッチング: 入力に関連するエントリのみをAIへ注入（DBには保存しない）
+    use_food_defaults = database.get_setting("use_food_defaults") != "false"
+    if use_food_defaults:
+        all_fds = database.get_food_defaults()
+        matched_fds = _match_food_defaults(user_message, all_fds)
+        if matched_fds:
+            fd_lines = "\n".join(
+                f"- {fd['keyword']}: {fd['description']}" + (f"（{fd['notes']}）" if fd.get("notes") else "")
+                for fd in matched_fds
+            )
+            fd_hint = (
+                "【関連食品情報（ユーザー登録済み）】\n"
+                f"{fd_lines}\n\n"
+            )
+            for item in conversation_history[-1]["content"]:
+                if item["type"] == "text":
+                    item["text"] = fd_hint + item["text"]
+                    break
 
     system_prompt = build_system_prompt(savings_mode=savings_mode)
 

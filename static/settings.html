@@ -232,10 +232,24 @@
             </div>
             <div class="row" style="justify-content:space-between">
               <div style="flex:1;margin-right:12px">
+                <div class="row-label" style="font-size:15px">食品デフォルト設定を参照する</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5">
+                  入力内容に一致する食品情報のみをAIに送信します。<br>
+                  通常モード・節約モードともに有効です
+                </div>
+              </div>
+              <div class="toggle-wrap">
+                <label class="toggle">
+                  <input type="checkbox" id="use_food_defaults" ${s.use_food_defaults !== 'false' ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row" style="justify-content:space-between">
+              <div style="flex:1;margin-right:12px">
                 <div class="row-label" style="font-size:15px">食品デフォルト自動登録</div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5">
-                  食事記録後に栄養データを自動保存します。<br>
-                  ⚠️ 登録件数が増えると毎回のトークン使用量が増加します
+                  食事記録後に栄養データを食品デフォルトに自動追加します
                 </div>
               </div>
               <div class="toggle-wrap">
@@ -399,6 +413,7 @@
         normal_model:       document.getElementById('normal_model').value,
         savings_model:      document.getElementById('savings_model').value,
         cache_ttl:          document.getElementById('cache_ttl').value,
+        use_food_defaults:       document.getElementById('use_food_defaults').checked ? 'true' : 'false',
         auto_save_food_defaults: document.getElementById('auto_save_food_defaults').checked ? 'true' : 'false',
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
