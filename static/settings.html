@@ -67,10 +67,36 @@
     .food-table .td-keyword { font-weight: 600; width: 30%; }
     .food-table .td-desc { color: #1c1c1e; }
     .food-table .td-notes { color: var(--text-secondary); font-size: 12px; }
-    .food-table .td-action { width: 36px; text-align: center; }
+    .food-table .td-action { width: 72px; text-align: center; white-space: nowrap; }
     .del-btn {
       background: none; border: none; cursor: pointer; font-size: 16px; color: var(--danger); padding: 2px 6px;
     }
+    .edit-btn {
+      background: none; border: none; cursor: pointer; font-size: 16px; color: var(--accent); padding: 2px 6px;
+    }
+    /* food-default 編集モーダル */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-box {
+      background: var(--card-bg); border-radius: 16px; padding: 24px;
+      width: min(420px, 100%); box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      max-height: 90dvh; overflow-y: auto;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+    .modal-row { margin-bottom: 12px; }
+    .modal-row label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+    .modal-row input, .modal-row textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 15px; background: var(--bg); font-family: inherit;
+    }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-actions button {
+      padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--accent);
+    }
+    .modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
     .add-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
     .add-row input {
       flex: 1; min-width: 80px; padding: 8px 10px; border: 1px solid var(--border);
@@ -132,6 +158,29 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <!-- food-default 編集モーダル -->
+  <div class="modal-overlay" id="fdEditModal" style="display:none" onclick="if(event.target===this)closeFdEditModal()">
+    <div class="modal-box">
+      <div class="modal-title">✏️ 食品デフォルトを編集</div>
+      <div class="modal-row">
+        <label>キーワード</label>
+        <input type="text" id="fdEditKeyword" />
+      </div>
+      <div class="modal-row">
+        <label>詳細</label>
+        <textarea id="fdEditDesc" rows="3"></textarea>
+      </div>
+      <div class="modal-row">
+        <label>メモ（任意）</label>
+        <input type="text" id="fdEditNotes" />
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeFdEditModal()">キャンセル</button>
+        <button class="primary" onclick="saveFdEdit()">保存</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     let foodDefaults = [];
@@ -351,7 +400,10 @@
                 <td class="td-keyword">${escHtml(f.keyword)}</td>
                 <td class="td-desc">${escHtml(f.description)}</td>
                 <td class="td-notes">${escHtml(f.notes || '')}</td>
-                <td class="td-action"><button class="del-btn" onclick="deleteFoodDefault('${escHtml(f.keyword)}')">🗑</button></td>
+                <td class="td-action">
+                  <button class="edit-btn" onclick="openFdEditModal('${escHtml(f.keyword)}')" title="編集">✏️</button>
+                  <button class="del-btn" onclick="deleteFoodDefault('${escHtml(f.keyword)}')" title="削除">🗑</button>
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -457,6 +509,44 @@
         showToast('追加しました ✓');
       } catch(e) {
         showToast('追加に失敗しました');
+      }
+    }
+
+    let fdEditOriginalKeyword = '';
+
+    function openFdEditModal(keyword) {
+      const entry = foodDefaults.find(f => f.keyword === keyword);
+      if (!entry) return;
+      fdEditOriginalKeyword = keyword;
+      document.getElementById('fdEditKeyword').value = entry.keyword;
+      document.getElementById('fdEditDesc').value = entry.description;
+      document.getElementById('fdEditNotes').value = entry.notes || '';
+      document.getElementById('fdEditModal').style.display = 'flex';
+    }
+
+    function closeFdEditModal() {
+      document.getElementById('fdEditModal').style.display = 'none';
+    }
+
+    async function saveFdEdit() {
+      const keyword = document.getElementById('fdEditKeyword').value.trim();
+      const desc = document.getElementById('fdEditDesc').value.trim();
+      const notes = document.getElementById('fdEditNotes').value.trim();
+      if (!keyword || !desc) { showToast('キーワードと詳細を入力してください'); return; }
+      try {
+        const res = await fetch(`/api/food-defaults/${encodeURIComponent(fdEditOriginalKeyword)}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ keyword, description: desc, notes }),
+        });
+        if (!res.ok) throw new Error();
+        const fd = await fetch('/api/food-defaults');
+        foodDefaults = await fd.json();
+        renderFoodTable();
+        closeFdEditModal();
+        showToast('更新しました ✓');
+      } catch(e) {
+        showToast('更新に失敗しました');
       }
     }
 

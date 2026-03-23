@@ -261,6 +261,16 @@ async def upsert_food_default(request: Request, body: FoodDefaultRequest):
     return JSONResponse({"success": True})
 
 
+@app.put("/api/food-defaults/{keyword}")
+async def edit_food_default(request: Request, keyword: str, body: FoodDefaultRequest):
+    require_auth(request)
+    # キーワードが変わった場合は旧エントリを削除してから新規作成
+    if keyword != body.keyword:
+        database.delete_food_default(keyword)
+    database.save_food_default(body.keyword, body.description, body.notes or None)
+    return JSONResponse({"success": True})
+
+
 @app.delete("/api/food-defaults/{keyword}")
 async def remove_food_default(request: Request, keyword: str):
     require_auth(request)
