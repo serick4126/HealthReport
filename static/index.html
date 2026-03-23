@@ -289,6 +289,50 @@
     }
     .login-btn:active { background: #005ec4; }
     .login-error { color: var(--error-color); font-size: 13px; margin-top: 10px; height: 18px; }
+
+    /* ── ダッシュボードバー ── */
+    .dashboard {
+      background: var(--input-bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .dash-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      cursor: pointer;
+      user-select: none;
+      gap: 8px;
+    }
+    .dash-toggle-row:active { background: #f0f0f5; }
+    .dash-date { font-size: 13px; font-weight: 700; color: #1c1c1e; white-space: nowrap; }
+    .dash-compact { font-size: 12px; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-arrow { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+
+    .dash-body { padding: 0 14px 8px; }
+
+    /* カロリー行 */
+    .dash-cal-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
+    .dash-cal-text { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .dash-bar-wrap { flex: 1; min-width: 60px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .dash-bar { height: 100%; border-radius: 3px; background: var(--success); transition: width 0.3s; }
+    .dash-bar.over { background: var(--error-color); }
+    .dash-pct { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+
+    /* 体重・歩数行 */
+    .dash-meta-row { font-size: 12px; color: #1c1c1e; margin-bottom: 5px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .dash-meta-item { white-space: nowrap; }
+
+    /* 食事区分行 */
+    .dash-meals-row { font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .dash-meal-chip { white-space: nowrap; }
+
+    @media (max-width: 480px) {
+      .dash-toggle-row { padding: 5px 10px; }
+      .dash-body { padding: 0 10px 6px; }
+    }
   </style>
 </head>
 <body>
@@ -308,6 +352,24 @@
 <div class="header">
   <div class="header-title">🍱 食事記録アシスタント</div>
   <div class="header-nav" id="headerNav"></div>
+</div>
+
+<!-- ダッシュボードバー -->
+<div class="dashboard" id="dashboard" style="display:none">
+  <div class="dash-toggle-row" onclick="toggleDashboard()">
+    <span class="dash-date" id="dashDate"></span>
+    <span class="dash-compact" id="dashCompact"></span>
+    <span class="dash-arrow" id="dashArrow">▾</span>
+  </div>
+  <div class="dash-body" id="dashBody">
+    <div class="dash-cal-row">
+      <span class="dash-cal-text" id="dashCalText"></span>
+      <div class="dash-bar-wrap"><div class="dash-bar" id="dashBar" style="width:0%"></div></div>
+      <span class="dash-pct" id="dashPct"></span>
+    </div>
+    <div class="dash-meta-row" id="dashMeta"></div>
+    <div class="dash-meals-row" id="dashMeals"></div>
+  </div>
 </div>
 
 <div class="messages" id="messages">
@@ -340,12 +402,105 @@ initNav('chat');
 // ── 状態 ─────────────────────────────────────────────────────────────────────
 let pendingImages = []; // { base64: string, previewUrl: string }
 let isStreaming = false;
+let dashExpanded = true;
+
+// ── ダッシュボード ────────────────────────────────────────────────────────────
+const MEAL_TYPES = [
+  { key: 'breakfast', label: '朝食' },
+  { key: 'lunch',     label: '昼食' },
+  { key: 'dinner',    label: '夕食' },
+  { key: 'snack',     label: '間食' },
+];
+const WEEKDAYS = ['日','月','火','水','木','金','土'];
+
+async function refreshDashboard() {
+  try {
+    const [todayRes, settRes] = await Promise.all([
+      fetch('/api/today'),
+      fetch('/api/settings'),
+    ]);
+    if (!todayRes.ok || !settRes.ok) return;
+    const todayData = await todayRes.json();
+    const settings = await settRes.json();
+    updateDashboard(todayData, settings);
+  } catch (_) {}
+}
+
+function updateDashboard(data, settings) {
+  const goal = parseInt(settings.daily_calorie_goal) || 1800;
+  const cal = data.totals ? data.totals.calories : 0;
+  const pct = goal > 0 ? Math.min(Math.round(cal / goal * 100), 100) : 0;
+  const over = cal > goal;
+
+  // 日付ラベル
+  const d = new Date(data.date + 'T00:00:00');
+  const dateLabel = (d.getMonth() + 1) + '/' + d.getDate() + '（' + WEEKDAYS[d.getDay()] + '）';
+  document.getElementById('dashDate').textContent = '今日 ' + dateLabel;
+
+  // カロリー行
+  document.getElementById('dashCalText').textContent = '🔥 ' + cal + ' / ' + goal + ' kcal';
+  const bar = document.getElementById('dashBar');
+  bar.style.width = pct + '%';
+  bar.className = 'dash-bar' + (over ? ' over' : '');
+  document.getElementById('dashPct').textContent = pct + '%';
+
+  // 体重・歩数行
+  const metaItems = [];
+  const w = data.weight || {};
+  if (w.morning != null) metaItems.push('⚖️ 朝 ' + w.morning + 'kg');
+  if (w.evening != null) metaItems.push('⚖️ 夜 ' + w.evening + 'kg');
+  if (data.steps != null) metaItems.push('👟 ' + data.steps.toLocaleString() + '歩');
+  document.getElementById('dashMeta').innerHTML = metaItems.map(function(t) {
+    return '<span class="dash-meta-item">' + t + '</span>';
+  }).join('');
+
+  // 食事区分行
+  const recordedTypes = new Set((data.meals || []).map(function(m) { return m.meal_type; }));
+  document.getElementById('dashMeals').innerHTML = MEAL_TYPES.map(function(mt) {
+    const done = recordedTypes.has(mt.key);
+    return '<span class="dash-meal-chip">' + mt.label + (done ? '✅' : '⬜') + '</span>';
+  }).join('');
+
+  // コンパクト表示テキスト
+  const compactParts = ['🔥 ' + cal + '/' + goal + 'kcal'];
+  if (w.morning != null) compactParts.push('⚖️' + w.morning);
+  if (w.evening != null && w.morning == null) compactParts.push('⚖️' + w.evening);
+  if (data.steps != null) compactParts.push('👟' + data.steps.toLocaleString());
+  document.getElementById('dashCompact').textContent = compactParts.join('  ');
+
+  // 表示
+  document.getElementById('dashboard').style.display = 'block';
+  applyDashState();
+}
+
+function toggleDashboard() {
+  dashExpanded = !dashExpanded;
+  applyDashState();
+}
+
+function applyDashState() {
+  const body = document.getElementById('dashBody');
+  const arrow = document.getElementById('dashArrow');
+  const compact = document.getElementById('dashCompact');
+  const date = document.getElementById('dashDate');
+  if (dashExpanded) {
+    body.style.display = 'block';
+    arrow.textContent = '▾';
+    compact.style.display = 'none';
+    date.style.display = 'inline';
+  } else {
+    body.style.display = 'none';
+    arrow.textContent = '▸';
+    compact.style.display = 'inline';
+    date.style.display = 'none';
+  }
+}
 
 // ── 認証 ─────────────────────────────────────────────────────────────────────
 async function checkAuth() {
   try {
     const r = await fetch('/api/me');
-    if (r.ok) { hideLogin(); await loadChatHistory(); }
+    if (r.ok) { hideLogin(); await loadChatHistory(); refreshDashboard(); }
   } catch (_) {}
 }
 
@@ -415,7 +570,7 @@ async function doLogin() {
       body: JSON.stringify({ password: pw }),
     });
     if (r.ok) {
-      hideLogin(); await loadChatHistory();
+      hideLogin(); await loadChatHistory(); refreshDashboard();
     } else {
       document.getElementById('loginError').textContent = 'パスワードが違います';
     }
@@ -596,6 +751,7 @@ async function sendMessage() {
     isStreaming = false;
     document.getElementById('sendBtn').disabled = false;
     textInput.focus();
+    refreshDashboard();
   }
 }
 
