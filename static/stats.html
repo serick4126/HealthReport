@@ -37,6 +37,16 @@
     /* モーダルサイズのみ上書き（stats固有: 小さめサイズ） */
     .modal-box { width: min(360px, 90vw); max-height: unset; }
     .modal-row { margin-bottom: 14px; }
+    /* モバイル: サマリー3カラム → 1カラム横並び */
+    @media (max-width: 480px) {
+      .summary-row { grid-template-columns: 1fr; gap: 6px; }
+      .summary-card {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 12px; text-align: left;
+      }
+      .summary-val { font-size: 18px; }
+      .summary-label { margin-top: 0; font-size: 12px; }
+    }
   </style>
 </head>
 <body>

@@ -104,6 +104,26 @@
       color: var(--accent); flex-shrink: 0;
     }
     .model-reload-btn:disabled { opacity: 0.4; cursor: default; }
+    /* モバイル: food_defaultsテーブルをカード形式に変換 */
+    @media (max-width: 600px) {
+      .food-table thead { display: none; }
+      .food-table tbody { display: block; }
+      .food-table tr {
+        display: block; border: 1px solid var(--border); border-radius: 8px;
+        margin-bottom: 8px; padding: 10px; background: var(--card-bg);
+      }
+      .food-table tr:last-child td { border-bottom: none; }
+      .food-table td {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 3px 0; border: none; border-bottom: none; width: auto;
+      }
+      .food-table td::before {
+        content: attr(data-label);
+        font-weight: 600; font-size: 12px; color: var(--text-secondary); min-width: 70px; flex-shrink: 0;
+      }
+      .food-table .td-keyword { width: auto; }
+      .food-table .td-action { width: auto; justify-content: flex-end; }
+    }
   </style>
 </head>
 <body>
@@ -412,13 +432,13 @@
               const kw = escHtml(f.keyword);
               return `
               <tr>
-                <td style="width:36px;text-align:center">
+                <td style="width:36px;text-align:center" data-label="お気に入り">
                   <button class="fav-btn${f.is_favorite ? ' active' : ''}" onclick="toggleFavorite('${kw}')" title="お気に入り">★</button>
                 </td>
-                <td class="td-keyword">${kw}</td>
-                <td class="td-desc">${escHtml(f.description)}</td>
-                <td class="td-notes">${escHtml(f.notes || '')}</td>
-                <td class="td-action">
+                <td class="td-keyword" data-label="キーワード">${kw}</td>
+                <td class="td-desc" data-label="詳細">${escHtml(f.description)}</td>
+                <td class="td-notes" data-label="メモ">${escHtml(f.notes || '')}</td>
+                <td class="td-action" data-label="">
                   <button class="edit-btn" onclick="openFdEditModal('${kw}')" title="編集">✏️</button>
                   <button class="del-btn" onclick="deleteFoodDefault('${kw}')" title="削除">🗑</button>
                 </td>
