@@ -88,6 +88,11 @@
     .calorie-bar-wrap { margin: 4px 0 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
     .calorie-bar { height: 100%; border-radius: 2px; background: var(--success); transition: width 0.3s; }
     .calorie-bar.over { background: var(--danger); }
+    .period-shift-btn {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; color: var(--accent); font-size: 13px; cursor: pointer;
+    }
+    .period-shift-btn:disabled { color: var(--text-secondary); opacity: 0.5; cursor: default; }
     /* モーダル固有スタイル */
     .modal-row input[readonly], .modal-row select[disabled] {
       opacity: 0.55; cursor: default;
@@ -114,6 +119,10 @@
     <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="period-shift-btn" id="prevBtn" onclick="shiftPeriod(-1)">◀ 前</button>
+      <button class="period-shift-btn" id="nextBtn" onclick="shiftPeriod(1)" disabled>次 ▶</button>
+    </div>
   </div>
   <div class="search-bar">
     <input type="text" id="searchInput" placeholder="🔍 食事を検索..." oninput="debounceSearch()" />
@@ -368,13 +377,21 @@
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
 
+      const remaining = calorieGoal - t.calories;
+      const remainingText = remaining >= 0
+        ? `<span style="color:var(--text-secondary);font-size:11px">残り ${remaining}kcal</span>`
+        : `<span style="color:var(--danger);font-size:11px">+${Math.abs(remaining)}kcal超過</span>`;
+
       return `
         <div class="day-section">
           <div class="day-header">
             <span class="day-date">${label}</span>
             <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g</span>
           </div>
-          <div class="calorie-bar-wrap"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="calorie-bar-wrap" style="flex:1"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
+            ${remainingText}
+          </div>
           <div class="day-meta">${weightHtml}${stepsHtml}</div>
           ${mealsHtml}
         </div>`;
@@ -821,6 +838,65 @@
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       load(days, null, null);
+      updateShiftButtons();
+    }
+
+    // ── 前後ナビゲーション ──────────────────────────────────────────────────────
+    function shiftPeriod(direction) {
+      var cp = currentPeriod;
+      var shiftDays = cp.days || 7;
+      var today = new Date();
+      today.setHours(0,0,0,0);
+      var todayStr = today.toISOString().slice(0, 10);
+
+      var newEnd, newStart;
+      if (cp.start && cp.end) {
+        // カスタム期間の場合
+        var s = new Date(cp.start + 'T00:00:00');
+        var e = new Date(cp.end + 'T00:00:00');
+        shiftDays = Math.round((e - s) / 86400000) + 1;
+        var ms = shiftDays * 86400000 * direction;
+        newStart = new Date(s.getTime() + ms);
+        newEnd = new Date(e.getTime() + ms);
+      } else {
+        // プリセット期間（直近N日）の場合
+        // 現在表示中の最古日を算出
+        var baseEnd = new Date();
+        baseEnd.setHours(0,0,0,0);
+        // 現在の表示の実効end/startを逆算
+        if (cp._shiftedEnd) {
+          baseEnd = new Date(cp._shiftedEnd + 'T00:00:00');
+        }
+        newEnd = new Date(baseEnd.getTime() + shiftDays * 86400000 * direction);
+        newStart = new Date(newEnd.getTime() - (shiftDays - 1) * 86400000);
+      }
+
+      // 未来の日付には進めない
+      if (newStart > today) return;
+      if (newEnd > today) newEnd = today;
+
+      var startStr = newStart.toISOString().slice(0, 10);
+      var endStr = newEnd.toISOString().slice(0, 10);
+
+      // プリセットのアクティブ状態を解除してカスタム表示
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('customBtn').classList.add('active');
+      document.getElementById('customBtn').textContent =
+        '\u{1f4c5} ' + startStr.slice(5).replace('-','/') + ' \u301c ' + endStr.slice(5).replace('-','/');
+
+      currentPeriod._shiftedEnd = endStr;
+      load(null, startStr, endStr);
+      updateShiftButtons();
+    }
+
+    function updateShiftButtons() {
+      var today = new Date();
+      today.setHours(0,0,0,0);
+      var todayStr = today.toISOString().slice(0, 10);
+      var cp = currentPeriod;
+      // 「次」ボタン：endが今日以降なら無効
+      var endStr = cp.end || cp._shiftedEnd || todayStr;
+      document.getElementById('nextBtn').disabled = (endStr >= todayStr);
     }
 
     // ── 期間指定モーダル ───────────────────────────────────────────────────────
@@ -847,6 +923,7 @@
       document.getElementById('customBtn').textContent =
         `📅 ${start.slice(5).replace('-','/')} 〜 ${end.slice(5).replace('-','/')}`;
       load(null, start, end);
+      updateShiftButtons();
     }
 
     // ── 保存中オーバーレイ ─────────────────────────────────────────────────────

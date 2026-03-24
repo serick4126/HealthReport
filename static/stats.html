@@ -335,6 +335,8 @@
               display: function(ctx) {
                 var v = ctx.dataset.data[ctx.dataIndex];
                 if (v == null || v === 0) return false;
+                // 30日超はラベル非表示（ツールチップのみ）
+                if (ctx.chart.data.labels.length > 30) return false;
                 var ca = ctx.chart.chartArea;
                 if (!ca) return false;
                 if ((ca.width / ctx.chart.data.labels.length) < 28) return false;
