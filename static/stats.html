@@ -291,8 +291,9 @@
               display: function(ctx) {
                 var v = ctx.dataset.data[ctx.dataIndex];
                 if (v == null) return false;
-                var el = ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];
-                return el && (el.width || 0) >= 24;
+                var ca = ctx.chart.chartArea;
+                if (!ca) return false;
+                return (ca.width / ctx.chart.data.labels.length) >= 24;
               },
               anchor: 'end',
               align: 'top',
@@ -324,10 +325,13 @@
               display: function(ctx) {
                 var v = ctx.dataset.data[ctx.dataIndex];
                 if (v == null || v === 0) return false;
+                var ca = ctx.chart.chartArea;
+                if (!ca) return false;
+                if ((ca.width / ctx.chart.data.labels.length) < 28) return false;
                 var el = ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];
                 if (!el) return false;
                 var segH = el.base !== undefined ? Math.abs(el.y - el.base) : (el.height || 0);
-                return (el.width || 0) >= 28 && segH >= 20;
+                return segH >= 20;
               },
               anchor: 'center',
               align: 'center',
