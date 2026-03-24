@@ -328,10 +328,11 @@
                 var ca = ctx.chart.chartArea;
                 if (!ca) return false;
                 if ((ca.width / ctx.chart.data.labels.length) < 28) return false;
-                var el = ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];
-                if (!el) return false;
-                var segH = el.base !== undefined ? Math.abs(el.y - el.base) : (el.height || 0);
-                return segH >= 20;
+                // y軸スケールとデータ値から最終セグメント高さを算出（アニメーション非依存）
+                var yScale = ctx.chart.scales.y;
+                if (!yScale) return false;
+                var pixPerUnit = ca.height / (yScale.max - yScale.min);
+                return (v * pixPerUnit) >= 20;
               },
               anchor: 'center',
               align: 'center',
