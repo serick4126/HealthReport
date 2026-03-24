@@ -288,7 +288,12 @@
           plugins: {
             ...defaults.plugins,
             datalabels: {
-              display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] != null; },
+              display: function(ctx) {
+                var v = ctx.dataset.data[ctx.dataIndex];
+                if (v == null) return false;
+                var el = ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];
+                return el && (el.width || 0) >= 24;
+              },
               anchor: 'end',
               align: 'top',
               color: chartTextColor,
@@ -318,7 +323,11 @@
             datalabels: {
               display: function(ctx) {
                 var v = ctx.dataset.data[ctx.dataIndex];
-                return v != null && v >= 5;
+                if (v == null || v === 0) return false;
+                var el = ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];
+                if (!el) return false;
+                var segH = el.base !== undefined ? Math.abs(el.y - el.base) : (el.height || 0);
+                return (el.width || 0) >= 28 && segH >= 20;
               },
               anchor: 'center',
               align: 'center',
@@ -334,6 +343,19 @@
                 var pct = Math.round(v / total * 100);
                 return v + 'g\n(' + pct + '%)';
               },
+            },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  var v = ctx.parsed.y;
+                  if (v == null) return ctx.dataset.label + ': —';
+                  var i = ctx.dataIndex;
+                  var datasets = ctx.chart.data.datasets;
+                  var total = datasets.reduce(function(s, ds) { return s + (ds.data[i] || 0); }, 0);
+                  var pct = total > 0 ? Math.round(v / total * 100) : 0;
+                  return ctx.dataset.label + ': ' + v + 'g (' + pct + '%)';
+                }
+              }
             }
           },
           scales: { ...defaults.scales, x: { ...defaults.scales.x, stacked: true }, y: { ...defaults.scales.y, stacked: true, beginAtZero: true } }
