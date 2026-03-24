@@ -118,6 +118,8 @@ body {
 }
 .nav-btn:active { background: var(--toggle-off); }
 .nav-btn.current { background: var(--bg); color: var(--text-secondary); pointer-events: none; border-color: transparent; }
+.nav-btn.nav-reset { color: var(--text-secondary); border-color: transparent; font-size: 11px; opacity: 0.7; }
+.nav-btn.nav-reset:active { opacity: 1; }
 
 @media (max-width: 480px) {
   .header-title { display: none; }

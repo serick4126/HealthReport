@@ -171,6 +171,7 @@
 
     function applyThemePreview(theme) {
       document.documentElement.dataset.theme = theme;
+      localStorage.setItem('healthreport_theme', theme);
     }
 
     async function loadAll() {

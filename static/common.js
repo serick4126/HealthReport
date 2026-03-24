@@ -18,7 +18,7 @@ function initNav(currentPage) {
     }
     return '<a href="' + item.href + '" class="nav-btn" title="' + item.label + '">' + item.icon + '<span class="nl"> ' + item.label + '</span></a>';
   });
-  items.push('<button class="nav-btn" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>');
+  items.push('<button class="nav-btn nav-reset" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>');
   items.push('<button class="nav-btn" onclick="doLogout()" title="ログアウト">🚪<span class="nl"> ログアウト</span></button>');
   el.innerHTML = items.join('');
 }
@@ -43,12 +43,19 @@ function escHtml(s) {
 
 // ── テーマ初期化 ──────────────────────────────────────────────────────────────
 async function initTheme() {
+  // まずlocalStorageから即座に適用（FOUC防止）
+  var cached = localStorage.getItem('healthreport_theme');
+  if (cached) {
+    document.documentElement.dataset.theme = cached;
+  }
+  // バックグラウンドで最新を取得して更新
   try {
     var r = await fetch('/api/settings');
     if (!r.ok) return;
     var s = await r.json();
     var theme = s.theme || 'auto';
     document.documentElement.dataset.theme = theme;
+    localStorage.setItem('healthreport_theme', theme);
   } catch (_) {}
 }
 
