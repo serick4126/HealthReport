@@ -136,7 +136,7 @@
       background: var(--error-color);
       color: #fff;
       border-radius: 50%;
-      border: 2px solid #fff;
+      border: 2px solid var(--card-bg);
       font-size: 11px;
       cursor: pointer;
       display: flex;
@@ -205,7 +205,7 @@
       transition: background 0.1s;
     }
     .send-btn:disabled { background: var(--border); cursor: default; }
-    .send-btn:not(:disabled):active { background: #005ec4; }
+    .send-btn:not(:disabled):active { background: color-mix(in srgb, var(--accent) 80%, #000); }
 
     /* タイピングインジケーター */
     .typing-indicator {
@@ -307,7 +307,7 @@
       font-weight: 600;
       cursor: pointer;
     }
-    .login-btn:active { background: #005ec4; }
+    .login-btn:active { background: color-mix(in srgb, var(--accent) 80%, #000); }
     .login-error { color: var(--error-color); font-size: 13px; margin-top: 10px; height: 18px; }
 
     /* ── ダッシュボードバー ── */
@@ -659,7 +659,7 @@ async function loadChatHistory() {
 
     // 「以前の会話」区切り線
     const sep = document.createElement('div');
-    sep.style.cssText = 'text-align:center;color:#8e8e93;font-size:12px;padding:8px 0 4px;';
+    sep.style.cssText = 'text-align:center;color:var(--text-secondary);font-size:12px;padding:8px 0 4px;';
     sep.textContent = '─── 以前の会話 ───';
     wrap.appendChild(sep);
 
@@ -675,7 +675,7 @@ async function loadChatHistory() {
 
     // 新しい会話との区切り線
     const sep2 = document.createElement('div');
-    sep2.style.cssText = 'text-align:center;color:#8e8e93;font-size:12px;padding:4px 0 8px;';
+    sep2.style.cssText = 'text-align:center;color:var(--text-secondary);font-size:12px;padding:4px 0 8px;';
     sep2.textContent = '─── ここから新しいメッセージ ───';
     wrap.appendChild(sep2);
 
