@@ -328,6 +328,34 @@
           </div>
         </div>
 
+        <!-- 歩数API連携 -->
+        <div class="section">
+          <div class="section-title">歩数API連携（iPhoneショートカット）</div>
+          <div class="card">
+            <div class="row">
+              <span class="row-label">歩数APIキー</span>
+              <input type="password" id="steps_api_key" value="" placeholder="${s.steps_api_key === 'set' ? '（設定済み）変更する場合のみ入力' : '任意の文字列を設定'}" autocomplete="off" />
+            </div>
+            <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
+              <span class="row-label" style="font-size:13px;color:var(--text-secondary)">エンドポイント</span>
+              <div style="display:flex;align-items:center;gap:8px;width:100%">
+                <code id="stepsEndpoint" style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all">${window.location.origin}/api/steps/ingest</code>
+                <button onclick="copyEndpoint()" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
+              </div>
+            </div>
+            <div class="row note-tip" style="flex-direction:column;align-items:flex-start;gap:4px">
+              <div style="font-weight:600;font-size:13px">📱 iPhoneショートカット設定</div>
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+                <strong>メソッド:</strong> POST<br>
+                <strong>ヘッダ:</strong> Authorization: Bearer &lt;設定したAPIキー&gt;<br>
+                <strong>ヘッダ:</strong> Content-Type: application/json<br>
+                <strong>ボディ:</strong> {"steps": &lt;歩数&gt;, "date": "YYYY-MM-DD"}<br><br>
+                ヘルスケアから前日の歩数を取得し、毎朝自動実行するオートメーションに設定することで自動記録できます。
+              </div>
+            </div>
+          </div>
+        </div>
+
         <button class="save-btn" onclick="saveSettings()">保存する</button>
 
         <!-- 食品デフォルト -->
@@ -466,6 +494,8 @@
       if (pw) settings.app_password = pw;
       const apiKey = document.getElementById('anthropic_api_key').value.trim();
       if (apiKey) settings.anthropic_api_key = apiKey;
+      const stepsApiKey = document.getElementById('steps_api_key').value.trim();
+      if (stepsApiKey) settings.steps_api_key = stepsApiKey;
       try {
         const res = await fetch('/api/settings', {
           method: 'POST',
@@ -477,6 +507,11 @@
       } catch(e) {
         showToast('保存に失敗しました');
       }
+    }
+
+    function copyEndpoint() {
+      const url = window.location.origin + '/api/steps/ingest';
+      navigator.clipboard.writeText(url).then(() => showToast('コピーしました ✓')).catch(() => showToast('コピーに失敗しました'));
     }
 
     async function addFoodDefault() {

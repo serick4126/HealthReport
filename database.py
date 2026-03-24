@@ -126,6 +126,7 @@ def init_db():
                 ("use_food_defaults", "true"),
                 ("auto_save_food_defaults", "true"),
                 ("theme", "auto"),
+                ("steps_api_key", ""),
             ],
         )
 

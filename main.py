@@ -3,6 +3,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -224,10 +225,10 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "theme"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "theme", "steps_api_key"}
 
 
-SENSITIVE_KEYS = {"app_password", "anthropic_api_key"}
+SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "steps_api_key"}
 
 
 @app.get("/api/settings")
@@ -473,6 +474,55 @@ async def delete_steps(request: Request, steps_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="歩数記録が見つかりません")
     return JSONResponse({"success": True})
+
+
+# ── 歩数受付API（iPhoneショートカット連携） ────────────────────────────────────
+
+_JST = timezone(timedelta(hours=9))
+
+
+class StepsIngestRequest(BaseModel):
+    steps: int
+    date: str  # "YYYY-MM-DD"
+
+
+@app.post("/api/steps/ingest")
+async def steps_ingest(request: Request, body: StepsIngestRequest):
+    """iPhoneショートカット等の外部クライアントから歩数を受け付けるAPI。
+    セッション認証不要。steps_api_keyによるBearerトークン認証を使用する。"""
+    # 1. APIキー取得
+    stored_key = database.get_setting("steps_api_key") or ""
+    if not stored_key:
+        raise HTTPException(status_code=503, detail="歩数APIキーが設定されていません")
+
+    # 2. 認証（タイミング攻撃対策）
+    auth_header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not auth_header.startswith(prefix):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    provided_key = auth_header[len(prefix):]
+    if not hmac.compare_digest(provided_key.encode(), stored_key.encode()):
+        raise HTTPException(status_code=401, detail="APIキーが正しくありません")
+
+    # 3. バリデーション
+    if body.steps < 1:
+        raise HTTPException(status_code=422, detail="stepsは1以上の整数を指定してください")
+    try:
+        log_date = datetime.strptime(body.date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="dateはYYYY-MM-DD形式で指定してください")
+    today = datetime.now(_JST).date()
+    if log_date > today:
+        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+
+    # 4. 保存（同日レコードがあれば上書き）
+    result = database.save_steps(body.date, body.steps)
+    return JSONResponse({
+        "success": True,
+        "date": body.date,
+        "steps": body.steps,
+        "updated": result["updated"],
+    })
 
 
 # ── 食事画像 CRUD ──────────────────────────────────────────────────────────────
