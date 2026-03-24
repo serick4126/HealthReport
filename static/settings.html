@@ -314,6 +314,20 @@
               </div>
             </div>
             <div class="row" style="justify-content:space-between">
+              <div style="flex:1;margin-right:12px">
+                <div class="row-label" style="font-size:15px">複数品目を分けて記録</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5">
+                  「白米と味噌汁」を品目ごとに個別記録します（ツール呼び出し回数が増えます）
+                </div>
+              </div>
+              <div class="toggle-wrap">
+                <label class="toggle">
+                  <input type="checkbox" id="split_multiple_items" ${s.split_multiple_items === 'true' ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="row" style="justify-content:space-between">
               <div>
                 <div class="row-label" style="font-size:15px">節約モード</div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">直近3件のみ保持・APIコスト削減</div>
@@ -507,6 +521,7 @@
         cache_ttl:          document.getElementById('cache_ttl').value,
         use_food_defaults:       document.getElementById('use_food_defaults').checked ? 'true' : 'false',
         auto_save_food_defaults: document.getElementById('auto_save_food_defaults').checked ? 'true' : 'false',
+        split_multiple_items:    document.getElementById('split_multiple_items').checked ? 'true' : 'false',
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }

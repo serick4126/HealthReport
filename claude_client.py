@@ -259,6 +259,17 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
     else:
         cache_control = {"type": "ephemeral"}
 
+    split_items = database.get_setting("split_multiple_items") == "true"
+    if split_items:
+        split_section = (
+            "\n【複数品目の個別記録】\n"
+            "複数の食品が1メッセージに含まれる場合、品目ごとに別々のrecord_mealを呼ぶこと。\n"
+            "例：「朝食に白米と味噌汁」→ record_meal×2（白米、味噌汁を個別に記録）\n"
+            "ただし「幕の内弁当」のようなセット商品は1件で記録する。\n"
+        )
+    else:
+        split_section = ""
+
     auto_save_fd = database.get_setting("auto_save_food_defaults") != "false"
     if auto_save_fd:
         auto_save_section = (
@@ -298,7 +309,7 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 
 {search_flow_section}
 
-{auto_save_section}
+{auto_save_section}{split_section}
 【量の換算ルール】
 - 「150g食べた」＋「100gあたりXkcal」のデータ → ×1.5 で自動換算
 - 「2個食べた」＋「1個あたりXkcal」→ ×2 で自動換算
@@ -581,6 +592,7 @@ async def stream_chat(
         })
     user_content.append({"type": "text", "text": user_message})
     conversation_history.append({"role": "user", "content": user_content})
+    # C-2: DB保存はヒント注入前に行う（json.dumpsで値がコピーされるため、後のインメモリ変更はDBに影響しない）
     database.save_conversation_message("user", user_content)
 
     # food_defaults スマートマッチング: 入力に関連するエントリのみをAIへ注入（DBには保存しない）
