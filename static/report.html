@@ -24,7 +24,11 @@
     .btn:active:not(:disabled) { opacity: 0.8; }
     .preview-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
     .preview-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); padding: 10px 14px; border-bottom: 1px solid var(--border); }
-    iframe { width: 100%; border: none; display: block; background: #fff; }
+    iframe { width: 100%; border: none; display: block; background: #fff; transition: height 0.3s; }
+    .expand-btn {
+      display: inline-block; padding: 4px 12px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; color: var(--accent); font-size: 12px; cursor: pointer; margin-left: 8px;
+    }
     .empty { text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 14px; }
     .loading-msg { text-align: center; padding: 16px; color: var(--text-secondary); font-size: 14px; }
     .spinner {
@@ -104,7 +108,7 @@
         const html = await res.text();
         area.innerHTML = `
           <div class="preview-card">
-            <div class="preview-title">プレビュー（A4横）</div>
+            <div class="preview-title">プレビュー（A4横）<button class="expand-btn" id="expandBtn" onclick="toggleFullPreview()">⤢ 拡大</button></div>
             <iframe id="previewFrame" srcdoc="" style="height:520px"></iframe>
           </div>`;
         document.getElementById('previewFrame').srcdoc = html;
@@ -112,6 +116,19 @@
         area.innerHTML = '<div class="empty">プレビューの生成に失敗しました</div>';
       } finally {
         setButtons(false);
+      }
+    }
+
+    function toggleFullPreview() {
+      var iframe = document.getElementById('previewFrame');
+      var btn = document.getElementById('expandBtn');
+      if (!iframe) return;
+      if (iframe.style.height !== '520px') {
+        iframe.style.height = '520px';
+        btn.textContent = '⤢ 拡大';
+      } else {
+        iframe.style.height = 'calc(100vh - 120px)';
+        btn.textContent = '⤡ 縮小';
       }
     }
 
