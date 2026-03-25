@@ -653,7 +653,7 @@ async function loadChatHistory() {
       const name = s.user_name && s.user_name !== 'DefaultName' ? s.user_name : null;
       const el = document.getElementById('greetingBubble');
       if (el && name) {
-        el.innerHTML = `こんにちは、${name}さん！😊<br>食事・体重・歩数を報告してください。<br>記録のほか、食事の提案も可能です。`;
+        el.innerHTML = 'こんにちは、' + escHtml(name) + 'さん！😊<br>食事・体重・歩数を報告してください。<br>記録のほか、食事の提案も可能です。';
       }
     }
     if (!histRes.ok) return;
@@ -1138,6 +1138,10 @@ document.getElementById('passwordInput').addEventListener('keydown', e => {
 
 // ── 初期化 ────────────────────────────────────────────────────────────────────
 checkAuth();
+
+window.addEventListener('beforeunload', function() {
+  if (chatState.renderTimer) clearTimeout(chatState.renderTimer);
+});
 </script>
 </body>
 </html>

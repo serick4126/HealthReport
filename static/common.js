@@ -44,9 +44,13 @@ function escHtml(s) {
 // ── テーマ初期化 ──────────────────────────────────────────────────────────────
 async function initTheme() {
   // まずlocalStorageから即座に適用（FOUC防止）
-  var cached = localStorage.getItem('healthreport_theme');
-  if (cached) {
-    document.documentElement.dataset.theme = cached;
+  try {
+    var cached = localStorage.getItem('healthreport_theme');
+    if (cached) {
+      document.documentElement.dataset.theme = cached;
+    }
+  } catch (_) {
+    // localStorage無効時（プライベートブラウジング等）はスキップ
   }
   // バックグラウンドで最新を取得して更新
   try {
@@ -55,7 +59,11 @@ async function initTheme() {
     var s = await r.json();
     var theme = s.theme || 'auto';
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('healthreport_theme', theme);
+    try {
+      localStorage.setItem('healthreport_theme', theme);
+    } catch (_) {
+      // localStorage無効時はスキップ
+    }
   } catch (_) {}
 }
 
