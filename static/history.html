@@ -286,6 +286,7 @@
       try {
         const [histRes, statsRes] = await Promise.all([fetch(url), fetch(statsUrl)]);
         if (histRes.status === 401) { location.href = '/'; return; }
+        if (!histRes.ok) throw histRes;
         pageState.allDays = await histRes.json();
         const stats = await statsRes.json();
         pageState.calorieGoal = stats.calories_goal || 1500;
@@ -816,7 +817,7 @@
       content.innerHTML = '<div class="loading">検索中...</div>';
       try {
         const res = await fetch('/api/history/search?q=' + encodeURIComponent(q.trim()));
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw res;
         const meals = await res.json();
         if (!meals.length) {
           content.innerHTML = '<div class="empty">「' + escHtml(q) + '」に一致する記録はありません</div>';

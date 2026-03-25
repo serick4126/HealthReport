@@ -104,7 +104,7 @@
       setButtons(true);
       try {
         const res = await fetch(`/api/report/preview?start=${selectedStart}`);
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw res;
         const html = await res.text();
         area.innerHTML = `
           <div class="preview-card">

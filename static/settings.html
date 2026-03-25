@@ -185,6 +185,7 @@
           fetch('/api/food-defaults'),
         ]);
         if (settRes.status === 401) { location.href = '/'; return; }
+        if (!settRes.ok) throw settRes;
         const settings = await settRes.json();
         foodDefaults = await fdRes.json();
         render(settings);

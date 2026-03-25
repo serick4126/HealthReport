@@ -86,7 +86,8 @@ async function checkAuthOrRedirect() {
 function handleFetchError(container, e) {
   console.error('fetchエラー:', e);
 
-  var status = e && e.status ? e.status : 0;
+  // Response オブジェクト（!res.ok → throw res パターン）または Error オブジェクトを受け取る
+  var status = (e instanceof Response) ? e.status : 0;
   var isNetworkError = e instanceof TypeError;
 
   if (status === 401) {

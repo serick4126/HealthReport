@@ -103,6 +103,7 @@
       try {
         const res = await fetch(url);
         if (res.status === 401) { location.href = '/'; return; }
+        if (!res.ok) throw res;
         const data = await res.json();
         render(data);
       } catch(e) {
