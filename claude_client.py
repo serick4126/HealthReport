@@ -578,6 +578,116 @@ def get_client() -> anthropic.AsyncAnthropic:
     return anthropic.AsyncAnthropic(api_key=api_key, default_headers=extra_headers)
 
 
+def _prepare_user_content(
+    user_message: str,
+    images: list[str],
+) -> tuple[list, list[str]]:
+    """画像処理＋テキストブロックからユーザーコンテンツを組み立て、処理済み画像リストを返す"""
+    pending_images: list[str] = []
+    user_content: list = []
+    for img_b64 in images:
+        try:
+            processed = process_image_b64(img_b64)
+        except Exception as e:
+            logger.warning("画像処理に失敗（元データを使用）: %s", e)
+            processed = img_b64
+        pending_images.append(processed)
+        user_content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": processed},
+        })
+    user_content.append({"type": "text", "text": user_message})
+    return user_content, pending_images
+
+
+def _inject_food_hints(conversation_history: list[dict], user_message: str) -> None:
+    """food_defaults スマートマッチングを行い、最新メッセージにヒントを注入する（DBには保存しない）"""
+    if database.get_setting("use_food_defaults") == "false":
+        return
+    all_fds = database.get_food_defaults()
+    matched_fds = _match_food_defaults(user_message, all_fds)
+    if not matched_fds:
+        return
+    fd_lines = "\n".join(
+        f"- {fd['keyword']}: {fd['description']}" + (f"（{fd['notes']}）" if fd.get("notes") else "")
+        for fd in matched_fds
+    )
+    fd_hint = "【関連食品情報（ユーザー登録済み）】\n" + fd_lines + "\n\n"
+    for item in conversation_history[-1]["content"]:
+        if item["type"] == "text":
+            item["text"] = fd_hint + item["text"]
+            break
+
+
+async def _execute_tool_and_format(
+    tc: dict,
+    pending_images: list[str],
+) -> tuple[dict, list[dict]]:
+    """ツールを1件実行し、APIへ返す tool_result と SSE送信用イベントリストを返す。
+    record_meal 成功時は pending_images を副作用でクリアする。
+    """
+    result = await execute_tool(tc["name"], tc["input"])
+    sse_events: list[dict] = []
+
+    if tc["name"] == "show_choices":
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps({"displayed": True}, ensure_ascii=False),
+        }
+        sse_events.append({
+            "type": "choices",
+            "question": result.get("question", ""),
+            "options": result.get("options", []),
+        })
+
+    elif tc["name"] == "record_meal" and result.get("success"):
+        meal_id = result["meal_id"]
+        source_type = result.get("image_source_type", "photo")
+        for img_b64 in pending_images:
+            try:
+                database.save_meal_image(
+                    meal_id=meal_id,
+                    image_data=base64.b64decode(img_b64),
+                    mime_type="image/jpeg",
+                    source_type=source_type,
+                )
+            except Exception as e:
+                logger.error("食事画像の保存に失敗 (meal_id=%s): %s", meal_id, e)
+        pending_images.clear()
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+        sse_events.append({"type": "record_done", "record_type": "meal", "record_id": meal_id})
+
+    elif tc["name"] == "record_weight" and result.get("success"):
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+        sse_events.append({"type": "record_done", "record_type": "weight", "record_id": result["weight_id"]})
+
+    elif tc["name"] == "record_steps" and result.get("success"):
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+        sse_events.append({"type": "record_done", "record_type": "steps", "record_id": result["id"]})
+
+    else:
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+
+    return api_result, sse_events
+
+
 async def stream_chat(
     user_message: str,
     images: list[str],
@@ -606,49 +716,17 @@ async def stream_chat(
     # 節約モードでは食品検索ツールを除外（Claude推定に切り替え）
     active_tools = [t for t in TOOLS if t["name"] != "search_food_nutrition"] if savings_mode else TOOLS
 
-    # 今回のリクエストで添付された画像（record_meal後にDB保存する）
-    pending_images: list[str] = []  # 処理済みbase64
-
-    # ユーザーメッセージを会話履歴に追加
-    user_content: list = []
-    for img_b64 in images:
-        try:
-            processed = process_image_b64(img_b64)
-        except Exception as e:
-            logger.warning("画像処理に失敗（元データを使用）: %s", e)
-            processed = img_b64
-        pending_images.append(processed)
-        user_content.append({
-            "type": "image",
-            "source": {"type": "base64", "media_type": "image/jpeg", "data": processed},
-        })
-    user_content.append({"type": "text", "text": user_message})
-    conversation_history.append({"role": "user", "content": user_content})
+    # ユーザーメッセージ組み立て・DB保存
     # C-2: DB保存はヒント注入前に行う（json.dumpsで値がコピーされるため、後のインメモリ変更はDBに影響しない）
+    user_content, pending_images = _prepare_user_content(user_message, images)
+    conversation_history.append({"role": "user", "content": user_content})
     database.save_conversation_message("user", user_content)
 
-    # food_defaults スマートマッチング: 入力に関連するエントリのみをAIへ注入（DBには保存しない）
-    use_food_defaults = database.get_setting("use_food_defaults") != "false"
-    if use_food_defaults:
-        all_fds = database.get_food_defaults()
-        matched_fds = _match_food_defaults(user_message, all_fds)
-        if matched_fds:
-            fd_lines = "\n".join(
-                f"- {fd['keyword']}: {fd['description']}" + (f"（{fd['notes']}）" if fd.get("notes") else "")
-                for fd in matched_fds
-            )
-            fd_hint = (
-                "【関連食品情報（ユーザー登録済み）】\n"
-                f"{fd_lines}\n\n"
-            )
-            for item in conversation_history[-1]["content"]:
-                if item["type"] == "text":
-                    item["text"] = fd_hint + item["text"]
-                    break
+    # food_defaults スマートマッチング（インメモリのみ）
+    _inject_food_hints(conversation_history, user_message)
 
+    # システムプロンプト / トークン超過時に会話圧縮
     system_prompt = build_system_prompt(savings_mode=savings_mode)
-
-    # トークン数チェック → 閾値超過で会話圧縮
     estimated = _estimate_tokens(conversation_history, system_prompt)
     if estimated > token_compress_threshold:
         new_summary = await _compress_history(client, conversation_history, keep_recent, savings_mode)
@@ -739,88 +817,15 @@ async def stream_chat(
         if not tool_calls:
             break
 
-        # ── ツール実行 ────────────────────────────────────────────────────────────
+        # ツール実行・SSEイベント送信
         tool_results: list = []
-        choices_event: dict | None = None  # show_choices が呼ばれた場合のデータ
-
         for tc in tool_calls:
-            result = await execute_tool(tc["name"], tc["input"])
-
-            if tc["name"] == "show_choices":
-                # フロントエンドへ choices イベントを送信（会話は継続）
-                choices_event = {
-                    "type": "choices",
-                    "question": result.get("question", ""),
-                    "options": result.get("options", []),
-                }
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": json.dumps({"displayed": True}, ensure_ascii=False),
-                })
-
-            elif tc["name"] == "record_meal" and result.get("success"):
-                # 画像が添付されていた場合、meal_images テーブルに保存
-                meal_id = result["meal_id"]
-                source_type = result.get("image_source_type", "photo")
-                for img_b64 in pending_images:
-                    try:
-                        database.save_meal_image(
-                            meal_id=meal_id,
-                            image_data=base64.b64decode(img_b64),
-                            mime_type="image/jpeg",
-                            source_type=source_type,
-                        )
-                    except Exception as e:
-                        logger.error("食事画像の保存に失敗 (meal_id=%s): %s", meal_id, e)
-                pending_images.clear()
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
-                record_done_event = json.dumps(
-                    {"type": "record_done", "record_type": "meal", "record_id": meal_id},
-                    ensure_ascii=False,
-                )
-                yield f"data: {record_done_event}\n\n"
-
-            elif tc["name"] == "record_weight" and result.get("success"):
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
-                record_done_event = json.dumps(
-                    {"type": "record_done", "record_type": "weight", "record_id": result["weight_id"]},
-                    ensure_ascii=False,
-                )
-                yield f"data: {record_done_event}\n\n"
-
-            elif tc["name"] == "record_steps" and result.get("success"):
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
-                record_done_event = json.dumps(
-                    {"type": "record_done", "record_type": "steps", "record_id": result["id"]},
-                    ensure_ascii=False,
-                )
-                yield f"data: {record_done_event}\n\n"
-
-            else:
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
+            api_result, sse_events = await _execute_tool_and_format(tc, pending_images)
+            tool_results.append(api_result)
+            for evt in sse_events:
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
 
         conversation_history.append({"role": "user", "content": tool_results})
         database.save_conversation_message("user", tool_results)
-
-        # choices イベントをフロントエンドへ送信
-        if choices_event:
-            yield f"data: {json.dumps(choices_event, ensure_ascii=False)}\n\n"
 
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
