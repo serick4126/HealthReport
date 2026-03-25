@@ -106,7 +106,7 @@
         const data = await res.json();
         render(data);
       } catch(e) {
-        document.getElementById('content').innerHTML = '<div class="loading">データの取得に失敗しました</div>';
+        handleFetchError(document.getElementById('content'), e);
       }
     }
 

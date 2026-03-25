@@ -292,7 +292,7 @@
         pageState.currentPage = 0;
         renderPage();
       } catch(e) {
-        document.getElementById('content').innerHTML = '<div class="empty">データの取得に失敗しました</div>';
+        handleFetchError(document.getElementById('content'), e);
       }
     }
 
@@ -828,8 +828,8 @@
           return dateLabel + renderMeal(m);
         }).join('');
         content.innerHTML = countHtml + cardsHtml;
-      } catch(_) {
-        content.innerHTML = '<div class="empty">検索に失敗しました</div>';
+      } catch(e) {
+        handleFetchError(content, e);
       }
     }
 

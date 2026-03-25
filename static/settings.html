@@ -185,7 +185,7 @@
         foodDefaults = await fdRes.json();
         render(settings);
       } catch(e) {
-        document.getElementById('mainContent').innerHTML = '<div class="loading">読み込みに失敗しました</div>';
+        handleFetchError(document.getElementById('mainContent'), e);
       }
     }
 

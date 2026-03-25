@@ -113,7 +113,7 @@
           </div>`;
         document.getElementById('previewFrame').srcdoc = html;
       } catch(e) {
-        area.innerHTML = '<div class="empty">プレビューの生成に失敗しました</div>';
+        handleFetchError(area, e);
       } finally {
         setButtons(false);
       }
