@@ -560,7 +560,7 @@ async function refreshDashboard() {
     const settings = await settRes.json();
     updateDashboard(todayData, settings);
     loadQuickPalette();
-  } catch (_) {}
+  } catch (e) { console.error('dashboard更新エラー:', e); }
 }
 
 function updateDashboard(data, settings) {
@@ -689,7 +689,7 @@ async function loadChatHistory() {
     wrap.appendChild(sep2);
 
     scrollBottom();
-  } catch (_) {}
+  } catch (e) { console.error('チャット履歴読み込みエラー:', e); }
 }
 
 function hideLogin() {
@@ -1080,7 +1080,7 @@ async function loadQuickPalette() {
     }
     chips.innerHTML = html;
     palette.style.display = 'block';
-  } catch (_) {}
+  } catch (e) { console.error('クイックパレット読み込みエラー:', e); }
 }
 
 function sendQuick(el) {
