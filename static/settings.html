@@ -452,14 +452,14 @@
               return `
               <tr>
                 <td style="width:36px;text-align:center" data-label="お気に入り">
-                  <button class="fav-btn${f.is_favorite ? ' active' : ''}" onclick="toggleFavorite('${kw}')" title="お気に入り">★</button>
+                  <button class="fav-btn${f.is_favorite ? ' active' : ''}" data-keyword="${kw}" onclick="toggleFavorite(this.dataset.keyword)" title="お気に入り">★</button>
                 </td>
                 <td class="td-keyword" data-label="キーワード">${kw}</td>
                 <td class="td-desc" data-label="詳細">${escHtml(f.description)}</td>
                 <td class="td-notes" data-label="メモ">${escHtml(f.notes || '')}</td>
                 <td class="td-action" data-label="">
-                  <button class="edit-btn" onclick="openFdEditModal('${kw}')" title="編集">✏️</button>
-                  <button class="del-btn" onclick="deleteFoodDefault('${kw}')" title="削除">🗑</button>
+                  <button class="edit-btn" data-keyword="${kw}" onclick="openFdEditModal(this.dataset.keyword)" title="編集">✏️</button>
+                  <button class="del-btn" data-keyword="${kw}" onclick="deleteFoodDefault(this.dataset.keyword)" title="削除">🗑</button>
                 </td>
               </tr>`;
             }).join('')}
