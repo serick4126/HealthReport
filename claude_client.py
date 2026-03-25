@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import inspect
 import json
 import logging
 import os
@@ -351,102 +352,128 @@ MEAL_TYPE_JA = {
 }
 
 
+def _tool_record_meal(inp: dict) -> dict:
+    meal_id = database.save_meal(
+        meal_date=inp["meal_date"],
+        meal_type=inp["meal_type"],
+        description=inp["description"],
+        calories=inp.get("calories"),
+        protein=inp.get("protein"),
+        fat=inp.get("fat"),
+        carbs=inp.get("carbs"),
+        sodium=inp.get("sodium"),
+        notes=inp.get("notes"),
+    )
+    return {
+        "success": True,
+        "tool": "record_meal",
+        "meal_id": meal_id,
+        "meal_type_ja": MEAL_TYPE_JA.get(inp["meal_type"], inp["meal_type"]),
+        "description": inp["description"],
+        "calories": inp.get("calories"),
+        "protein": inp.get("protein"),
+        "fat": inp.get("fat"),
+        "carbs": inp.get("carbs"),
+        "sodium": inp.get("sodium"),
+        "image_source_type": inp.get("image_source_type", "photo"),
+    }
+
+
+def _tool_record_weight(inp: dict) -> dict:
+    weight_kg = inp["weight_kg"]
+    time_of_day = inp["time_of_day"]
+    log_date = inp["log_date"]
+    prev = database.get_previous_weight(time_of_day, log_date)
+    weight_id = database.save_weight(log_date, time_of_day, weight_kg)
+    delta = round(weight_kg - prev, 1) if prev is not None else None
+    return {
+        "success": True,
+        "tool": "record_weight",
+        "weight_id": weight_id,
+        "weight_kg": weight_kg,
+        "time_of_day": time_of_day,
+        "time_of_day_ja": "朝" if time_of_day == "morning" else "夜",
+        "previous_weight": prev,
+        "delta": delta,
+    }
+
+
+def _tool_record_steps(inp: dict) -> dict:
+    result = database.save_steps(inp["log_date"], inp["steps"])
+    return {
+        "success": True,
+        "tool": "record_steps",
+        "id": result["id"],
+        "steps": inp["steps"],
+        "updated": result["updated"],
+        "previous_steps": result.get("previous_steps"),
+    }
+
+
+def _tool_get_daily_summary(inp: dict) -> dict:
+    summary = database.get_daily_summary(inp.get("target_date"))
+    return {"success": True, "tool": "get_daily_summary", "summary": summary}
+
+
+def _tool_update_meal(inp: dict) -> dict:
+    meal_id = inp["meal_id"]
+    kwargs = {k: v for k, v in inp.items() if k != "meal_id"}
+    ok = database.update_meal(meal_id, **kwargs)
+    return {"success": ok, "tool": "update_meal", "meal_id": meal_id}
+
+
+async def _tool_search_food_nutrition(inp: dict) -> dict:
+    result = await food_search.search_nutrition(
+        inp["food_name"],
+        inp.get("amount", ""),
+    )
+    return {"success": True, "tool": "search_food_nutrition", **result}
+
+
+def _tool_save_food_default(inp: dict) -> dict:
+    database.save_food_default(
+        keyword=inp["keyword"],
+        description=inp["description"],
+        notes=inp.get("notes"),
+    )
+    return {"success": True, "tool": "save_food_default", "keyword": inp["keyword"]}
+
+
+def _tool_show_choices(inp: dict) -> dict:
+    # 実際の表示はstream_chat側でSSEイベントとして送信する
+    return {
+        "success": True,
+        "tool": "show_choices",
+        "displayed": True,
+        "question": inp.get("question", ""),
+        "options": inp.get("options", []),
+    }
+
+
+_TOOL_DISPATCH: dict = {
+    "record_meal":           _tool_record_meal,
+    "record_weight":         _tool_record_weight,
+    "record_steps":          _tool_record_steps,
+    "get_daily_summary":     _tool_get_daily_summary,
+    "update_meal":           _tool_update_meal,
+    "search_food_nutrition": _tool_search_food_nutrition,
+    "save_food_default":     _tool_save_food_default,
+    "show_choices":          _tool_show_choices,
+}
+
+
 async def execute_tool(name: str, input_data: dict) -> dict:
+    handler = _TOOL_DISPATCH.get(name)
+    if not handler:
+        logger.warning("Unknown tool requested: %s", name)
+        return {"success": False, "error": f"Unknown tool: {name}"}
     try:
-        if name == "record_meal":
-            meal_id = database.save_meal(
-                meal_date=input_data["meal_date"],
-                meal_type=input_data["meal_type"],
-                description=input_data["description"],
-                calories=input_data.get("calories"),
-                protein=input_data.get("protein"),
-                fat=input_data.get("fat"),
-                carbs=input_data.get("carbs"),
-                sodium=input_data.get("sodium"),
-                notes=input_data.get("notes"),
-            )
-            return {
-                "success": True,
-                "tool": "record_meal",
-                "meal_id": meal_id,
-                "meal_type_ja": MEAL_TYPE_JA.get(input_data["meal_type"], input_data["meal_type"]),
-                "description": input_data["description"],
-                "calories": input_data.get("calories"),
-                "protein": input_data.get("protein"),
-                "fat": input_data.get("fat"),
-                "carbs": input_data.get("carbs"),
-                "sodium": input_data.get("sodium"),
-                "image_source_type": input_data.get("image_source_type", "photo"),
-            }
-
-        elif name == "record_weight":
-            weight_kg = input_data["weight_kg"]
-            time_of_day = input_data["time_of_day"]
-            log_date = input_data["log_date"]
-            prev = database.get_previous_weight(time_of_day, log_date)
-            weight_id = database.save_weight(log_date, time_of_day, weight_kg)
-            delta = round(weight_kg - prev, 1) if prev is not None else None
-            return {
-                "success": True,
-                "tool": "record_weight",
-                "weight_id": weight_id,
-                "weight_kg": weight_kg,
-                "time_of_day": time_of_day,
-                "time_of_day_ja": "朝" if time_of_day == "morning" else "夜",
-                "previous_weight": prev,
-                "delta": delta,
-            }
-
-        elif name == "record_steps":
-            result = database.save_steps(input_data["log_date"], input_data["steps"])
-            return {
-                "success": True,
-                "tool": "record_steps",
-                "id": result["id"],
-                "steps": input_data["steps"],
-                "updated": result["updated"],
-                "previous_steps": result.get("previous_steps"),
-            }
-
-        elif name == "get_daily_summary":
-            summary = database.get_daily_summary(input_data.get("target_date"))
-            return {"success": True, "tool": "get_daily_summary", "summary": summary}
-
-        elif name == "update_meal":
-            meal_id = input_data["meal_id"]
-            kwargs = {k: v for k, v in input_data.items() if k != "meal_id"}
-            ok = database.update_meal(meal_id, **kwargs)
-            return {"success": ok, "tool": "update_meal", "meal_id": meal_id}
-
-        elif name == "search_food_nutrition":
-            result = await food_search.search_nutrition(
-                input_data["food_name"],
-                input_data.get("amount", ""),
-            )
-            return {"success": True, "tool": "search_food_nutrition", **result}
-
-        elif name == "save_food_default":
-            database.save_food_default(
-                keyword=input_data["keyword"],
-                description=input_data["description"],
-                notes=input_data.get("notes"),
-            )
-            return {"success": True, "tool": "save_food_default", "keyword": input_data["keyword"]}
-
-        elif name == "show_choices":
-            # 実際の表示はstream_chat側でSSEイベントとして送信する
-            return {
-                "success": True,
-                "tool": "show_choices",
-                "displayed": True,
-                "question": input_data.get("question", ""),
-                "options": input_data.get("options", []),
-            }
-
-        else:
-            return {"success": False, "error": f"Unknown tool: {name}"}
-
+        result = handler(input_data)
+        if inspect.isawaitable(result):
+            return await result
+        return result
     except Exception as e:
+        logger.error("Tool execution failed (tool=%s): %s", name, e, exc_info=True)
         return {"success": False, "tool": name, "error": str(e)}
 
 
