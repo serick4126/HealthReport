@@ -270,24 +270,26 @@
     const MEAL_TYPE_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食', late_night: '夜食' };
     const TIME_OF_DAY_JA = { morning: '朝', evening: '夜' };
     const PAGE_SIZE = 10;
-    let calorieGoal = 1500;
-    let allDays = [];
-    let currentPage = 0;
-    let currentPeriod = { days: 7, start: null, end: null };
+    const pageState = {
+      calorieGoal: 1500,
+      allDays: [],
+      currentPage: 0,
+      currentPeriod: { days: 7, start: null, end: null },
+    };
 
     // ── データ取得 ─────────────────────────────────────────────────────────────
     async function load(days, start, end) {
-      currentPeriod = { days, start, end };
+      pageState.currentPeriod = { days, start, end };
       document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
       const url = start && end ? `/api/history?start=${start}&end=${end}` : `/api/history?days=${days}`;
       const statsUrl = start && end ? `/api/stats?start=${start}&end=${end}` : `/api/stats?days=${days}`;
       try {
         const [histRes, statsRes] = await Promise.all([fetch(url), fetch(statsUrl)]);
         if (histRes.status === 401) { location.href = '/'; return; }
-        allDays = await histRes.json();
+        pageState.allDays = await histRes.json();
         const stats = await statsRes.json();
-        calorieGoal = stats.calories_goal || 1500;
-        currentPage = 0;
+        pageState.calorieGoal = stats.calories_goal || 1500;
+        pageState.currentPage = 0;
         renderPage();
       } catch(e) {
         document.getElementById('content').innerHTML = '<div class="empty">データの取得に失敗しました</div>';
@@ -295,31 +297,31 @@
     }
 
     function reload() {
-      load(currentPeriod.days, currentPeriod.start, currentPeriod.end);
+      load(pageState.currentPeriod.days, pageState.currentPeriod.start, pageState.currentPeriod.end);
     }
 
     // ── ページ描画 ─────────────────────────────────────────────────────────────
     function renderPage() {
       const content = document.getElementById('content');
-      if (!allDays.length) {
+      if (!pageState.allDays.length) {
         content.innerHTML = '<div class="empty">この期間に記録はありません</div>';
         return;
       }
-      const totalPages = Math.ceil(allDays.length / PAGE_SIZE);
-      const start = currentPage * PAGE_SIZE;
-      const pageDays = allDays.slice(start, start + PAGE_SIZE);
+      const totalPages = Math.ceil(pageState.allDays.length / PAGE_SIZE);
+      const start = pageState.currentPage * PAGE_SIZE;
+      const pageDays = pageState.allDays.slice(start, start + PAGE_SIZE);
       const paginationHtml = totalPages > 1 ? `
         <div class="pagination">
-          <button class="page-btn" onclick="changePage(-1)" ${currentPage === 0 ? 'disabled' : ''}>← 前へ</button>
-          <span class="page-info">${currentPage + 1} / ${totalPages}ページ（全${allDays.length}日）</span>
-          <button class="page-btn" onclick="changePage(1)" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>次へ →</button>
+          <button class="page-btn" onclick="changePage(-1)" ${pageState.currentPage === 0 ? 'disabled' : ''}>← 前へ</button>
+          <span class="page-info">${pageState.currentPage + 1} / ${totalPages}ページ（全${pageState.allDays.length}日）</span>
+          <button class="page-btn" onclick="changePage(1)" ${pageState.currentPage >= totalPages - 1 ? 'disabled' : ''}>次へ →</button>
         </div>` : '';
       content.innerHTML = paginationHtml + pageDays.map(d => renderDay(d)).join('') + paginationHtml;
     }
 
     function changePage(delta) {
-      const totalPages = Math.ceil(allDays.length / PAGE_SIZE);
-      currentPage = Math.max(0, Math.min(totalPages - 1, currentPage + delta));
+      const totalPages = Math.ceil(pageState.allDays.length / PAGE_SIZE);
+      pageState.currentPage = Math.max(0, Math.min(totalPages - 1, pageState.currentPage + delta));
       renderPage();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -330,8 +332,8 @@
       const weekdays = ['日','月','火','水','木','金','土'];
       const label = `${dateObj.getMonth()+1}/${dateObj.getDate()}（${weekdays[dateObj.getDay()]}）`;
       const t = day.totals;
-      const pct = calorieGoal > 0 ? Math.min((t.calories / calorieGoal) * 100, 100) : 0;
-      const over = t.calories > calorieGoal;
+      const pct = pageState.calorieGoal > 0 ? Math.min((t.calories / pageState.calorieGoal) * 100, 100) : 0;
+      const over = t.calories > pageState.calorieGoal;
 
       // 体重メタ（朝・夜を常に表示）
       let weightHtml = '';
@@ -377,7 +379,7 @@
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
 
-      const remaining = calorieGoal - t.calories;
+      const remaining = pageState.calorieGoal - t.calories;
       const remainingText = remaining >= 0
         ? `<span style="color:var(--text-secondary);font-size:11px">残り ${remaining}kcal</span>`
         : `<span style="color:var(--danger);font-size:11px">+${Math.abs(remaining)}kcal超過</span>`;
@@ -540,7 +542,7 @@
     async function openMealModal(mealId) {
       // 全データから該当meal を探す
       let meal = null;
-      for (const day of allDays) {
+      for (const day of pageState.allDays) {
         meal = day.meals.find(m => m.id === mealId);
         if (meal) break;
       }
@@ -549,7 +551,7 @@
       document.getElementById('editMealId').value = mealId;
       // meal_date は meals に含まれていないので day から取得
       let mealDate = '';
-      for (const day of allDays) {
+      for (const day of pageState.allDays) {
         if (day.meals.find(m => m.id === mealId)) { mealDate = day.date; break; }
       }
       document.getElementById('editMealDate').value = mealDate;
@@ -847,7 +849,7 @@
 
     // ── 前後ナビゲーション ──────────────────────────────────────────────────────
     function shiftPeriod(direction) {
-      var cp = currentPeriod;
+      var cp = pageState.currentPeriod;
       var shiftDays = cp.days || 7;
       var today = new Date();
       today.setHours(0,0,0,0);
@@ -888,7 +890,7 @@
       document.getElementById('customBtn').textContent =
         '\u{1f4c5} ' + startStr.slice(5).replace('-','/') + ' \u301c ' + endStr.slice(5).replace('-','/');
 
-      currentPeriod._shiftedEnd = endStr;
+      pageState.currentPeriod._shiftedEnd = endStr;
       load(null, startStr, endStr);
       updateShiftButtons();
     }
@@ -897,7 +899,7 @@
       var today = new Date();
       today.setHours(0,0,0,0);
       var todayStr = today.toISOString().slice(0, 10);
-      var cp = currentPeriod;
+      var cp = pageState.currentPeriod;
       // 「次」ボタン：endが今日以降なら無効
       var endStr = cp.end || cp._shiftedEnd || todayStr;
       document.getElementById('nextBtn').disabled = (endStr >= todayStr);

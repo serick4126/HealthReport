@@ -533,9 +533,12 @@ initNav('chat');
 initTheme();
 
 // ── 状態 ─────────────────────────────────────────────────────────────────────
-let pendingImages = []; // { base64: string, previewUrl: string }
-let isStreaming = false;
-let dashExpanded = true;
+const chatState = {
+  pendingImages: [], // { base64: string, previewUrl: string }
+  isStreaming: false,
+  dashExpanded: true,
+  renderTimer: null,  // SSEデバウンス用（Step 8で使用）
+};
 
 // ── ダッシュボード ────────────────────────────────────────────────────────────
 const MEAL_TYPES = [
@@ -608,7 +611,7 @@ function updateDashboard(data, settings) {
 }
 
 function toggleDashboard() {
-  dashExpanded = !dashExpanded;
+  chatState.dashExpanded = !chatState.dashExpanded;
   applyDashState();
 }
 
@@ -617,7 +620,7 @@ function applyDashState() {
   const arrow = document.getElementById('dashArrow');
   const compact = document.getElementById('dashCompact');
   const date = document.getElementById('dashDate');
-  if (dashExpanded) {
+  if (chatState.dashExpanded) {
     body.style.display = 'block';
     arrow.textContent = '▾';
     compact.style.display = 'none';
@@ -738,8 +741,8 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
   for (const file of e.target.files) {
     const base64 = await fileToBase64(file);
     const previewUrl = URL.createObjectURL(file);
-    const idx = pendingImages.length;
-    pendingImages.push({ base64, previewUrl });
+    const idx = chatState.pendingImages.length;
+    chatState.pendingImages.push({ base64, previewUrl });
     addPreviewItem(idx, previewUrl);
   }
   e.target.value = '';
@@ -767,7 +770,7 @@ function addPreviewItem(idx, previewUrl) {
 }
 
 function removePreview(idx) {
-  pendingImages[idx] = null;
+  chatState.pendingImages[idx] = null;
   const el = document.querySelector(`.preview-item[data-idx="${idx}"]`);
   if (el) el.remove();
   if (!document.querySelector('.preview-item')) {
@@ -790,23 +793,23 @@ textInput.addEventListener('keydown', (e) => {
 
 // ── メッセージ送信 ────────────────────────────────────────────────────────────
 async function sendMessage() {
-  if (isStreaming) return;
+  if (chatState.isStreaming) return;
 
   const text = textInput.value.trim();
-  const images = pendingImages.filter(Boolean).map(i => i.base64);
+  const images = chatState.pendingImages.filter(Boolean).map(i => i.base64);
   if (!text && images.length === 0) return;
 
   // 入力クリア
   textInput.value = '';
   textInput.style.height = 'auto';
-  pendingImages = [];
+  chatState.pendingImages = [];
   document.getElementById('imagePreview').innerHTML = '';
   document.getElementById('imagePreview').classList.remove('has-items');
 
   addUserMessage(text, images);
 
   const typingEl = addTyping();
-  isStreaming = true;
+  chatState.isStreaming = true;
   const sendBtn = document.getElementById('sendBtn');
   sendBtn.disabled = true;
   sendBtn.innerHTML = '<span class="spinner-sm"></span>';
@@ -890,7 +893,7 @@ async function sendMessage() {
     if (typingEl.parentElement) typingEl.remove();
     appendError('通信エラーが発生しました。');
   } finally {
-    isStreaming = false;
+    chatState.isStreaming = false;
     const btn = document.getElementById('sendBtn');
     btn.disabled = false;
     btn.textContent = '↑';
