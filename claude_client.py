@@ -790,6 +790,7 @@ async def stream_chat(
                     await asyncio.sleep(wait_sec)
 
             except Exception as e:
+                logger.error("ストリーミング中に予期しないエラー: %s", e, exc_info=True)
                 yield f"data: {json.dumps({'type': 'error', 'message': _format_error_message(e)}, ensure_ascii=False)}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
