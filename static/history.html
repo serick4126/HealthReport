@@ -432,14 +432,18 @@
     }
 
     // ── 画像遅延読み込み (IntersectionObserver) ────────────────────────────────
-    const imgObserver = new IntersectionObserver((entries) => {
+    let _imgObserver = null;
+    let _mutObserver = null;
+
+    if (_imgObserver) _imgObserver.disconnect();
+    _imgObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           const el = entry.target;
           if (el.dataset.loaded === 'false') {
             loadMealImages(el);
             el.dataset.loaded = 'true';
-            imgObserver.unobserve(el);
+            _imgObserver.unobserve(el);
           }
         }
       });
@@ -447,7 +451,7 @@
 
     function observeImageContainers() {
       document.querySelectorAll('.meal-images[data-loaded="false"]').forEach(el => {
-        imgObserver.observe(el);
+        _imgObserver.observe(el);
       });
     }
 
@@ -933,8 +937,15 @@
     // ── renderPage後に画像Observerをセット ────────────────────────────────────
     const _origRenderPage = renderPage;
     // renderPage呼び出し後にObserver登録（MutationObserverで監視）
-    const mutObs = new MutationObserver(() => observeImageContainers());
-    mutObs.observe(document.getElementById('content'), { childList: true, subtree: true });
+    if (_mutObserver) _mutObserver.disconnect();
+    _mutObserver = new MutationObserver(() => observeImageContainers());
+    _mutObserver.observe(document.getElementById('content'), { childList: true, subtree: true });
+
+    // ── ページ離脱時のクリーンアップ ──────────────────────────────────────────
+    window.addEventListener('beforeunload', function() {
+      if (_imgObserver) _imgObserver.disconnect();
+      if (_mutObserver) _mutObserver.disconnect();
+    });
 
     load(7, null, null);
   </script>
