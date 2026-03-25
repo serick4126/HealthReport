@@ -1,7 +1,10 @@
 import hmac
+import logging
 import os
 import time
 import uuid
+
+logger = logging.getLogger(__name__)
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -273,7 +276,8 @@ async def list_models(request: Request):
         models.sort(key=lambda m: m["id"], reverse=True)
         return JSONResponse({"models": models})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("モデル一覧の取得に失敗: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバー内部エラーが発生しました")
 
 
 # ── food-defaults エンドポイント ───────────────────────────────────────────────
