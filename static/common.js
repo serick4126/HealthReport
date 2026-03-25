@@ -68,3 +68,34 @@ async function checkAuthOrRedirect() {
     location.href = '/';
   }
 }
+
+// ── 共通 fetch エラーハンドラー ───────────────────────────────────────────────
+/**
+ * fetch 失敗時の共通処理。
+ * @param {Element|null} container - エラーメッセージを表示する要素
+ * @param {Error|Response|unknown} e  - catch したエラーまたは Response オブジェクト
+ */
+function handleFetchError(container, e) {
+  console.error('fetchエラー:', e);
+
+  var status = e && e.status ? e.status : 0;
+  var isNetworkError = e instanceof TypeError;
+
+  if (status === 401) {
+    location.href = '/';
+    return;
+  }
+
+  var msg;
+  if (isNetworkError) {
+    msg = 'ネットワークエラーが発生しました。接続を確認してください。';
+  } else if (status >= 500) {
+    msg = 'サーバーエラーが発生しました。しばらく待ってからお試しください。';
+  } else {
+    msg = 'エラーが発生しました。再度お試しください。';
+  }
+
+  if (container) {
+    container.innerHTML = '<p class="error-msg">' + escHtml(msg) + '</p>';
+  }
+}

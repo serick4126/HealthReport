@@ -818,6 +818,18 @@ async function sendMessage() {
   let aiTextEl = null;
   let currentText = '';
 
+  // SSE 描画デバウンス（16ms）: 高頻度チャンクのDOM更新をまとめて処理
+  function scheduleRender() {
+    if (chatState.renderTimer) clearTimeout(chatState.renderTimer);
+    chatState.renderTimer = setTimeout(function() {
+      if (aiTextEl) {
+        aiTextEl.innerHTML = DOMPurify.sanitize(marked.parse(currentText));
+        scrollBottom();
+      }
+      chatState.renderTimer = null;
+    }, 16);
+  }
+
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST',
@@ -857,8 +869,7 @@ async function sendMessage() {
             aiTextEl = r.textEl;
           }
           currentText += data.content;
-          aiTextEl.innerHTML = DOMPurify.sanitize(marked.parse(currentText));
-          scrollBottom();
+          scheduleRender();
 
         } else if (data.type === 'choices') {
           // 選択肢ボタンを表示
@@ -878,6 +889,15 @@ async function sendMessage() {
           }
 
         } else if (data.type === 'done') {
+          // デバウンス中の描画を即時フラッシュ
+          if (chatState.renderTimer) {
+            clearTimeout(chatState.renderTimer);
+            chatState.renderTimer = null;
+            if (aiTextEl) {
+              aiTextEl.innerHTML = DOMPurify.sanitize(marked.parse(currentText));
+              scrollBottom();
+            }
+          }
           if (typingEl.parentElement) typingEl.remove();
           break;
 
