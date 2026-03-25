@@ -556,7 +556,7 @@ async function refreshDashboard() {
       fetch('/api/today'),
       fetch('/api/settings'),
     ]);
-    if (!todayRes.ok || !settRes.ok) return;
+    if (!todayRes.ok || !settRes.ok) { console.error('dashboard API error:', todayRes.status, settRes.status); return; }
     const todayData = await todayRes.json();
     const settings = await settRes.json();
     updateDashboard(todayData, settings);
@@ -1046,7 +1046,8 @@ async function undoRecord(recordType, recordId, btn) {
       btn.classList.add('fading');
       setTimeout(function() { btn.remove(); }, 600);
     }, 2000);
-  } catch(_) {
+  } catch(e) {
+    console.error('取り消しエラー:', e);
     btn.textContent = '取り消し失敗';
     btn.disabled = false;
   }

@@ -64,7 +64,7 @@ async function initTheme() {
     } catch (_) {
       // localStorage無効時はスキップ
     }
-  } catch (_) {}
+  } catch (e) { console.error('テーマ取得エラー:', e); }
 }
 
 // ── 認証チェック（未認証なら / へリダイレクト）──────────────────────────────
