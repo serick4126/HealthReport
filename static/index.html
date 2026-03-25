@@ -538,6 +538,7 @@ const chatState = {
   isStreaming: false,
   dashExpanded: true,
   renderTimer: null,  // SSEデバウンス用（Step 8で使用）
+  reader: null,       // fetch SSE ストリームのReader（beforeunloadでcancel）
 };
 
 // ── ダッシュボード ────────────────────────────────────────────────────────────
@@ -844,6 +845,7 @@ async function sendMessage() {
     }
 
     const reader = resp.body.getReader();
+    chatState.reader = reader;
     const decoder = new TextDecoder();
     let buf = '';
 
@@ -914,6 +916,7 @@ async function sendMessage() {
     appendError('通信エラーが発生しました。');
   } finally {
     chatState.isStreaming = false;
+    chatState.reader = null;
     const btn = document.getElementById('sendBtn');
     btn.disabled = false;
     btn.textContent = '↑';
@@ -1141,6 +1144,7 @@ checkAuth();
 
 window.addEventListener('beforeunload', function() {
   if (chatState.renderTimer) clearTimeout(chatState.renderTimer);
+  if (chatState.reader) chatState.reader.cancel();
 });
 </script>
 </body>
