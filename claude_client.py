@@ -1,9 +1,12 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 from datetime import datetime, timezone, timedelta
 from typing import AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 import anthropic
 
@@ -518,8 +521,9 @@ async def _compress_history(
             messages=[{"role": "user", "content": summary_prompt}],
         )
         new_summary = resp.content[0].text.strip()
-    except Exception:
-        return existing_summary  # 圧縮失敗時は既存サマリーをそのまま返す
+    except Exception as e:
+        logger.warning("会話圧縮に失敗（既存サマリーを使用）: %s", e)
+        return existing_summary
 
     # 古いメッセージをin-placeで削除
     del conversation_history[:-keep_recent]
@@ -583,7 +587,8 @@ async def stream_chat(
     for img_b64 in images:
         try:
             processed = process_image_b64(img_b64)
-        except Exception:
+        except Exception as e:
+            logger.warning("画像処理に失敗（元データを使用）: %s", e)
             processed = img_b64
         pending_images.append(processed)
         user_content.append({
@@ -739,8 +744,8 @@ async def stream_chat(
                             mime_type="image/jpeg",
                             source_type=source_type,
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error("食事画像の保存に失敗 (meal_id=%s): %s", meal_id, e)
                 pending_images.clear()
                 tool_results.append({
                     "type": "tool_result",

@@ -349,8 +349,8 @@ def update_meal(meal_id: int, **kwargs) -> bool:
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [meal_id]
     with get_conn() as conn:
-        conn.execute(f"UPDATE meals SET {set_clause} WHERE id = ?", values)
-    return True
+        cur = conn.execute(f"UPDATE meals SET {set_clause} WHERE id = ?", values)
+    return cur.rowcount > 0
 
 
 def update_meal_full(
