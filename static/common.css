@@ -153,3 +153,23 @@ body {
 }
 .modal-actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .modal-actions button.danger-btn { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+/* ── ローディングスピナー共通 ── */
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+.loading-spinner::before {
+  content: '';
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin-loader 0.8s linear infinite;
+}
+@keyframes spin-loader { to { transform: rotate(360deg); } }

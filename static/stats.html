@@ -60,7 +60,7 @@
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
   </div>
   <div class="content" id="content">
-    <div class="loading">読み込み中...</div>
+    <div class="loading-spinner">読み込み中...</div>
   </div>
 
   <!-- 期間指定モーダル -->
@@ -95,7 +95,7 @@
     }
 
     async function load(days, start, end) {
-      document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
+      document.getElementById('content').innerHTML = '<div class="loading-spinner">読み込み中...</div>';
       destroyCharts();
       const url = start && end
         ? `/api/stats?start=${start}&end=${end}`
