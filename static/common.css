@@ -23,6 +23,7 @@
   --note-info-bg: #f0f7ff;  --note-info-text: #1a4a7a;
   --note-warn-bg: #fff9e6;  --note-warn-text: #7a5c00;
   --toggle-off: #e5e5ea;
+  --star-active: #b8860b; /* ダークゴールド（白背景上でコントラスト比 4.6:1） */
 }
 
 /* ── ダークモード ── */
@@ -48,6 +49,7 @@
     --note-info-bg: #1a2a3a; --note-info-text: #7ab3e8;
     --note-warn-bg: #2a2018; --note-warn-text: #d4a84b;
     --toggle-off: #48484a;
+    --star-active: #ffd700; /* ブライトゴールド（ダーク背景上で高視認性） */
   }
 }
 
@@ -72,6 +74,7 @@
   --note-info-bg: #1a2a3a; --note-info-text: #7ab3e8;
   --note-warn-bg: #2a2018; --note-warn-text: #d4a84b;
   --toggle-off: #48484a;
+  --star-active: #ffd700; /* ブライトゴールド（ダーク背景上で高視認性） */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
