@@ -351,14 +351,14 @@
           weightHtml += `
             <span class="meta-item">
               ⚖️ ${label_ja} ${wkg}kg
-              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(${wid},'${day.date}','${tod}',${wkg})" title="編集">✏️</button>
-              <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteWeight(${wid})" title="削除">🗑️</button>
+              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(${wid},'${day.date}','${tod}',${wkg})" aria-label="体重を編集">✏️</button>
+              <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteWeight(${wid})" aria-label="体重を削除">🗑️</button>
             </span>`;
         } else {
           weightHtml += `
             <span class="meta-item" style="color:var(--text-secondary)">
               ⚖️ ${label_ja} <span style="font-style:italic">未入力</span>
-              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(null,'${day.date}','${tod}',null)" title="入力">✏️</button>
+              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(null,'${day.date}','${tod}',null)" aria-label="体重を入力">✏️</button>
             </span>`;
         }
       }
@@ -369,14 +369,14 @@
         stepsHtml = `
           <span class="meta-item">
             👟 ${day.steps.toLocaleString()}歩
-            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(${day.steps_id},'${day.date}',${day.steps})" title="編集">✏️</button>
-            <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteSteps(${day.steps_id})" title="削除">🗑️</button>
+            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(${day.steps_id},'${day.date}',${day.steps})" aria-label="歩数を編集">✏️</button>
+            <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteSteps(${day.steps_id})" aria-label="歩数を削除">🗑️</button>
           </span>`;
       } else {
         stepsHtml = `
           <span class="meta-item" style="color:var(--text-secondary)">
             👟 <span style="font-style:italic">未入力</span>
-            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(null,'${day.date}',null)" title="入力">✏️</button>
+            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(null,'${day.date}',null)" aria-label="歩数を入力">✏️</button>
           </span>`;
       }
 
