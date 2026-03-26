@@ -331,6 +331,12 @@
       cursor: pointer;
       user-select: none;
       gap: 8px;
+      background: none;
+      border: none;
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      color: inherit;
     }
     .dash-toggle-row:active { background: var(--bg); }
     .dash-date { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
@@ -445,11 +451,12 @@
 
 <!-- ダッシュボードバー -->
 <div class="dashboard" id="dashboard" style="display:none">
-  <div class="dash-toggle-row" onclick="toggleDashboard()">
+  <button class="dash-toggle-row" id="dashToggleBtn" onclick="toggleDashboard()"
+    aria-expanded="true" aria-controls="dashBody">
     <span class="dash-date" id="dashDate"></span>
     <span class="dash-compact" id="dashCompact"></span>
     <span class="dash-arrow" id="dashArrow">▾</span>
-  </div>
+  </button>
   <div class="dash-body" id="dashBody">
     <div class="dash-cal-row">
       <span class="dash-cal-text" id="dashCalText"></span>
@@ -622,16 +629,19 @@ function applyDashState() {
   const arrow = document.getElementById('dashArrow');
   const compact = document.getElementById('dashCompact');
   const date = document.getElementById('dashDate');
+  const btn = document.getElementById('dashToggleBtn');
   if (chatState.dashExpanded) {
     body.style.display = 'block';
     arrow.textContent = '▾';
     compact.style.display = 'none';
     date.style.display = 'inline';
+    if (btn) btn.setAttribute('aria-expanded', 'true');
   } else {
     body.style.display = 'none';
     arrow.textContent = '▸';
     compact.style.display = 'inline';
     date.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
   }
 }
 
