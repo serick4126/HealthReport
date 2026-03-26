@@ -31,6 +31,7 @@
       font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 200;
     }
     .toast.show { opacity: 1; }
+    .toast-error { background: var(--danger) !important; color: #fff !important; }
     /* food-defaults テーブル */
     .food-table { width: 100%; border-collapse: collapse; }
     .food-table th { font-size: 12px; color: var(--text-secondary); font-weight: 600; padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -507,7 +508,7 @@
         }
         showToast('モデル一覧を更新しました ✓');
       } catch(e) {
-        showToast('モデル一覧の取得に失敗しました');
+        showToast('モデル一覧の取得に失敗しました', 'error');
       } finally {
         if (btn) btn.disabled = false;
       }
@@ -528,8 +529,8 @@
         auto_save_food_defaults: document.getElementById('auto_save_food_defaults').checked ? 'true' : 'false',
         split_multiple_items:    document.getElementById('split_multiple_items').checked ? 'true' : 'false',
       };
-      if (!settings.user_name) { showToast('ユーザー名を入力してください'); return; }
-      if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください'); return; }
+      if (!settings.user_name) { showToast('ユーザー名を入力してください', 'error'); return; }
+      if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
       // 機密項目は入力があった場合のみ送信（空＝変更なし）
       const pw = document.getElementById('app_password').value;
       if (pw) settings.app_password = pw;
@@ -546,20 +547,20 @@
         if (!res.ok) throw new Error();
         showToast('保存しました ✓');
       } catch(e) {
-        showToast('保存に失敗しました');
+        showToast('保存に失敗しました', 'error');
       }
     }
 
     function copyEndpoint() {
       const url = window.location.origin + '/api/steps/ingest';
-      navigator.clipboard.writeText(url).then(() => showToast('コピーしました ✓')).catch(() => showToast('コピーに失敗しました'));
+      navigator.clipboard.writeText(url).then(() => showToast('コピーしました ✓')).catch(() => showToast('コピーに失敗しました', 'error'));
     }
 
     async function addFoodDefault() {
       const keyword = document.getElementById('newKeyword').value.trim();
       const desc = document.getElementById('newDesc').value.trim();
       const notes = document.getElementById('newNotes').value.trim();
-      if (!keyword || !desc) { showToast('キーワードと詳細を入力してください'); return; }
+      if (!keyword || !desc) { showToast('キーワードと詳細を入力してください', 'error'); return; }
       try {
         const res = await fetch('/api/food-defaults', {
           method: 'POST',
@@ -575,7 +576,7 @@
         renderFoodTable();
         showToast('追加しました ✓');
       } catch(e) {
-        showToast('追加に失敗しました');
+        showToast('追加に失敗しました', 'error');
       }
     }
 
@@ -601,7 +602,7 @@
       const desc = document.getElementById('fdEditDesc').value.trim();
       const notes = document.getElementById('fdEditNotes').value.trim();
       const is_favorite = document.getElementById('fdEditFavorite').checked;
-      if (!keyword || !desc) { showToast('キーワードと詳細を入力してください'); return; }
+      if (!keyword || !desc) { showToast('キーワードと詳細を入力してください', 'error'); return; }
       try {
         const res = await fetch(`/api/food-defaults/${encodeURIComponent(fdEditOriginalKeyword)}`, {
           method: 'PUT',
@@ -615,7 +616,7 @@
         closeFdEditModal();
         showToast('更新しました ✓');
       } catch(e) {
-        showToast('更新に失敗しました');
+        showToast('更新に失敗しました', 'error');
       }
     }
 
@@ -628,7 +629,7 @@
         if (entry) entry.is_favorite = data.is_favorite ? 1 : 0;
         renderFoodTable();
       } catch(e) {
-        showToast('更新に失敗しました');
+        showToast('更新に失敗しました', 'error');
       }
     }
 
@@ -641,15 +642,16 @@
         renderFoodTable();
         showToast('削除しました');
       } catch(e) {
-        showToast('削除に失敗しました');
+        showToast('削除に失敗しました', 'error');
       }
     }
 
-    function showToast(msg) {
+    function showToast(msg, type) {
       const t = document.getElementById('toast');
       t.textContent = msg;
-      t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2500);
+      t.className = 'toast show' + (type === 'error' ? ' toast-error' : '');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('show'), type === 'error' ? 5000 : 3000);
     }
 
     function escHtml(s) {
