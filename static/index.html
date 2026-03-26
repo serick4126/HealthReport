@@ -477,8 +477,13 @@
   <div class="message ai">
     <div class="bubble" id="greetingBubble">
       こんにちは！😊<br>
-      食事・体重・歩数を報告してください。<br>
-      記録のほか、食事の提案も可能です。
+      食事・体重・歩数を自然な言葉で記録できます。<br><br>
+      <b>💡 入力例:</b><br>
+      ・「朝食にトーストとコーヒー」<br>
+      ・「体重 65.2kg」<br>
+      ・「今日は8000歩歩いた」<br><br>
+      📎 画像を添付すると食品を認識します<br>
+      ⬇️ 下のパレットからワンタップ入力も可能です
     </div>
   </div>
 </div>
@@ -665,7 +670,14 @@ async function loadChatHistory() {
       const name = s.user_name && s.user_name !== 'DefaultName' ? s.user_name : null;
       const el = document.getElementById('greetingBubble');
       if (el && name) {
-        el.innerHTML = 'こんにちは、' + escHtml(name) + 'さん！😊<br>食事・体重・歩数を報告してください。<br>記録のほか、食事の提案も可能です。';
+        el.innerHTML = 'こんにちは、' + escHtml(name) + 'さん！😊<br>'
+          + '食事・体重・歩数を自然な言葉で記録できます。<br><br>'
+          + '<b>💡 入力例:</b><br>'
+          + '・「朝食にトーストとコーヒー」<br>'
+          + '・「体重 65.2kg」<br>'
+          + '・「今日は8000歩歩いた」<br><br>'
+          + '📎 画像を添付すると食品を認識します<br>'
+          + '⬇️ 下のパレットからワンタップ入力も可能です';
       }
     }
     if (!histRes.ok) return;
