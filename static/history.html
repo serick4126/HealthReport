@@ -124,7 +124,7 @@
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
     <div style="display:flex;gap:6px;margin-left:auto">
-      <button class="period-shift-btn" id="prevBtn" onclick="shiftPeriod(-1)">◀ 前</button>
+      <button class="period-shift-btn" id="prevBtn" onclick="shiftPeriod(-1)" title="前の期間（最大1年前まで）">◀ 前</button>
       <button class="period-shift-btn" id="nextBtn" onclick="shiftPeriod(1)" disabled>次 ▶</button>
     </div>
   </div>
@@ -431,9 +431,9 @@
           ${m.notes ? `<div class="meal-notes">${escHtml(m.notes)}</div>` : ''}
           ${imagesHtml}
           <div class="card-actions">
-            <button class="action-btn" onclick="openMealModal(${m.id})">✏️ 編集</button>
-            <button class="action-btn danger" onclick="confirmDeleteMeal(${m.id})">🗑️ 削除</button>
-            <button class="action-btn photo" onclick="triggerImageUpload(${m.id})">📷 写真追加</button>
+            <button class="action-btn" onclick="openMealModal(${m.id})" aria-label="食事を編集">✏️ 編集</button>
+            <button class="action-btn danger" onclick="confirmDeleteMeal(${m.id})" aria-label="食事を削除">🗑️ 削除</button>
+            <button class="action-btn photo" onclick="triggerImageUpload(${m.id})" aria-label="写真を追加">📷 写真追加</button>
           </div>
         </div>`;
     }
@@ -889,7 +889,10 @@
       // 1年前より前には遡らない
       var minDate = new Date(today);
       minDate.setFullYear(minDate.getFullYear() - 1);
-      if (direction === -1 && newEnd <= minDate) return;
+      if (direction === -1 && newStart < minDate) {
+        newStart = minDate;
+        if (newStart >= newEnd) return;
+      }
 
       var startStr = newStart.toISOString().slice(0, 10);
       var endStr = newEnd.toISOString().slice(0, 10);
@@ -917,9 +920,14 @@
       var minDate = new Date(today);
       minDate.setFullYear(minDate.getFullYear() - 1);
       var minDateStr = minDate.toISOString().slice(0, 10);
-      var startStr = cp.start || cp._shiftedEnd
-        ? new Date(new Date(endStr + 'T00:00:00').getTime() - ((cp.days || 7) - 1) * 86400000).toISOString().slice(0, 10)
-        : todayStr;
+      var startStr;
+      if (cp.start) {
+        startStr = cp.start;
+      } else {
+        var days = cp.days || 7;
+        var endDate = new Date(endStr + 'T00:00:00');
+        startStr = new Date(endDate.getTime() - (days - 1) * 86400000).toISOString().slice(0, 10);
+      }
       document.getElementById('prevBtn').disabled = (startStr <= minDateStr);
     }
 

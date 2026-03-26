@@ -475,16 +475,7 @@
 
 <div class="messages" id="messages">
   <div class="message ai">
-    <div class="bubble" id="greetingBubble">
-      こんにちは！😊<br>
-      食事・体重・歩数を自然な言葉で記録できます。<br><br>
-      <b>💡 入力例:</b><br>
-      ・「朝食にトーストとコーヒー」<br>
-      ・「体重 65.2kg」<br>
-      ・「今日は8000歩歩いた」<br><br>
-      📎 画像を添付すると食品を認識します<br>
-      ⬇️ 下のパレットからワンタップ入力も可能です
-    </div>
+    <div class="bubble" id="greetingBubble"></div>
   </div>
 </div>
 
@@ -544,6 +535,21 @@ marked.setOptions({ breaks: true, gfm: true });
 // ナビバー初期化
 initNav('chat');
 initTheme();
+
+// ── オンボーディング挨拶文 ────────────────────────────────────────────────────
+function getGreetingHtml(name) {
+  var greeting = name
+    ? 'こんにちは、' + escHtml(name) + 'さん！😊<br>'
+    : 'こんにちは！😊<br>';
+  return greeting
+    + '食事・体重・歩数を自然な言葉で記録できます。<br><br>'
+    + '<b>💡 入力例:</b><br>'
+    + '・「朝食にトーストとコーヒー」<br>'
+    + '・「体重 65.2kg」<br>'
+    + '・「今日は8000歩歩いた」<br><br>'
+    + '📎 画像を添付すると食品を認識します<br>'
+    + '⬇️ 下のパレットからワンタップ入力も可能です';
+}
 
 // ── 状態 ─────────────────────────────────────────────────────────────────────
 const chatState = {
@@ -670,14 +676,7 @@ async function loadChatHistory() {
       const name = s.user_name && s.user_name !== 'DefaultName' ? s.user_name : null;
       const el = document.getElementById('greetingBubble');
       if (el && name) {
-        el.innerHTML = 'こんにちは、' + escHtml(name) + 'さん！😊<br>'
-          + '食事・体重・歩数を自然な言葉で記録できます。<br><br>'
-          + '<b>💡 入力例:</b><br>'
-          + '・「朝食にトーストとコーヒー」<br>'
-          + '・「体重 65.2kg」<br>'
-          + '・「今日は8000歩歩いた」<br><br>'
-          + '📎 画像を添付すると食品を認識します<br>'
-          + '⬇️ 下のパレットからワンタップ入力も可能です';
+        el.innerHTML = getGreetingHtml(name);
       }
     }
     if (!histRes.ok) return;
@@ -1164,6 +1163,8 @@ document.getElementById('passwordInput').addEventListener('keydown', e => {
 });
 
 // ── 初期化 ────────────────────────────────────────────────────────────────────
+// 挨拶バブルを初期表示（loadChatHistory() でユーザー名入りに上書きされる）
+document.getElementById('greetingBubble').innerHTML = getGreetingHtml(null);
 checkAuth();
 
 window.addEventListener('beforeunload', function() {
