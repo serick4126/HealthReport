@@ -171,6 +171,7 @@
       const chartGridColor = rootStyle.getPropertyValue('--border').trim() || '#e5e5ea';
 
       const defaults = { responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false, axis: 'x' },
         plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12, color: chartTextColor } } },
         scales: {
           x: { ticks: { font: { size: 11 }, maxTicksLimit: xMaxTicks, maxRotation: period > 30 ? 45 : 0, color: chartTextColor }, grid: { color: chartGridColor } },

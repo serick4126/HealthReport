@@ -886,6 +886,11 @@
       if (newStart > today) return;
       if (newEnd > today) newEnd = today;
 
+      // 1年前より前には遡らない
+      var minDate = new Date(today);
+      minDate.setFullYear(minDate.getFullYear() - 1);
+      if (direction === -1 && newEnd <= minDate) return;
+
       var startStr = newStart.toISOString().slice(0, 10);
       var endStr = newEnd.toISOString().slice(0, 10);
 
@@ -908,6 +913,14 @@
       // 「次」ボタン：endが今日以降なら無効
       var endStr = cp.end || cp._shiftedEnd || todayStr;
       document.getElementById('nextBtn').disabled = (endStr >= todayStr);
+      // 「前」ボタン：startが1年前以前なら無効
+      var minDate = new Date(today);
+      minDate.setFullYear(minDate.getFullYear() - 1);
+      var minDateStr = minDate.toISOString().slice(0, 10);
+      var startStr = cp.start || cp._shiftedEnd
+        ? new Date(new Date(endStr + 'T00:00:00').getTime() - ((cp.days || 7) - 1) * 86400000).toISOString().slice(0, 10)
+        : todayStr;
+      document.getElementById('prevBtn').disabled = (startStr <= minDateStr);
     }
 
     // ── 期間指定モーダル ───────────────────────────────────────────────────────
