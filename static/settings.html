@@ -369,29 +369,42 @@
           </div>
         </div>
 
-        <!-- 歩数API連携 -->
+        <!-- 外部API連携 -->
         <div class="section">
-          <div class="section-title">歩数API連携（iPhoneショートカット）</div>
+          <div class="section-title">外部API連携（iPhoneショートカット）</div>
           <div class="card">
             <div class="row">
-              <span class="row-label">歩数APIキー</span>
-              <input type="password" id="steps_api_key" value="" placeholder="${s.steps_api_key === 'set' ? '（設定済み）変更する場合のみ入力' : '任意の文字列を設定'}" autocomplete="off" />
+              <span class="row-label">外部APIキー（歩数・体重共用）</span>
+              <input type="password" id="external_api_key" value="" placeholder="${s.external_api_key === 'set' ? '（設定済み）変更する場合のみ入力' : '任意の文字列を設定'}" autocomplete="off" />
             </div>
             <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
-              <span class="row-label" style="font-size:13px;color:var(--text-secondary)">エンドポイント</span>
+              <span class="row-label" style="font-size:13px;color:var(--text-secondary)">エンドポイント（歩数）</span>
               <div style="display:flex;align-items:center;gap:8px;width:100%">
-                <code id="stepsEndpoint" style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all">${window.location.origin}/api/steps/ingest</code>
-                <button onclick="copyEndpoint()" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
+                <code style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all">${window.location.origin}/api/steps/ingest</code>
+                <button class="copy-endpoint-btn" data-url="/api/steps/ingest" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
+              </div>
+            </div>
+            <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
+              <span class="row-label" style="font-size:13px;color:var(--text-secondary)">エンドポイント（体重）</span>
+              <div style="display:flex;align-items:center;gap:8px;width:100%">
+                <code style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all">${window.location.origin}/api/weight/ingest</code>
+                <button class="copy-endpoint-btn" data-url="/api/weight/ingest" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
               </div>
             </div>
             <div class="row note-tip" style="flex-direction:column;align-items:flex-start;gap:4px">
               <div style="font-weight:600;font-size:13px">📱 iPhoneショートカット設定</div>
               <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+                <strong>【歩数】</strong><br>
                 <strong>メソッド:</strong> POST<br>
                 <strong>ヘッダ:</strong> Authorization: Bearer &lt;設定したAPIキー&gt;<br>
                 <strong>ヘッダ:</strong> Content-Type: application/json<br>
                 <strong>ボディ:</strong> {"steps": &lt;歩数&gt;, "date": "YYYY-MM-DD"}<br><br>
-                ヘルスケアから前日の歩数を取得し、毎朝自動実行するオートメーションに設定することで自動記録できます。
+                <strong>【体重】</strong><br>
+                <strong>メソッド:</strong> POST<br>
+                <strong>ヘッダ:</strong> Authorization: Bearer &lt;設定したAPIキー（歩数と同じ）&gt;<br>
+                <strong>ヘッダ:</strong> Content-Type: application/json<br>
+                <strong>ボディ:</strong> {"records": [{"recorded_at": "YYYY/MM/DD HH:MM", "weight": XX.X}]}<br><br>
+                ヘルスケアから前日のデータを取得し、毎朝自動実行するオートメーションに設定することで自動記録できます。
               </div>
             </div>
           </div>
@@ -428,6 +441,15 @@
         </div>
       `;
       renderFoodTable();
+      // コピーボタン（data-url属性からURLを取得 — inline onclick禁止規約に従いaddEventListenerで設定）
+      document.querySelectorAll('.copy-endpoint-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const url = window.location.origin + btn.dataset.url;
+          navigator.clipboard.writeText(url)
+            .then(function() { showToast('コピーしました ✓'); })
+            .catch(function() { showToast('コピーに失敗しました', 'error'); });
+        });
+      });
     }
 
     function renderFoodTable() {
@@ -536,8 +558,8 @@
       if (pw) settings.app_password = pw;
       const apiKey = document.getElementById('anthropic_api_key').value.trim();
       if (apiKey) settings.anthropic_api_key = apiKey;
-      const stepsApiKey = document.getElementById('steps_api_key').value.trim();
-      if (stepsApiKey) settings.steps_api_key = stepsApiKey;
+      const externalApiKey = document.getElementById('external_api_key').value.trim();
+      if (externalApiKey) settings.external_api_key = externalApiKey;
       try {
         const res = await fetch('/api/settings', {
           method: 'POST',
@@ -551,10 +573,6 @@
       }
     }
 
-    function copyEndpoint() {
-      const url = window.location.origin + '/api/steps/ingest';
-      navigator.clipboard.writeText(url).then(() => showToast('コピーしました ✓')).catch(() => showToast('コピーに失敗しました', 'error'));
-    }
 
     async function addFoodDefault() {
       const keyword = document.getElementById('newKeyword').value.trim();
