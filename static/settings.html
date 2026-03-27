@@ -446,7 +446,7 @@
         btn.addEventListener('click', function() {
           const url = window.location.origin + btn.dataset.url;
           navigator.clipboard.writeText(url)
-            .then(function() { showToast('コピーしました ✓'); })
+            .then(function() { showToast(btn.dataset.url + ' をコピーしました ✓'); })
             .catch(function() { showToast('コピーに失敗しました', 'error'); });
         });
       });
