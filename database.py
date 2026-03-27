@@ -127,10 +127,22 @@ def init_db():
                 ("auto_save_food_defaults", "true"),
                 ("split_multiple_items", "false"),
                 ("theme", "auto"),
-                ("steps_api_key", ""),
+                ("external_api_key", ""),
             ],
         )
 
+        # steps_api_key → external_api_key 自動移行（既存ユーザーの再設定不要）
+        old_row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'steps_api_key'"
+        ).fetchone()
+        new_row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'external_api_key'"
+        ).fetchone()
+        if old_row and old_row["value"] and new_row and not new_row["value"]:
+            conn.execute(
+                "UPDATE app_settings SET value = ? WHERE key = 'external_api_key'",
+                (old_row["value"],),
+            )
 
 
 # ── 設定 ──────────────────────────────────────────────────────────────────────
@@ -418,6 +430,27 @@ def save_weight(log_date: str, time_of_day: str, weight_kg: float) -> int:
             (log_date, time_of_day, weight_kg),
         )
         return cur.lastrowid
+
+
+def upsert_weight(log_date: str, time_of_day: str, weight_kg: float) -> dict:
+    """体重をUPSERT（同日同時間帯が存在すれば上書き）。戻り値: {"id": int, "updated": bool}"""
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM weight_logs WHERE log_date = ? AND time_of_day = ?",
+            (log_date, time_of_day),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE weight_logs SET weight_kg = ?, recorded_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (weight_kg, existing["id"]),
+            )
+            return {"id": existing["id"], "updated": True}
+        else:
+            cur = conn.execute(
+                "INSERT INTO weight_logs (log_date, time_of_day, weight_kg) VALUES (?, ?, ?)",
+                (log_date, time_of_day, weight_kg),
+            )
+            return {"id": cur.lastrowid, "updated": False}
 
 
 def update_weight_by_id(weight_id: int, weight_kg: float) -> bool:
