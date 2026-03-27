@@ -6,7 +6,7 @@ import uuid
 
 logger = logging.getLogger(__name__)
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -228,10 +228,10 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "steps_api_key"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key"}
 
 
-SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "steps_api_key"}
+SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 
 
 @app.get("/api/settings")
@@ -490,14 +490,23 @@ class StepsIngestRequest(BaseModel):
     date: str  # "YYYY-MM-DD"
 
 
+class WeightRecord(BaseModel):
+    recorded_at: str  # "YYYY/MM/DD HH:MM"
+    weight: float
+
+
+class WeightIngestRequest(BaseModel):
+    records: list[WeightRecord]
+
+
 @app.post("/api/steps/ingest")
 async def steps_ingest(request: Request, body: StepsIngestRequest):
     """iPhoneショートカット等の外部クライアントから歩数を受け付けるAPI。
-    セッション認証不要。steps_api_keyによるBearerトークン認証を使用する。"""
+    セッション認証不要。external_api_key（体重APIと共用）によるBearerトークン認証を使用する。"""
     # 1. APIキー取得
-    stored_key = database.get_setting("steps_api_key") or ""
+    stored_key = database.get_setting("external_api_key") or ""
     if not stored_key:
-        raise HTTPException(status_code=503, detail="歩数APIキーが設定されていません")
+        raise HTTPException(status_code=503, detail="外部APIキーが設定されていません")
 
     # 2. 認証（タイミング攻撃対策）
     auth_header = request.headers.get("Authorization", "")
@@ -527,6 +536,94 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
         "steps": body.steps,
         "updated": result["updated"],
     })
+
+
+# ── 体重受付API（iPhoneショートカット連携） ────────────────────────────────────
+
+def _classify_weight_record(recorded_at_str: str) -> tuple[str, str]:
+    """recorded_at（"YYYY/MM/DD HH:MM"）を (log_date, time_of_day) に変換。
+    0:00-3:59 は前日の evening として扱う（4:00 が日の境界）。"""
+    dt = datetime.strptime(recorded_at_str, "%Y/%m/%d %H:%M")
+    if dt.hour < 4:
+        logical_date = (dt - timedelta(days=1)).date()
+        return str(logical_date), "evening"
+    elif dt.hour < 12:
+        return str(dt.date()), "morning"
+    else:
+        return str(dt.date()), "evening"
+
+
+def _select_best_weight_records(
+    records: list[WeightRecord],
+) -> dict[tuple[str, str], WeightRecord]:
+    """同一 (log_date, time_of_day) バケット内で最も遅い recorded_at のレコードを選択。
+    戻り値: {(log_date, time_of_day): record}"""
+    best: dict[tuple[str, str], tuple[datetime, WeightRecord]] = {}
+    for rec in records:
+        key = _classify_weight_record(rec.recorded_at)
+        dt = datetime.strptime(rec.recorded_at, "%Y/%m/%d %H:%M")
+        if key not in best or dt > best[key][0]:
+            best[key] = (dt, rec)
+    return {k: v[1] for k, v in best.items()}
+
+
+@app.post("/api/weight/ingest")
+async def weight_ingest(request: Request, body: WeightIngestRequest):
+    """iPhoneショートカット等から体重レコードを受け付けるAPI。
+    セッション認証不要。external_api_key（歩数APIと共用）によるBearerトークン認証を使用する。"""
+    # 1. APIキー認証
+    stored_key = database.get_setting("external_api_key") or ""
+    if not stored_key:
+        raise HTTPException(status_code=503, detail="外部APIキーが設定されていません")
+    auth_header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not auth_header.startswith(prefix):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    provided_key = auth_header[len(prefix):]
+    if not hmac.compare_digest(provided_key.encode(), stored_key.encode()):
+        raise HTTPException(status_code=401, detail="APIキーが正しくありません")
+
+    # 2. バリデーション
+    if not body.records:
+        raise HTTPException(status_code=422, detail="recordsが空です")
+    if len(body.records) > 100:
+        raise HTTPException(status_code=422, detail="一度に送信できるレコードは100件以内です")
+    for rec in body.records:
+        try:
+            datetime.strptime(rec.recorded_at, "%Y/%m/%d %H:%M")
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"recorded_at の形式が不正です: {rec.recorded_at}（YYYY/MM/DD HH:MM形式で指定）",
+            )
+        if not (20.0 <= rec.weight <= 300.0):
+            raise HTTPException(
+                status_code=422,
+                detail=f"weight は 20〜300 の範囲で指定してください: {rec.weight}",
+            )
+
+    # 3. 分類・重複排除・保存
+    today = datetime.now(_JST).date()
+    best_records = _select_best_weight_records(body.records)
+    saved = []
+    try:
+        for (log_date_str, time_of_day), rec in best_records.items():
+            log_date = date.fromisoformat(log_date_str)
+            if log_date > today:
+                logger.warning("未来の日付をスキップ: %s", log_date_str)
+                continue
+            result = database.upsert_weight(log_date_str, time_of_day, rec.weight)
+            saved.append({
+                "log_date": log_date_str,
+                "time_of_day": time_of_day,
+                "weight_kg": rec.weight,
+                "updated": result["updated"],
+            })
+    except Exception:
+        logger.error("体重データの保存中にエラーが発生しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="体重データの保存に失敗しました")
+
+    return JSONResponse({"success": True, "saved": saved})
 
 
 # ── 食事画像 CRUD ──────────────────────────────────────────────────────────────
