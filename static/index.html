@@ -612,11 +612,36 @@ function updateDashboard(data, settings) {
   }).join('');
 
   // 食事区分行
+  const SKIP_ELIGIBLE = new Set(['breakfast', 'lunch', 'dinner']);
   const recordedTypes = new Set((data.meals || []).map(function(m) { return m.meal_type; }));
+  const skippedTypes = new Set(data.skipped_meal_types || []);
   document.getElementById('dashMeals').innerHTML = MEAL_TYPES.map(function(mt) {
     const done = recordedTypes.has(mt.key);
-    return '<span class="dash-meal-chip">' + mt.label + (done ? '✅' : '⬜') + '</span>';
+    const skipped = SKIP_ELIGIBLE.has(mt.key) && skippedTypes.has(mt.key) && !done;
+    const canSkip = SKIP_ELIGIBLE.has(mt.key) && !done && !skipped;
+    if (done) {
+      return '<span class="dash-meal-chip">' + mt.label + '✅</span>';
+    }
+    if (skipped) {
+      return '<span class="dash-meal-chip">' + mt.label
+        + '<span class="skip-badge"> 食べなかった✓</span>'
+        + '<button class="skip-undo-btn" data-meal-type="' + escHtml(mt.key) + '" data-meal-date="' + escHtml(data.date) + '" aria-label="' + escHtml(mt.label) + 'スキップを取り消す">取り消す</button>'
+        + '</span>';
+    }
+    if (canSkip) {
+      return '<span class="dash-meal-chip">' + mt.label + '⬜'
+        + '<button class="skip-btn" data-meal-type="' + escHtml(mt.key) + '" data-meal-date="' + escHtml(data.date) + '" aria-label="' + escHtml(mt.label) + 'を食べなかったと記録">食べなかった</button>'
+        + '</span>';
+    }
+    return '<span class="dash-meal-chip">' + mt.label + '⬜</span>';
   }).join('');
+  // スキップボタンのイベント登録
+  document.querySelectorAll('.skip-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { recordSkip(this.dataset.mealType, this.dataset.mealDate); });
+  });
+  document.querySelectorAll('.skip-undo-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { removeSkip(this.dataset.mealType, this.dataset.mealDate); });
+  });
 
   // コンパクト表示テキスト
   const compactParts = ['🔥 ' + cal + '/' + goal + 'kcal'];
@@ -907,8 +932,8 @@ async function sendMessage() {
           scrollBottom();
 
         } else if (data.type === 'record_done') {
-          // 取り消しボタンを現在のAIバブルに追加
-          if (aiMsgEl) {
+          // meal_skipは取り消しUI不要（ダッシュボードから直接操作可能）
+          if (data.record_type !== 'meal_skip' && aiMsgEl) {
             addUndoButton(aiMsgEl, data.record_type, data.record_id);
           }
 
@@ -1072,6 +1097,40 @@ async function undoRecord(recordType, recordId, btn) {
     console.error('取り消しエラー:', e);
     btn.textContent = '取り消し失敗';
     btn.disabled = false;
+  }
+}
+
+async function recordSkip(mealType, mealDate) {
+  try {
+    const res = await fetch('/api/meal-skips', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({meal_date: mealDate, meal_type: mealType}),
+    });
+    if (res.ok) {
+      refreshDashboard();
+    } else {
+      showToast('スキップの記録に失敗しました', 'error');
+    }
+  } catch (e) {
+    showToast('通信エラーが発生しました', 'error');
+  }
+}
+
+async function removeSkip(mealType, mealDate) {
+  try {
+    const res = await fetch('/api/meal-skips', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({meal_date: mealDate, meal_type: mealType}),
+    });
+    if (res.ok) {
+      refreshDashboard();
+    } else {
+      showToast('スキップの取り消しに失敗しました', 'error');
+    }
+  } catch (e) {
+    showToast('通信エラーが発生しました', 'error');
   }
 }
 

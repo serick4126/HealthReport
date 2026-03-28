@@ -176,3 +176,41 @@ body {
   animation: spin-loader 0.8s linear infinite;
 }
 @keyframes spin-loader { to { transform: rotate(360deg); } }
+
+/* ── 食事スキップUI（index.html / history.html 共通）── */
+.skip-btn {
+  font-size: 12px; color: var(--text-secondary);
+  background: none; border: 1px dashed var(--border); border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; opacity: 0.7; font-family: inherit;
+}
+.skip-btn:hover { opacity: 1; }
+
+.skip-badge {
+  font-size: 11px; color: var(--text-secondary);
+  background: var(--toggle-off); border-radius: 5px; padding: 2px 7px;
+}
+
+.skip-undo-btn {
+  font-size: 11px; color: var(--text-secondary); background: none; border: none;
+  cursor: pointer; text-decoration: underline; margin-left: 4px; font-family: inherit;
+}
+
+.history-skip-add-btn {
+  font-size: 11px; color: var(--text-secondary); background: none;
+  border: 1px dashed var(--border); border-radius: 5px; padding: 2px 7px;
+  cursor: pointer; margin-left: 4px; opacity: 0.7; font-family: inherit;
+}
+.history-skip-add-btn:hover { opacity: 1; }
+
+.history-skip-undo-btn {
+  font-size: 11px; color: var(--text-secondary); background: none; border: none;
+  cursor: pointer; text-decoration: underline; margin-left: 4px; font-family: inherit;
+}
+
+.skip-row {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 4px 12px 6px; font-size: 12px; color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.skip-item { display: flex; align-items: center; gap: 2px; }

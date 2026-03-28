@@ -384,6 +384,20 @@
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
 
+      // スキップセクション（朝食・昼食・夕食のみ、食事記録がないタイプのみ）
+      const mealsByType = {};
+      day.meals.forEach(function(m) {
+        if (!mealsByType[m.meal_type]) mealsByType[m.meal_type] = [];
+        mealsByType[m.meal_type].push(m);
+      });
+      const daySkipped = day.skipped_meal_types || [];
+      const skipItems = ['breakfast', 'lunch', 'dinner']
+        .map(function(mt) { return renderSkipItem(mt, mealsByType[mt] || [], daySkipped, day.date); })
+        .filter(function(h) { return h !== ''; });
+      const skipSectionHtml = skipItems.length
+        ? '<div class="skip-row">' + skipItems.join('') + '</div>'
+        : '';
+
       const remaining = pageState.calorieGoal - t.calories;
       const remainingText = remaining >= 0
         ? `<span style="color:var(--text-secondary);font-size:11px">残り ${remaining}kcal</span>`
@@ -401,6 +415,7 @@
           </div>
           <div class="day-meta">${weightHtml}${stepsHtml}</div>
           ${mealsHtml}
+          ${skipSectionHtml}
         </div>`;
     }
 
@@ -436,6 +451,26 @@
             <button class="action-btn photo" onclick="triggerImageUpload(${m.id})" aria-label="写真を追加">📷 写真追加</button>
           </div>
         </div>`;
+    }
+
+    function renderSkipItem(mealType, meals, skippedTypes, date) {
+      if (meals.length > 0) return '';  // 食事記録があるタイプは表示しない
+      const LABELS = { breakfast: '朝食', lunch: '昼食', dinner: '夕食' };
+      const label = LABELS[mealType];
+      if (!label) return '';
+      const isSkipped = skippedTypes.indexOf(mealType) >= 0;
+      const safeMt = escHtml(mealType);
+      const safeDt = escHtml(date);
+      const safeLabel = escHtml(label);
+      if (isSkipped) {
+        return '<span class="skip-item">' + label
+          + '<span class="skip-badge"> 食べなかった✓</span>'
+          + '<button class="history-skip-undo-btn" data-meal-type="' + safeMt + '" data-meal-date="' + safeDt + '" aria-label="' + safeLabel + 'スキップを取り消す">取り消す</button>'
+          + '</span>';
+      }
+      return '<span class="skip-item">' + label
+        + '<button class="history-skip-add-btn" data-meal-type="' + safeMt + '" data-meal-date="' + safeDt + '" aria-label="' + safeLabel + 'を食べなかったと記録">食べなかった</button>'
+        + '</span>';
     }
 
     // ── 画像遅延読み込み (IntersectionObserver) ────────────────────────────────
@@ -961,6 +996,48 @@
     // ── 保存中オーバーレイ ─────────────────────────────────────────────────────
     function showSaving() { document.getElementById('savingOverlay').style.display = 'flex'; }
     function hideSaving() { document.getElementById('savingOverlay').style.display = 'none'; }
+
+    async function historyAddSkip(mealType, mealDate) {
+      try {
+        const res = await fetch('/api/meal-skips', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({meal_date: mealDate, meal_type: mealType}),
+        });
+        if (res.ok) {
+          reload();
+        } else {
+          showToast('スキップの記録に失敗しました', 'error');
+        }
+      } catch (e) {
+        showToast('通信エラーが発生しました', 'error');
+      }
+    }
+
+    async function historyRemoveSkip(mealType, mealDate) {
+      try {
+        const res = await fetch('/api/meal-skips', {
+          method: 'DELETE',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({meal_date: mealDate, meal_type: mealType}),
+        });
+        if (res.ok) {
+          reload();
+        } else {
+          showToast('スキップの取り消しに失敗しました', 'error');
+        }
+      } catch (e) {
+        showToast('通信エラーが発生しました', 'error');
+      }
+    }
+
+    // スキップボタンのイベント委譲（コンテンツ再描画後も有効）
+    document.getElementById('content').addEventListener('click', function(e) {
+      var addBtn = e.target.closest('.history-skip-add-btn');
+      if (addBtn) { historyAddSkip(addBtn.dataset.mealType, addBtn.dataset.mealDate); return; }
+      var undoBtn = e.target.closest('.history-skip-undo-btn');
+      if (undoBtn) { historyRemoveSkip(undoBtn.dataset.mealType, undoBtn.dataset.mealDate); }
+    });
 
     // ── renderPage後に画像Observerをセット ────────────────────────────────────
     const _origRenderPage = renderPage;

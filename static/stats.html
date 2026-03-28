@@ -119,6 +119,7 @@
     function render(data) {
       const labels = data.dates.map(shortDate);
       const goal = data.calories_goal;
+      const mealSkips = data.meal_skips || {};
 
       // サマリーカード
       const validCal = data.calories.filter(v => v != null);
@@ -179,7 +180,14 @@
         }
       };
 
-      // カロリー推移
+      // カロリー推移（スキップあり・カロリーなし日はグレー点で可視化）
+      const SKIP_LABELS_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食' };
+      const calPointColors = data.dates.map(function(d, i) {
+        const cal = data.calories[i];
+        const skips = mealSkips[d] || [];
+        if (cal === null && skips.length > 0) return '#c7c7cc';  // スキップあり・食事記録なし
+        return '#007aff';
+      });
       charts.cal = new Chart(document.getElementById('chartCalories'), {
         type: 'line',
         data: {
@@ -190,7 +198,7 @@
               data: data.calories,
               borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
               tension: 0.3, fill: true, spanGaps: true,
-              pointRadius: 4, pointBackgroundColor: '#007aff',
+              pointRadius: 4, pointBackgroundColor: calPointColors,
             },
             {
               label: `目標 ${goal}kcal`,
@@ -200,7 +208,24 @@
             }
           ]
         },
-        options: { ...defaults, scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } } }
+        options: {
+          ...defaults,
+          plugins: {
+            ...defaults.plugins,
+            tooltip: {
+              callbacks: {
+                afterBody: function(tooltipItems) {
+                  if (!tooltipItems.length) return [];
+                  var d = data.dates[tooltipItems[0].dataIndex];
+                  var skips = mealSkips[d] || [];
+                  if (!skips.length) return [];
+                  return ['スキップ: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・')];
+                }
+              }
+            }
+          },
+          scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } }
+        }
       });
 
       // 体重推移
