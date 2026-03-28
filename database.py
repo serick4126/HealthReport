@@ -53,6 +53,14 @@ def init_db():
                 steps       INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS meal_skips (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                meal_date   DATE NOT NULL,
+                meal_type   TEXT NOT NULL,
+                UNIQUE(meal_date, meal_type)
+            );
+
             CREATE TABLE IF NOT EXISTS meal_images (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -97,9 +105,10 @@ def init_db():
 
         # インデックス（既存DBでも安全に追加）
         conn.executescript("""
-            CREATE INDEX IF NOT EXISTS idx_meals_date    ON meals(meal_date);
-            CREATE INDEX IF NOT EXISTS idx_weight_date   ON weight_logs(log_date);
-            CREATE INDEX IF NOT EXISTS idx_steps_date    ON steps_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_meals_date       ON meals(meal_date);
+            CREATE INDEX IF NOT EXISTS idx_weight_date      ON weight_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_steps_date       ON steps_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_meal_skips_date  ON meal_skips(meal_date);
         """)
 
         # food_defaults に is_favorite カラムを追加（既存DBの移行）
@@ -599,6 +608,56 @@ def search_meals(query: str, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ── 食事スキップ記録 ───────────────────────────────────────────────────────────
+
+SKIP_MEAL_TYPES = {"breakfast", "lunch", "dinner"}
+
+
+def save_meal_skip(meal_date: str, meal_type: str) -> None:
+    """スキップ記録を保存（既存は IGNORE）。例外は呼び出し元に伝播させる。"""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO meal_skips (meal_date, meal_type) VALUES (?, ?)",
+            (meal_date, meal_type),
+        )
+        # INSERT OR IGNORE が UNIQUE制約違反を正常処理するため try-except 不要。
+        # DB接続エラー等は呼び出し元（main.py）の except Exception + logger.error に伝播させる。
+
+
+def delete_meal_skip(meal_date: str, meal_type: str) -> bool:
+    """スキップ記録を削除。削除件数>0 なら True。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM meal_skips WHERE meal_date = ? AND meal_type = ?",
+            (meal_date, meal_type),
+        )
+    return cur.rowcount > 0
+
+
+def get_meal_skips_by_date(meal_date: str) -> list[str]:
+    """指定日のスキップ済み食事タイプ一覧を返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT meal_type FROM meal_skips WHERE meal_date = ?",
+            (meal_date,),
+        ).fetchall()
+    return [r["meal_type"] for r in rows]
+
+
+def get_meal_skips_range(start_date: str, end_date: str) -> dict:
+    """指定期間のスキップデータを {meal_date: [meal_type, ...]} で返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT meal_date, meal_type FROM meal_skips "
+            "WHERE meal_date >= ? AND meal_date <= ? ORDER BY meal_date",
+            (start_date, end_date),
+        ).fetchall()
+    result: dict = {}
+    for r in rows:
+        result.setdefault(r["meal_date"], []).append(r["meal_type"])
+    return result
+
+
 def get_history(
     days: int = 30,
     start_date: Optional[str] = None,
@@ -632,9 +691,16 @@ def get_history(
             "SELECT id, log_date, steps FROM steps_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
             (since, until),
         ).fetchall()
+        skip_rows = conn.execute(
+            "SELECT meal_date, meal_type FROM meal_skips "
+            "WHERE meal_date >= ? AND meal_date <= ? ORDER BY meal_date",
+            (since, until),
+        ).fetchall()
 
     from collections import defaultdict
-    days_map: dict = defaultdict(lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None})
+    days_map: dict = defaultdict(
+        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": []}
+    )
     for m in meals:
         days_map[m["meal_date"]]["meals"].append(dict(m))
     for w in weights:
@@ -642,6 +708,8 @@ def get_history(
     for s in steps_rows:
         days_map[s["log_date"]]["steps"] = s["steps"]
         days_map[s["log_date"]]["steps_id"] = s["id"]
+    for sk in skip_rows:
+        days_map[sk["meal_date"]]["skipped_meal_types"].append(sk["meal_type"])
 
     result = []
     for date in sorted(days_map.keys(), reverse=True):
@@ -653,6 +721,7 @@ def get_history(
             "weight": d["weight"],
             "steps": d["steps"],
             "steps_id": d["steps_id"],
+            "skipped_meal_types": d["skipped_meal_types"],
             "totals": {
                 "calories": int(sum(m.get("calories") or 0 for m in ml)),
                 "protein": round(sum(m.get("protein") or 0 for m in ml), 1),
@@ -703,12 +772,20 @@ def get_stats(
             "SELECT log_date, steps FROM steps_logs WHERE log_date >= ? AND log_date <= ?",
             (since, until),
         ).fetchall()
+        skip_stat_rows = conn.execute(
+            "SELECT meal_date, meal_type FROM meal_skips "
+            "WHERE meal_date >= ? AND meal_date <= ?",
+            (since, until),
+        ).fetchall()
 
     cal_map = {r["meal_date"]: r for r in cal_rows}
     w_map: dict = {}
     for r in weight_rows:
         w_map.setdefault(r["log_date"], {})[r["time_of_day"]] = r["weight_kg"]
     s_map = {r["log_date"]: r["steps"] for r in step_rows}
+    skip_map: dict = {}
+    for r in skip_stat_rows:
+        skip_map.setdefault(r["meal_date"], []).append(r["meal_type"])
 
     calories, protein, fat, carbs = [], [], [], []
     wm, we, steps = [], [], []
@@ -734,6 +811,7 @@ def get_stats(
         "protein": protein,
         "fat": fat,
         "carbs": carbs,
+        "meal_skips": skip_map,
     }
 
 
@@ -783,6 +861,11 @@ def get_report_data(start_date: str, end_date: str) -> dict:
             "SELECT log_date, steps FROM steps_logs WHERE log_date BETWEEN ? AND ?",
             (start_date, end_date),
         ).fetchall()
+        skip_report_rows = conn.execute(
+            "SELECT meal_date, meal_type FROM meal_skips "
+            "WHERE meal_date BETWEEN ? AND ?",
+            (start_date, end_date),
+        ).fetchall()
 
     meal_map: dict = {}
     for m in meals:
@@ -791,6 +874,9 @@ def get_report_data(start_date: str, end_date: str) -> dict:
     for w in weights:
         w_map.setdefault(w["log_date"], {})[w["time_of_day"]] = w["weight_kg"]
     s_map = {r["log_date"]: r["steps"] for r in steps_rows}
+    skip_map_report: dict = {}
+    for r in skip_report_rows:
+        skip_map_report.setdefault(r["meal_date"], set()).add(r["meal_type"])
 
     MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack", "late_night"]
     start = _date.fromisoformat(start_date)
@@ -812,6 +898,7 @@ def get_report_data(start_date: str, end_date: str) -> dict:
             "weight_morning": w_map.get(d, {}).get("morning"),
             "weight_evening": w_map.get(d, {}).get("evening"),
             "steps": s_map.get(d),
+            "skipped": {mt: (mt in skip_map_report.get(d, set())) for mt in MEAL_TYPES},
         })
 
     return {
@@ -855,6 +942,7 @@ def get_daily_summary(target_date: Optional[str] = None) -> dict:
         "meals": [dict(m) for m in meals],
         "weight": {r["time_of_day"]: r["weight_kg"] for r in weights},
         "steps": steps_row["steps"] if steps_row else None,
+        "skipped_meal_types": get_meal_skips_by_date(target_date),
         "totals": {
             "calories": total_cal,
             "protein": round(total_p, 1),
