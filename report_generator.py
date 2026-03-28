@@ -133,8 +133,12 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         d = _date.fromisoformat(iso)
         return f"{d.month}/{d.day}<br/>({WEEKDAYS_JA[d.weekday()]})"
 
-    def meals_cell(meal_list: list) -> str:
-        return "<br/>".join(_truncate(m["description"]) for m in meal_list) if meal_list else ""
+    def meals_cell(meal_list: list, is_skipped: bool = False) -> str:
+        if meal_list:
+            return "<br/>".join(_truncate(m["description"]) for m in meal_list)
+        if is_skipped:
+            return '<span style="color:#8e8e93;font-size:6.5pt;">食べなかった</span>'
+        return ""
 
     def dash(v, fmt: str = "{}") -> str:
         return "&#8212;" if v is None else fmt.format(v)
@@ -145,9 +149,18 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 
     date_headers = "".join(f"<th>{fmt_header(d['date'])}</th>" for d in days)
 
+    SKIP_LABEL_TYPES = {"breakfast", "lunch", "dinner"}
+
     meal_rows = ""
     for mt in MEAL_TYPES:
-        cells = "".join(f"<td>{meals_cell(d['meals'][mt])}</td>" for d in days)
+        cells = ""
+        for d in days:
+            is_skipped = (
+                mt in SKIP_LABEL_TYPES
+                and d.get("skipped", {}).get(mt, False)
+                and not d["meals"][mt]
+            )
+            cells += f"<td>{meals_cell(d['meals'][mt], is_skipped)}</td>"
         meal_rows += f"<tr><th>{MEAL_LABELS[mt]}</th>{cells}</tr>\n"
 
     def pfc(d: dict) -> str:
@@ -390,6 +403,16 @@ async def generate_claude_comment(data: dict) -> str:
         valid_cals = [d["calories"] for d in days if d["calories"] is not None]
         avg_cal = round(sum(valid_cals) / len(valid_cals)) if valid_cals else None
 
+        _skip_ja = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食"}
+        skip_counts = {}
+        for d in days:
+            skipped = [
+                mt for mt in ["breakfast", "lunch", "dinner"]
+                if d.get("skipped", {}).get(mt) and not d["meals"].get(mt)
+            ]
+            if skipped:
+                skip_counts[d["date"]] = [_skip_ja.get(mt, mt) for mt in skipped]
+
         summary = {
             "期間": f"{data['start']} 〜 {data['end']}",
             "目標カロリー": f"{data['calorie_goal']}kcal/日",
@@ -411,6 +434,8 @@ async def generate_claude_comment(data: dict) -> str:
                 for d in days
             ],
         }
+        if skip_counts:
+            summary["食事スキップ"] = skip_counts
 
         prompt = (
             "以下の1週間分の食事・体重・歩数データを分析し、"
