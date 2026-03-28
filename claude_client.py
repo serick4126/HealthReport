@@ -190,6 +190,46 @@ TOOLS: list[anthropic.types.ToolParam] = [
             "required": ["question", "options"],
         },
     },
+    # ── Phase 11 追加ツール ─────────────────────────────────────────────────────
+    {
+        "name": "record_meal_skip",
+        "description": (
+            "朝食・昼食・夕食を意図的に食べなかった場合に記録します。"
+            "「朝食抜いた」「昼ごはん食べなかった」「夕食スキップ」などの報告時に使用してください。"
+            "間食・夜食は対象外です。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meal_date": {"type": "string", "description": "食事の日付 (YYYY-MM-DD形式)"},
+                "meal_type": {
+                    "type": "string",
+                    "enum": ["breakfast", "lunch", "dinner"],
+                    "description": "食事区分: breakfast=朝食, lunch=昼食, dinner=夕食",
+                },
+            },
+            "required": ["meal_date", "meal_type"],
+        },
+    },
+    {
+        "name": "delete_meal_skip",
+        "description": (
+            "記録済みの食事スキップを取り消します。"
+            "「やっぱり朝食食べた」「スキップ記録を消して」などの訂正時に使用してください。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meal_date": {"type": "string", "description": "食事の日付 (YYYY-MM-DD形式)"},
+                "meal_type": {
+                    "type": "string",
+                    "enum": ["breakfast", "lunch", "dinner"],
+                    "description": "食事区分: breakfast=朝食, lunch=昼食, dinner=夕食",
+                },
+            },
+            "required": ["meal_date", "meal_type"],
+        },
+    },
 ]
 
 
@@ -305,6 +345,8 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 - 修正依頼時は変更前・変更後の内容を確認メッセージに含める
 - 食事と無関係な話題にも普通に日本語で応答する
 - ユーザーが特定の日付に言及した場合（例：「3月15日の昼食」）、get_daily_summary ツールでDBから情報を取得してから回答すること
+- 「朝食抜いた」「昼食べなかった」「夕食スキップ」などの報告時は record_meal_skip を呼ぶこと（間食・夜食は対象外）
+- スキップ記録の訂正時は delete_meal_skip を呼ぶこと
 
 【確認メッセージの形式】
 ✅ 朝食を記録しました
@@ -450,6 +492,29 @@ def _tool_show_choices(inp: dict) -> dict:
     }
 
 
+def _tool_record_meal_skip(inp: dict) -> dict:
+    database.save_meal_skip(inp["meal_date"], inp["meal_type"])
+    return {
+        "success": True,
+        "tool": "record_meal_skip",
+        "meal_date": inp["meal_date"],
+        "meal_type": inp["meal_type"],
+        "meal_type_ja": MEAL_TYPE_JA.get(inp["meal_type"], inp["meal_type"]),
+    }
+
+
+def _tool_delete_meal_skip(inp: dict) -> dict:
+    deleted = database.delete_meal_skip(inp["meal_date"], inp["meal_type"])
+    return {
+        "success": True,
+        "tool": "delete_meal_skip",
+        "meal_date": inp["meal_date"],
+        "meal_type": inp["meal_type"],
+        "meal_type_ja": MEAL_TYPE_JA.get(inp["meal_type"], inp["meal_type"]),
+        "deleted": deleted,
+    }
+
+
 _TOOL_DISPATCH: dict = {
     "record_meal":           _tool_record_meal,
     "record_weight":         _tool_record_weight,
@@ -459,6 +524,8 @@ _TOOL_DISPATCH: dict = {
     "search_food_nutrition": _tool_search_food_nutrition,
     "save_food_default":     _tool_save_food_default,
     "show_choices":          _tool_show_choices,
+    "record_meal_skip":      _tool_record_meal_skip,
+    "delete_meal_skip":      _tool_delete_meal_skip,
 }
 
 
@@ -677,6 +744,22 @@ async def _execute_tool_and_format(
             "content": json.dumps(result, ensure_ascii=False),
         }
         sse_events.append({"type": "record_done", "record_type": "steps", "record_id": result["id"]})
+
+    elif tc["name"] == "record_meal_skip" and result.get("success"):
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+        sse_events.append({"type": "record_done", "record_type": "meal_skip"})
+
+    elif tc["name"] == "delete_meal_skip" and result.get("success"):
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+        sse_events.append({"type": "record_done", "record_type": "meal_skip"})
 
     else:
         api_result = {
