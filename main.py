@@ -1,6 +1,7 @@
 import hmac
 import logging
 import os
+import re
 import time
 import uuid
 
@@ -499,6 +500,14 @@ class WeightIngestRequest(BaseModel):
     records: list[WeightRecord]
 
 
+SKIP_MEAL_TYPES = {"breakfast", "lunch", "dinner"}
+
+
+class MealSkipRequest(BaseModel):
+    meal_date: str
+    meal_type: str
+
+
 @app.post("/api/steps/ingest")
 async def steps_ingest(request: Request, body: StepsIngestRequest):
     """iPhoneショートカット等の外部クライアントから歩数を受け付けるAPI。
@@ -624,6 +633,60 @@ async def weight_ingest(request: Request, body: WeightIngestRequest):
         raise HTTPException(status_code=500, detail="体重データの保存に失敗しました")
 
     return JSONResponse({"success": True, "saved": saved})
+
+
+# ── 食事スキップ CRUD ──────────────────────────────────────────────────────────
+
+def _validate_skip_request(meal_date: str, meal_type: str):
+    """スキップAPIの入力バリデーション。不正な場合 HTTPException を raise。"""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", meal_date):
+        raise HTTPException(status_code=422, detail="meal_date は YYYY-MM-DD 形式で指定してください")
+    try:
+        datetime.strptime(meal_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="meal_date が不正な日付です")
+    if meal_type not in SKIP_MEAL_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail="meal_type は breakfast/lunch/dinner のいずれかで指定してください",
+        )
+
+
+@app.get("/api/meal-skips")
+async def get_meal_skips(request: Request, date: str):
+    require_auth(request)
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=422, detail="date は YYYY-MM-DD 形式で指定してください")
+    try:
+        skipped = database.get_meal_skips_by_date(date)
+        return JSONResponse({"skipped": skipped})
+    except Exception:
+        logger.error("スキップデータ取得中にエラーが発生しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="データの取得に失敗しました")
+
+
+@app.post("/api/meal-skips")
+async def add_meal_skip(request: Request, body: MealSkipRequest):
+    require_auth(request)
+    _validate_skip_request(body.meal_date, body.meal_type)
+    try:
+        database.save_meal_skip(body.meal_date, body.meal_type)
+        return JSONResponse({"success": True, "skipped": True})
+    except Exception:
+        logger.error("スキップ記録中にエラーが発生しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="スキップの記録に失敗しました")
+
+
+@app.delete("/api/meal-skips")
+async def remove_meal_skip(request: Request, body: MealSkipRequest):
+    require_auth(request)
+    _validate_skip_request(body.meal_date, body.meal_type)
+    try:
+        database.delete_meal_skip(body.meal_date, body.meal_type)
+        return JSONResponse({"success": True, "skipped": False})
+    except Exception:
+        logger.error("スキップ削除中にエラーが発生しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="スキップの削除に失敗しました")
 
 
 # ── 食事画像 CRUD ──────────────────────────────────────────────────────────────
