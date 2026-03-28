@@ -500,7 +500,7 @@ class WeightIngestRequest(BaseModel):
     records: list[WeightRecord]
 
 
-SKIP_MEAL_TYPES = {"breakfast", "lunch", "dinner"}
+from database import SKIP_MEAL_TYPES  # database.py の定義を正とする
 
 
 class MealSkipRequest(BaseModel):
@@ -657,6 +657,10 @@ async def get_meal_skips(request: Request, date: str):
     require_auth(request)
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(status_code=422, detail="date は YYYY-MM-DD 形式で指定してください")
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date が不正な日付です")
     try:
         skipped = database.get_meal_skips_by_date(date)
         return JSONResponse({"skipped": skipped})

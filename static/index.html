@@ -936,6 +936,10 @@ async function sendMessage() {
           if (data.record_type !== 'meal_skip' && aiMsgEl) {
             addUndoButton(aiMsgEl, data.record_type, data.record_id);
           }
+          // スキップ記録・削除後もダッシュボードを更新
+          if (data.record_type === 'meal_skip') {
+            refreshDashboard();
+          }
 
         } else if (data.type === 'done') {
           // デバウンス中の描画を即時フラッシュ
@@ -1101,6 +1105,8 @@ async function undoRecord(recordType, recordId, btn) {
 }
 
 async function recordSkip(mealType, mealDate) {
+  const btn = document.querySelector('.skip-btn[data-meal-type="' + mealType + '"][data-meal-date="' + mealDate + '"]');
+  if (btn) btn.disabled = true;
   try {
     const res = await fetch('/api/meal-skips', {
       method: 'POST',
@@ -1110,14 +1116,18 @@ async function recordSkip(mealType, mealDate) {
     if (res.ok) {
       refreshDashboard();
     } else {
+      if (btn) btn.disabled = false;
       showToast('スキップの記録に失敗しました', 'error');
     }
   } catch (e) {
+    if (btn) btn.disabled = false;
     showToast('通信エラーが発生しました', 'error');
   }
 }
 
 async function removeSkip(mealType, mealDate) {
+  const btn = document.querySelector('.skip-undo-btn[data-meal-type="' + mealType + '"][data-meal-date="' + mealDate + '"]');
+  if (btn) btn.disabled = true;
   try {
     const res = await fetch('/api/meal-skips', {
       method: 'DELETE',
@@ -1127,9 +1137,11 @@ async function removeSkip(mealType, mealDate) {
     if (res.ok) {
       refreshDashboard();
     } else {
+      if (btn) btn.disabled = false;
       showToast('スキップの取り消しに失敗しました', 'error');
     }
   } catch (e) {
+    if (btn) btn.disabled = false;
     showToast('通信エラーが発生しました', 'error');
   }
 }

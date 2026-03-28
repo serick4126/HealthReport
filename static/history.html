@@ -414,8 +414,8 @@
             ${remainingText}
           </div>
           <div class="day-meta">${weightHtml}${stepsHtml}</div>
-          ${mealsHtml}
           ${skipSectionHtml}
+          ${mealsHtml}
         </div>`;
     }
 
@@ -997,7 +997,8 @@
     function showSaving() { document.getElementById('savingOverlay').style.display = 'flex'; }
     function hideSaving() { document.getElementById('savingOverlay').style.display = 'none'; }
 
-    async function historyAddSkip(mealType, mealDate) {
+    async function historyAddSkip(mealType, mealDate, btn) {
+      if (btn) btn.disabled = true;
       try {
         const res = await fetch('/api/meal-skips', {
           method: 'POST',
@@ -1007,14 +1008,17 @@
         if (res.ok) {
           reload();
         } else {
+          if (btn) btn.disabled = false;
           showToast('スキップの記録に失敗しました', 'error');
         }
       } catch (e) {
+        if (btn) btn.disabled = false;
         showToast('通信エラーが発生しました', 'error');
       }
     }
 
-    async function historyRemoveSkip(mealType, mealDate) {
+    async function historyRemoveSkip(mealType, mealDate, btn) {
+      if (btn) btn.disabled = true;
       try {
         const res = await fetch('/api/meal-skips', {
           method: 'DELETE',
@@ -1024,9 +1028,11 @@
         if (res.ok) {
           reload();
         } else {
+          if (btn) btn.disabled = false;
           showToast('スキップの取り消しに失敗しました', 'error');
         }
       } catch (e) {
+        if (btn) btn.disabled = false;
         showToast('通信エラーが発生しました', 'error');
       }
     }
@@ -1034,9 +1040,9 @@
     // スキップボタンのイベント委譲（コンテンツ再描画後も有効）
     document.getElementById('content').addEventListener('click', function(e) {
       var addBtn = e.target.closest('.history-skip-add-btn');
-      if (addBtn) { historyAddSkip(addBtn.dataset.mealType, addBtn.dataset.mealDate); return; }
+      if (addBtn) { historyAddSkip(addBtn.dataset.mealType, addBtn.dataset.mealDate, addBtn); return; }
       var undoBtn = e.target.closest('.history-skip-undo-btn');
-      if (undoBtn) { historyRemoveSkip(undoBtn.dataset.mealType, undoBtn.dataset.mealDate); }
+      if (undoBtn) { historyRemoveSkip(undoBtn.dataset.mealType, undoBtn.dataset.mealDate, undoBtn); }
     });
 
     // ── renderPage後に画像Observerをセット ────────────────────────────────────

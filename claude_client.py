@@ -191,6 +191,7 @@ TOOLS: list[anthropic.types.ToolParam] = [
         },
     },
     # ── Phase 11 追加ツール ─────────────────────────────────────────────────────
+    # ※ enum の値は database.SKIP_MEAL_TYPES と同期すること
     {
         "name": "record_meal_skip",
         "description": (
@@ -347,6 +348,7 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 - ユーザーが特定の日付に言及した場合（例：「3月15日の昼食」）、get_daily_summary ツールでDBから情報を取得してから回答すること
 - 「朝食抜いた」「昼食べなかった」「夕食スキップ」などの報告時は record_meal_skip を呼ぶこと（間食・夜食は対象外）
 - スキップ記録の訂正時は delete_meal_skip を呼ぶこと
+- delete_meal_skip の結果で deleted=false の場合は「スキップ記録がありませんでした」と応答すること
 
 【確認メッセージの形式】
 ✅ 朝食を記録しました

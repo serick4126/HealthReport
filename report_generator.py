@@ -8,6 +8,7 @@ from datetime import date as _date
 
 import anthropic
 import database
+from database import SKIP_MEAL_TYPES as SKIP_LABEL_TYPES
 
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
@@ -137,7 +138,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         if meal_list:
             return "<br/>".join(_truncate(m["description"]) for m in meal_list)
         if is_skipped:
-            return '<span style="color:#8e8e93;font-size:6.5pt;">食べなかった</span>'
+            return '<span class="skip-cell">食べなかった</span>'
         return ""
 
     def dash(v, fmt: str = "{}") -> str:
@@ -148,8 +149,6 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
                    "snack": "間食", "late_night": "夜食"}
 
     date_headers = "".join(f"<th>{fmt_header(d['date'])}</th>" for d in days)
-
-    SKIP_LABEL_TYPES = {"breakfast", "lunch", "dinner"}
 
     meal_rows = ""
     for mt in MEAL_TYPES:
@@ -275,6 +274,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   td {{ line-height: 1.4; }}
   tr th:first-child {{ text-align: left; width: 6%; }}
   .pfc {{ font-size: 6.5pt; }}
+  .skip-cell {{ color: #8e8e93; font-size: 6.5pt; font-style: italic; }}
   .sec-hd th, .sec-hd td {{
     background: #dde8f5; font-weight: 700;
   }}
@@ -318,6 +318,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     table {{ font-size: 7pt; }}
     th {{ font-size: 7.5pt; }}
     .page-label {{ display: none; }}
+    .skip-cell {{ color: #636366; }}
   }}
 </style>
 </head>

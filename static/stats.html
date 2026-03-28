@@ -219,7 +219,7 @@
                   var d = data.dates[tooltipItems[0].dataIndex];
                   var skips = mealSkips[d] || [];
                   if (!skips.length) return [];
-                  return ['スキップ: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・')];
+                  return ['食べなかった: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・')];
                 }
               }
             }

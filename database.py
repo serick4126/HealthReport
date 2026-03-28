@@ -644,20 +644,6 @@ def get_meal_skips_by_date(meal_date: str) -> list[str]:
     return [r["meal_type"] for r in rows]
 
 
-def get_meal_skips_range(start_date: str, end_date: str) -> dict:
-    """指定期間のスキップデータを {meal_date: [meal_type, ...]} で返す。"""
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT meal_date, meal_type FROM meal_skips "
-            "WHERE meal_date >= ? AND meal_date <= ? ORDER BY meal_date",
-            (start_date, end_date),
-        ).fetchall()
-    result: dict = {}
-    for r in rows:
-        result.setdefault(r["meal_date"], []).append(r["meal_type"])
-    return result
-
-
 def get_history(
     days: int = 30,
     start_date: Optional[str] = None,
@@ -930,6 +916,10 @@ def get_daily_summary(target_date: Optional[str] = None) -> dict:
         steps_row = conn.execute(
             "SELECT steps FROM steps_logs WHERE log_date = ?", (target_date,)
         ).fetchone()
+        skip_rows = conn.execute(
+            "SELECT meal_type FROM meal_skips WHERE meal_date = ?",
+            (target_date,),
+        ).fetchall()
 
     total_cal = sum(r["calories"] or 0 for r in meals)
     total_p = sum(r["protein"] or 0 for r in meals)
@@ -942,7 +932,7 @@ def get_daily_summary(target_date: Optional[str] = None) -> dict:
         "meals": [dict(m) for m in meals],
         "weight": {r["time_of_day"]: r["weight_kg"] for r in weights},
         "steps": steps_row["steps"] if steps_row else None,
-        "skipped_meal_types": get_meal_skips_by_date(target_date),
+        "skipped_meal_types": [r["meal_type"] for r in skip_rows],
         "totals": {
             "calories": total_cal,
             "protein": round(total_p, 1),
