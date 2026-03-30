@@ -88,6 +88,7 @@
     Chart.defaults.plugins.datalabels.display = false;
 
     let charts = {};
+    const pageState = { dateRange: { start: null, end: null }, dates: [] };
 
     function destroyCharts() {
       Object.values(charts).forEach(c => c.destroy());
@@ -97,6 +98,13 @@
     async function load(days, start, end) {
       document.getElementById('content').innerHTML = '<div class="loading-spinner">読み込み中...</div>';
       destroyCharts();
+      const today = new Date().toISOString().slice(0, 10);
+      if (start && end) {
+        pageState.dateRange = { start, end };
+      } else {
+        const s = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
+        pageState.dateRange = { start: s, end: today };
+      }
       const url = start && end
         ? `/api/stats?start=${start}&end=${end}`
         : `/api/stats?days=${days}`;
@@ -106,6 +114,7 @@
         if (!res.ok) throw res;
         const data = await res.json();
         render(data);
+        loadVitalCharts().catch(function(e) { console.error('バイタルチャート読み込みエラー:', e); });
       } catch(e) {
         handleFetchError(document.getElementById('content'), e);
       }
@@ -120,6 +129,7 @@
       const labels = data.dates.map(shortDate);
       const goal = data.calories_goal;
       const mealSkips = data.meal_skips || {};
+      pageState.dates = data.dates;
 
       // サマリーカード
       const validCal = data.calories.filter(v => v != null);
@@ -159,6 +169,18 @@
         <div class="chart-card">
           <div class="chart-title">🥩 PFCバランス</div>
           <div class="chart-wrap"><canvas id="chartPFC" role="img" aria-label="PFCバランスグラフ"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">🛏️ 睡眠ログ</div>
+          <div class="chart-wrap" style="height:180px"><canvas id="chartSleep" role="img" aria-label="睡眠ロググラフ"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">💓 脈拍推移</div>
+          <div class="chart-wrap"><canvas id="chartHeartRate" role="img" aria-label="脈拍推移グラフ"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">🫁 SpO2推移</div>
+          <div class="chart-wrap"><canvas id="chartSpo2" role="img" aria-label="SpO2推移グラフ"></canvas></div>
         </div>
       `;
 
@@ -440,6 +462,175 @@
       document.getElementById('customBtn').textContent =
         `📅 ${start.slice(5).replace('-','/')} 〜 ${end.slice(5).replace('-','/')}`;
       load(null, start, end);
+    }
+
+    async function loadVitalCharts() {
+      const { start, end } = pageState.dateRange;
+      const dates = pageState.dates;
+      if (!dates.length || !start || !end) return;
+      const [sleepRes, heartRes, spo2Res] = await Promise.all([
+        fetch('/api/sleep/summary?start_date=' + start + '&end_date=' + end),
+        fetch('/api/vitals/summary?start_date=' + start + '&end_date=' + end + '&type=heart_rate'),
+        fetch('/api/vitals/summary?start_date=' + start + '&end_date=' + end + '&type=spo2'),
+      ]);
+      if (!sleepRes.ok || !heartRes.ok || !spo2Res.ok) return;
+      const [sleepData, heartData, spo2Data] = await Promise.all([
+        sleepRes.json(), heartRes.json(), spo2Res.json()
+      ]);
+      renderSleepChart(sleepData.logs || [], dates);
+      renderHeartRateChart(heartData.logs || [], dates);
+      renderSpo2Chart(spo2Data.logs || [], dates);
+    }
+
+    function _getChartColors() {
+      var s = getComputedStyle(document.documentElement);
+      return {
+        text: s.getPropertyValue('--text-secondary').trim() || '#8e8e93',
+        grid: s.getPropertyValue('--border').trim() || '#e5e5ea',
+      };
+    }
+
+    function renderSleepChart(logs, dates) {
+      var byDate = {};
+      logs.forEach(function(log) { byDate[log.date] = log; });
+      var labels = dates.map(shortDate);
+      var deep  = dates.map(function(d) { return byDate[d] ? (byDate[d].deep_minutes  || 0) : null; });
+      var rem   = dates.map(function(d) { return byDate[d] ? (byDate[d].rem_minutes   || 0) : null; });
+      var awake = dates.map(function(d) { return byDate[d] ? (byDate[d].awake_minutes || 0) : null; });
+      var light = dates.map(function(d) {
+        if (!byDate[d]) return null;
+        var l = byDate[d];
+        var acc = (l.deep_minutes||0) + (l.rem_minutes||0) + (l.awake_minutes||0);
+        return Math.max(0, (l.duration_minutes||0) - acc);
+      });
+      var c = _getChartColors();
+      if (charts.sleep) charts.sleep.destroy();
+      charts.sleep = new Chart(document.getElementById('chartSleep'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: '深睡眠', data: deep,  backgroundColor: 'rgba(147,51,234,0.8)', stack: 'sleep' },
+            { label: 'REM',    data: rem,   backgroundColor: 'rgba(59,130,246,0.8)', stack: 'sleep' },
+            { label: '浅睡眠', data: light, backgroundColor: 'rgba(125,211,252,0.8)', stack: 'sleep' },
+            { label: '覚醒',   data: awake, backgroundColor: 'rgba(248,113,113,0.8)', stack: 'sleep' },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 10 }, boxWidth: 10, color: c.text } },
+            datalabels: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  var v = ctx.parsed.y;
+                  if (!v) return ctx.dataset.label + ': —';
+                  var h = Math.floor(v / 60), m = v % 60;
+                  return ctx.dataset.label + ': ' + (h > 0 ? h + 'h ' : '') + m + 'm';
+                }
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true, ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } },
+            y: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } }
+          }
+        }
+      });
+    }
+
+    function renderHeartRateChart(logs, dates) {
+      var byDate = {};
+      logs.forEach(function(log) {
+        if (log.value !== null && log.value !== undefined) {
+          if (!byDate[log.date]) byDate[log.date] = [];
+          byDate[log.date].push(log.value);
+        }
+      });
+      var labels = dates.map(shortDate);
+      var hrData = dates.map(function(d) {
+        var vals = byDate[d];
+        if (!vals || !vals.length) return null;
+        return Math.round(vals.reduce(function(a, b) { return a + b; }, 0) / vals.length);
+      });
+      var c = _getChartColors();
+      if (charts.heartRate) charts.heartRate.destroy();
+      charts.heartRate = new Chart(document.getElementById('chartHeartRate'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: '脈拍 (bpm)', data: hrData, borderColor: 'rgba(248,113,113,0.9)',
+              backgroundColor: 'rgba(248,113,113,0.1)', tension: 0.3, fill: false, spanGaps: true, pointRadius: 4 },
+            { label: '正常上限(100)', data: Array(labels.length).fill(100),
+              borderColor: 'transparent', backgroundColor: 'rgba(52,211,153,0.08)',
+              fill: '+1', pointRadius: 0, tension: 0 },
+            { label: '正常下限(60)', data: Array(labels.length).fill(60),
+              borderColor: 'rgba(52,211,153,0.4)', borderDash: [4,4], borderWidth: 1,
+              fill: false, pointRadius: 0, tension: 0 },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 10 }, boxWidth: 10, color: c.text,
+              filter: function(item) { return item.datasetIndex === 0; } } },
+            datalabels: { display: false },
+          },
+          scales: {
+            x: { ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } },
+            y: { min: 40, max: 120, ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } }
+          }
+        }
+      });
+    }
+
+    function renderSpo2Chart(logs, dates) {
+      var byDate = {};
+      logs.forEach(function(log) {
+        if (log.value !== null && log.value !== undefined) {
+          if (!byDate[log.date]) byDate[log.date] = [];
+          byDate[log.date].push(log.value);
+        }
+      });
+      var labels = dates.map(shortDate);
+      var spo2Data = dates.map(function(d) {
+        var vals = byDate[d];
+        if (!vals || !vals.length) return null;
+        return Math.round(vals.reduce(function(a, b) { return a + b; }, 0) / vals.length * 10) / 10;
+      });
+      var ptColors = spo2Data.map(function(v) { return (v !== null && v < 95) ? '#f87171' : '#3b82f6'; });
+      var c = _getChartColors();
+      if (charts.spo2) charts.spo2.destroy();
+      charts.spo2 = new Chart(document.getElementById('chartSpo2'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'SpO2 (%)', data: spo2Data, borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.3, fill: false, spanGaps: true,
+              pointRadius: 4, pointBackgroundColor: ptColors, pointBorderColor: ptColors },
+            { label: '正常下限(95%)', data: Array(labels.length).fill(95),
+              borderColor: 'rgba(248,113,113,0.5)', borderDash: [4,4], borderWidth: 1,
+              fill: false, pointRadius: 0, tension: 0 },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 10 }, boxWidth: 10, color: c.text,
+              filter: function(item) { return item.datasetIndex === 0; } } },
+            datalabels: { display: false },
+          },
+          scales: {
+            x: { ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } },
+            y: { min: 88, max: 101, ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } }
+          }
+        }
+      });
     }
 
     load(7, null, null);
