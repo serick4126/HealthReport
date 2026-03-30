@@ -39,6 +39,40 @@ def _run_migrations(conn: sqlite3.Connection, migrations: list) -> None:
                 raise
 
 
+def _migrate_meal_images_nullable(conn: sqlite3.Connection) -> None:
+    """meal_images.image_data の NOT NULL 制約を撤廃するテーブル再作成マイグレーション。
+    PRAGMA table_info で notnull=1 の場合のみ実行。既に NULL 許容なら即リターン。
+    """
+    info = conn.execute("PRAGMA table_info(meal_images)").fetchall()
+    for col in info:
+        if col["name"] == "image_data" and col["notnull"] == 0:
+            return  # 既にNULL許容 → スキップ
+
+    logger.info("Migration: recreating meal_images to allow NULL image_data")
+    conn.executescript("""
+        BEGIN;
+        ALTER TABLE meal_images RENAME TO meal_images_old;
+        CREATE TABLE meal_images (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            meal_id     INTEGER REFERENCES meals(id),
+            image_data  BLOB DEFAULT NULL,
+            mime_type   TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            notes       TEXT,
+            image_path  TEXT DEFAULT NULL
+        );
+        INSERT INTO meal_images
+            (id, recorded_at, meal_id, image_data, mime_type, source_type, notes, image_path)
+        SELECT
+            id, recorded_at, meal_id, image_data, mime_type, source_type, notes, image_path
+        FROM meal_images_old;
+        DROP TABLE meal_images_old;
+        COMMIT;
+    """)
+    logger.info("Migration: meal_images recreated successfully")
+
+
 def init_db():
     with get_conn() as conn:
         conn.executescript("""
@@ -111,10 +145,11 @@ def init_db():
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 meal_id     INTEGER REFERENCES meals(id),
-                image_data  BLOB NOT NULL,
+                image_data  BLOB DEFAULT NULL,
                 mime_type   TEXT NOT NULL,
                 source_type TEXT NOT NULL,
-                notes       TEXT
+                notes       TEXT,
+                image_path  TEXT DEFAULT NULL
             );
 
             CREATE TABLE IF NOT EXISTS food_defaults (
@@ -166,6 +201,10 @@ def init_db():
             "ALTER TABLE meals ADD COLUMN meal_time TEXT DEFAULT NULL",
             "ALTER TABLE meal_images ADD COLUMN image_path TEXT DEFAULT NULL",
         ])
+
+        # image_data NOT NULL → NULL 許容へのテーブル再作成マイグレーション
+        # （新規DBは CREATE TABLE で既に NULL 許容のためスキップされる）
+        _migrate_meal_images_nullable(conn)
 
         # 初期設定
         conn.executemany(
@@ -589,7 +628,7 @@ def save_meal_image(
     notes: Optional[str] = None,
 ) -> int:
     """
-    meal_images テーブルに画像を保存する。
+    meal_images テーブルに画像BLOBを保存する（既存互換）。
     source_type: 'photo'（料理写真）/ 'label'（栄養成分ラベル）/ 'barcode'（バーコード）
     """
     with get_conn() as conn:
@@ -603,24 +642,95 @@ def save_meal_image(
         return cur.lastrowid
 
 
-def get_meal_image(meal_id: int) -> Optional[tuple[bytes, str]]:
-    """食事に紐づく最初の画像を (image_data, mime_type) で返す"""
+def save_meal_image_path(
+    meal_id: int,
+    image_path: str,
+    mime_type: str,
+    source_type: str,
+    notes: Optional[str] = None,
+) -> int:
+    """
+    meal_images テーブルにファイルパスのみを保存する（新規アップロード用）。
+    image_data は保存しない。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO meal_images (meal_id, image_path, mime_type, source_type, notes)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (meal_id, image_path, mime_type, source_type, notes),
+        )
+        return cur.lastrowid
+
+
+def get_meal_image(meal_id: int) -> Optional[dict]:
+    """食事に紐づく最初の画像レコードを dict で返す。
+    キー: image_path, image_data, mime_type
+    """
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT image_data, mime_type FROM meal_images WHERE meal_id = ? LIMIT 1",
+            "SELECT image_data, mime_type, image_path FROM meal_images WHERE meal_id = ? LIMIT 1",
             (meal_id,),
         ).fetchone()
-    return (bytes(row["image_data"]), row["mime_type"]) if row else None
+    if row is None:
+        return None
+    return {
+        "image_path": row["image_path"],
+        "image_data": bytes(row["image_data"]) if row["image_data"] else None,
+        "mime_type": row["mime_type"],
+    }
 
 
-def get_meal_image_by_id(image_id: int) -> Optional[tuple[bytes, str]]:
-    """image_id指定で画像を (image_data, mime_type) で返す"""
+def get_meal_image_by_id(image_id: int) -> Optional[dict]:
+    """image_id 指定で画像レコードを dict で返す。
+    キー: image_path, image_data, mime_type
+    """
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT image_data, mime_type FROM meal_images WHERE id = ?",
+            "SELECT image_data, mime_type, image_path FROM meal_images WHERE id = ?",
             (image_id,),
         ).fetchone()
-    return (bytes(row["image_data"]), row["mime_type"]) if row else None
+    if row is None:
+        return None
+    return {
+        "image_path": row["image_path"],
+        "image_data": bytes(row["image_data"]) if row["image_data"] else None,
+        "mime_type": row["mime_type"],
+    }
+
+
+def get_images_without_path(limit: int = 100) -> list[dict]:
+    """image_path が NULL で image_data がある画像レコードを返す（BLOB→ファイル移行用）。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, meal_id, image_data, mime_type
+            FROM meal_images
+            WHERE image_path IS NULL AND image_data IS NOT NULL
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "meal_id": r["meal_id"],
+            "image_data": bytes(r["image_data"]),
+            "mime_type": r["mime_type"],
+        }
+        for r in rows
+    ]
+
+
+def update_meal_image_path(image_id: int, image_path: str) -> bool:
+    """image_id のレコードに image_path を設定する（マイグレーション用）。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE meal_images SET image_path = ? WHERE id = ?",
+            (image_path, image_id),
+        )
+    return cur.rowcount > 0
 
 
 def get_meal_images(meal_id: int) -> list[dict]:

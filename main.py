@@ -80,8 +80,12 @@ async def lifespan(app: FastAPI):
     yield
 
 
+UPLOAD_DIR = Path(__file__).parent / "uploads" / "meal_images"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/uploads", StaticFiles(directory=str(Path(__file__).parent / "uploads")), name="uploads")
 
 
 # ── 認証ヘルパー ───────────────────────────────────────────────────────────────
@@ -363,12 +367,16 @@ async def stats_api(request: Request, days: int = 7, start: str = None, end: str
 
 @app.get("/api/image/{meal_id}")
 async def meal_image(request: Request, meal_id: int):
+    from fastapi.responses import RedirectResponse
     require_auth(request)
-    result = database.get_meal_image(meal_id)
-    if not result:
+    row = database.get_meal_image(meal_id)
+    if not row:
         raise HTTPException(status_code=404, detail="画像が見つかりません")
-    image_data, mime_type = result
-    return Response(content=image_data, media_type=mime_type)
+    if row["image_path"]:
+        return RedirectResponse(url=f"/{row['image_path']}", status_code=302)
+    if row["image_data"]:
+        return Response(content=row["image_data"], media_type=row["mime_type"])
+    raise HTTPException(status_code=404, detail="画像データがありません")
 
 
 # ── 食事記録 CRUD ──────────────────────────────────────────────────────────────
@@ -708,22 +716,51 @@ async def list_meal_images(request: Request, meal_id: int):
 @app.post("/api/meals/{meal_id}/images")
 async def add_meal_image(request: Request, meal_id: int, body: ImageUploadRequest):
     require_auth(request)
-    import image_utils
-    processed_b64 = image_utils.process_image_b64(body.image_b64)
     import base64
-    image_bytes = base64.b64decode(processed_b64)
-    image_id = database.save_meal_image(meal_id, image_bytes, "image/jpeg", "photo")
+    import image_utils
+
+    # Base64サイズ上限チェック（10MB）
+    try:
+        raw_bytes = base64.b64decode(body.image_b64)
+    except Exception:
+        raise HTTPException(status_code=422, detail="画像データのBase64デコードに失敗しました")
+    if len(raw_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="画像サイズが上限(10MB)を超えています")
+
+    try:
+        processed_b64 = image_utils.process_image_b64(body.image_b64)
+        image_bytes = base64.b64decode(processed_b64)
+    except Exception:
+        logger.error("画像処理に失敗しました", exc_info=True)
+        raise HTTPException(status_code=422, detail="画像の処理に失敗しました")
+
+    # YYYY/MM/ サブディレクトリにUUIDファイル名で保存
+    from datetime import datetime as _dt
+    now = _dt.now()
+    sub_dir = UPLOAD_DIR / f"{now.year:04d}" / f"{now.month:02d}"
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    file_path = sub_dir / filename
+    file_path.write_bytes(image_bytes)
+
+    # DBには image_path のみ記録（BLOB保存なし）
+    rel_path = file_path.relative_to(UPLOAD_DIR.parent.parent).as_posix()
+    image_id = database.save_meal_image_path(meal_id, rel_path, "image/jpeg", "photo")
     return JSONResponse({"success": True, "image_id": image_id})
 
 
 @app.get("/api/images/{image_id}")
 async def get_image_by_id(request: Request, image_id: int):
+    from fastapi.responses import RedirectResponse
     require_auth(request)
-    result = database.get_meal_image_by_id(image_id)
-    if not result:
+    row = database.get_meal_image_by_id(image_id)
+    if not row:
         raise HTTPException(status_code=404, detail="画像が見つかりません")
-    image_data, mime_type = result
-    return Response(content=image_data, media_type=mime_type)
+    if row["image_path"]:
+        return RedirectResponse(url=f"/{row['image_path']}", status_code=302)
+    if row["image_data"]:
+        return Response(content=row["image_data"], media_type=row["mime_type"])
+    raise HTTPException(status_code=404, detail="画像データがありません")
 
 
 @app.delete("/api/images/{image_id}")
@@ -733,6 +770,53 @@ async def delete_image(request: Request, image_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="画像が見つかりません")
     return JSONResponse({"success": True})
+
+
+# ── 画像BLOBマイグレーション（管理者用） ───────────────────────────────────────
+
+@app.post("/api/admin/migrate-images")
+async def migrate_images(request: Request):
+    """既存BLOBデータをファイルシステムへ移行する（管理者API）。
+    X-API-Key ヘッダーで external_api_key 認証が必要。
+    """
+    api_key = request.headers.get("x-api-key", "")
+    stored_key = database.get_setting("external_api_key") or ""
+    if not stored_key or not hmac.compare_digest(api_key, stored_key):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    from datetime import datetime as _dt
+    migrated = 0
+    skipped = 0
+    errors = 0
+    batch_size = 100
+    failed_ids: set[int] = set()  # エラー済みIDを除外して無限ループを防止
+
+    while True:
+        rows = database.get_images_without_path(limit=batch_size)
+        rows = [r for r in rows if r["id"] not in failed_ids]
+        if not rows:
+            break
+        for row in rows:
+            if not row["image_data"]:
+                skipped += 1
+                continue
+            try:
+                now = _dt.now()
+                sub_dir = UPLOAD_DIR / f"{now.year:04d}" / f"{now.month:02d}"
+                sub_dir.mkdir(parents=True, exist_ok=True)
+                ext = "jpg" if row["mime_type"] == "image/jpeg" else "bin"
+                filename = f"{uuid.uuid4()}.{ext}"
+                file_path = sub_dir / filename
+                file_path.write_bytes(row["image_data"])
+                rel_path = file_path.relative_to(UPLOAD_DIR.parent.parent).as_posix()
+                database.update_meal_image_path(row["id"], rel_path)
+                migrated += 1
+            except Exception:
+                logger.error(f"migrate-images: image_id={row['id']} の移行に失敗", exc_info=True)
+                failed_ids.add(row["id"])
+                errors += 1
+
+    return JSONResponse({"migrated": migrated, "skipped": skipped, "errors": errors})
 
 
 # ── 静的ファイル / フロントエンド ──────────────────────────────────────────────
