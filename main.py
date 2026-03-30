@@ -40,6 +40,41 @@ LOGIN_WINDOW_SEC = 300  # 5分間
 # ── Cookie設定 ────────────────────────────────────────────────────────────────
 SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() == "true"
 
+# ── バイタル値の妥当範囲（ディスパッチテーブル）────────────────────────────────
+VITAL_RANGES: dict[str, tuple[float, float]] = {
+    "heart_rate": (30.0, 220.0),
+    "spo2": (70.0, 100.0),
+}
+
+_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+
+
+def _require_api_key(request: Request) -> None:
+    """X-API-Key ヘッダーで external_api_key 認証。失敗時は HTTPException を送出。"""
+    stored_key = database.get_setting("external_api_key") or ""
+    if not stored_key:
+        raise HTTPException(status_code=503, detail="外部APIキーが設定されていません")
+    api_key = request.headers.get("x-api-key", "")
+    if not hmac.compare_digest(api_key, stored_key):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+
+def _validate_date(date_str: str) -> None:
+    """YYYY-MM-DD 形式の日付を検証。不正な場合は HTTPException(422) を送出。"""
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="dateはYYYY-MM-DD形式で指定してください")
+
+
+def _validate_time(time_str: str) -> None:
+    """HH:MM 形式の時刻を検証。不正な場合は HTTPException(422) を送出。"""
+    if not _TIME_RE.match(time_str):
+        raise HTTPException(status_code=422, detail="timeはHH:MM形式で指定してください")
+    h, m = int(time_str[:2]), int(time_str[3:])
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise HTTPException(status_code=422, detail="timeの時・分が範囲外です（時: 0-23, 分: 0-59）")
+
 
 # ── アプリ初期化 ───────────────────────────────────────────────────────────────
 
@@ -817,6 +852,155 @@ async def migrate_images(request: Request):
                 errors += 1
 
     return JSONResponse({"migrated": migrated, "skipped": skipped, "errors": errors})
+
+
+# ── 睡眠ログ API ───────────────────────────────────────────────────────────────
+
+class SleepIngestRequest(BaseModel):
+    date: str
+    sleep_start: str
+    sleep_end: str
+    deep_minutes: Optional[int] = None
+    rem_minutes: Optional[int] = None
+    awake_minutes: Optional[int] = None
+    source: str = "healthkit"
+
+
+@app.post("/api/sleep/ingest", status_code=201)
+async def sleep_ingest(request: Request, body: SleepIngestRequest):
+    """Apple Watch 等から睡眠ログを受け付けるAPI。X-API-Key 認証必須。"""
+    _require_api_key(request)
+    _validate_date(body.date)
+    _validate_time(body.sleep_start)
+    _validate_time(body.sleep_end)
+    if body.source not in ("healthkit", "manual"):
+        raise HTTPException(status_code=422, detail="sourceはhealthkitまたはmanualを指定してください")
+    result = database.upsert_sleep_log(
+        body.date, body.sleep_start, body.sleep_end,
+        body.deep_minutes, body.rem_minutes, body.awake_minutes,
+        body.source,
+    )
+    return JSONResponse(
+        {"success": True, "date": body.date, "duration_minutes": result["duration_minutes"]},
+        status_code=201,
+    )
+
+
+@app.get("/api/sleep/summary")
+async def sleep_summary(request: Request, start_date: str, end_date: str):
+    """指定期間の睡眠ログを返す。"""
+    require_auth(request)
+    _validate_date(start_date)
+    _validate_date(end_date)
+    logs = database.get_sleep_logs(start_date, end_date)
+    return JSONResponse({"logs": logs})
+
+
+# ── バイタルログ API ───────────────────────────────────────────────────────────
+
+class VitalIngestRequest(BaseModel):
+    date: str
+    type: str
+    value: float
+    time: Optional[str] = None
+    source: str = "healthkit"
+
+
+class VitalAlertRequest(BaseModel):
+    date: str
+    time: Optional[str] = None
+    note: Optional[str] = None
+
+
+@app.post("/api/vitals/ingest", status_code=201)
+async def vitals_ingest(request: Request, body: VitalIngestRequest):
+    """バイタルログ（脈拍・SpO2）を受け付けるAPI。X-API-Key 認証必須。"""
+    _require_api_key(request)
+    _validate_date(body.date)
+    if body.time:
+        _validate_time(body.time)
+    if body.type not in VITAL_RANGES:
+        raise HTTPException(status_code=422, detail="typeはheart_rateまたはspo2を指定してください")
+    low, high = VITAL_RANGES[body.type]
+    if not (low <= body.value <= high):
+        raise HTTPException(
+            status_code=422,
+            detail=f"valueが範囲外です（{body.type}: {low}〜{high}）",
+        )
+    vid = database.insert_vital_log(body.date, body.type, body.value, body.time, source=body.source)
+    return JSONResponse({"success": True, "id": vid}, status_code=201)
+
+
+@app.post("/api/vitals/alert", status_code=201)
+async def vitals_alert(request: Request, body: VitalAlertRequest):
+    """高血圧パターン通知を受け付けるAPI。X-API-Key 認証必須。"""
+    _require_api_key(request)
+    _validate_date(body.date)
+    if body.time:
+        _validate_time(body.time)
+    vid = database.insert_vital_log(body.date, "bp_alert", note=body.note, time=body.time)
+    return JSONResponse({"success": True, "id": vid}, status_code=201)
+
+
+@app.get("/api/vitals/summary")
+async def vitals_summary(
+    request: Request,
+    start_date: str,
+    end_date: str,
+    type: Optional[str] = None,
+):
+    """指定期間のバイタルログを返す。type 指定で絞り込み可能。"""
+    require_auth(request)
+    _validate_date(start_date)
+    _validate_date(end_date)
+    logs = database.get_vital_logs(start_date, end_date, type)
+    return JSONResponse({"logs": logs})
+
+
+# ── BMI・基礎代謝 API ──────────────────────────────────────────────────────────
+
+@app.get("/api/bmi")
+async def bmi_info(request: Request):
+    """最新体重と user_height_cm 設定から BMI・基礎代謝を返す。"""
+    require_auth(request)
+    height_str = database.get_setting("user_height_cm") or ""
+    try:
+        height_cm = float(height_str) if height_str else 0.0
+    except ValueError:
+        height_cm = 0.0
+    if height_cm <= 0:
+        raise HTTPException(status_code=404, detail="height_not_configured")
+
+    info = database.get_latest_bmi_info()
+    if info is None:
+        raise HTTPException(status_code=404, detail="no_weight_record")
+    return JSONResponse({
+        "bmi": info["bmi"],
+        "bmi_status": info["bmi_status"],
+        "bmr_kcal": info["bmr_kcal"],
+        "bmr_note": info["bmr_note"],
+        "weight_kg": info["weight_kg"],
+        "height_cm": info["height_cm"],
+        "log_date": info["log_date"],
+    })
+
+
+# ── 食事時刻 API ───────────────────────────────────────────────────────────────
+
+class MealTimeRequest(BaseModel):
+    meal_time: Optional[str] = None  # "HH:MM" or null（削除）
+
+
+@app.patch("/api/meals/{meal_id}/time")
+async def update_meal_time(request: Request, meal_id: int, body: MealTimeRequest):
+    """食事時刻を更新する（meal_time=null で削除）。"""
+    require_auth(request)
+    if body.meal_time is not None:
+        _validate_time(body.meal_time)
+    ok = database.update_meal(meal_id, meal_time=body.meal_time)
+    if not ok:
+        raise HTTPException(status_code=404, detail="食事記録が見つかりません")
+    return JSONResponse({"success": True, "meal_time": body.meal_time})
 
 
 # ── 静的ファイル / フロントエンド ──────────────────────────────────────────────

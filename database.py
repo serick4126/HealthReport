@@ -452,7 +452,9 @@ def save_meal(
 
 def update_meal(meal_id: int, **kwargs) -> bool:
     allowed = {"description", "meal_type", "calories", "protein", "fat", "carbs", "sodium", "notes", "meal_time"}
-    updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+    # meal_time は NULL 更新（削除）を許容する
+    nullable = {"meal_time"}
+    updates = {k: v for k, v in kwargs.items() if k in allowed and (v is not None or k in nullable)}
     if not updates:
         return False
     set_clause = ", ".join(f"{k} = ?" for k in updates)
