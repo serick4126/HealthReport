@@ -62,11 +62,18 @@ def generate_charts_base64(data: dict) -> dict:
     valid_y   = [w_data[i]   for i in valid_idx]
     valid_col = [w_colors[i] for i in valid_idx]
 
+    trend = calculate_trend(list(range(len(w_data))), w_data)
+
     fig_w, ax_w = plt.subplots(figsize=(10, 2.4))
     if valid_idx:
         ax_w.plot(valid_idx, valid_y, color="#8e8e93", linewidth=1.5, zorder=1)
         for xi, yi, ci in zip(valid_idx, valid_y, valid_col):
             ax_w.scatter([xi], [yi], color=ci, s=30, zorder=2)
+        if trend is not None:
+            s, ic = trend
+            tx = [valid_idx[0], valid_idx[-1]]
+            ty = [s * x + ic for x in tx]
+            ax_w.plot(tx, ty, color="#ff3b30", linewidth=1, linestyle="--", zorder=0)
         margin = max(0.5, (max(valid_y) - min(valid_y)) * 0.15) if len(valid_y) > 1 else 0.5
         ax_w.set_ylim(min(valid_y) - margin, max(valid_y) + margin)
     ax_w.set_xticks(range(len(w_labels)))
@@ -74,24 +81,34 @@ def generate_charts_base64(data: dict) -> dict:
     ax_w.set_ylabel("kg", fontsize=8)
     ax_w.tick_params(axis="y", labelsize=8)
     ax_w.set_title("体重推移", fontsize=10)
-    ax_w.legend(handles=[
+    legend_handles = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#34c759", markersize=6, label="朝"),
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#ff9500", markersize=6, label="夜"),
-    ], fontsize=8)
+    ]
+    if trend is not None:
+        legend_handles.append(
+            Line2D([0], [0], color="#ff3b30", linewidth=1, linestyle="--", label="トレンド")
+        )
+    ax_w.legend(handles=legend_handles, fontsize=8)
     fig_w.tight_layout(pad=0.4)
     weight_b64 = _fig_to_b64(fig_w)
     plt.close(fig_w)
 
-    # ── カロリー推移（棒グラフ＋目標ライン）──────────────
+    # ── PFC積み上げ棒グラフ＋目標ライン ──────────────────
     goal = data.get("calorie_goal", 1500)
     c_labels = [_date_label(d["date"]) for d in days]
-    c_vals   = [d["calories"] if d["calories"] is not None else 0 for d in days]
-    c_colors = ["#ff3b30" if v > goal else "#007aff" for v in c_vals]
+    pfc_data = build_pfc_chart_data(days, skip_dates=set())
+    p_vals  = [v or 0 for v in pfc_data["protein_kcal"]]
+    f_vals  = [v or 0 for v in pfc_data["fat_kcal"]]
+    c_vals2 = [v or 0 for v in pfc_data["carb_kcal"]]
+    pf_bottom = [p + f for p, f in zip(p_vals, f_vals)]
 
     fig_c, ax_c = plt.subplots(figsize=(4.8, 2.2))
-    ax_c.bar(c_labels, c_vals, color=c_colors, alpha=0.8)
+    ax_c.bar(c_labels, p_vals, label="P", color="#60a5fa", alpha=0.85)
+    ax_c.bar(c_labels, f_vals, bottom=p_vals, label="F", color="#fbbf24", alpha=0.85)
+    ax_c.bar(c_labels, c_vals2, bottom=pf_bottom, label="C", color="#34d399", alpha=0.85)
     ax_c.axhline(goal, color="#ff3b30", linestyle="--", linewidth=1, label=f"目標 {goal}kcal")
-    ax_c.set_title("カロリー推移", fontsize=9)
+    ax_c.set_title("PFC推移", fontsize=9)
     ax_c.set_ylabel("kcal", fontsize=7)
     ax_c.tick_params(axis="x", labelsize=6.5, rotation=30)
     ax_c.tick_params(axis="y", labelsize=7)
@@ -123,6 +140,112 @@ def generate_charts_base64(data: dict) -> dict:
 def _truncate(text: str, max_len: int = _TRUNCATE_LEN) -> str:
     """フォールバック省略（30文字超のみ）"""
     return text if len(text) <= max_len else text[:max_len] + "…"
+
+
+def build_pfc_chart_data(days: list, skip_dates: set) -> dict:
+    """PFC積み上げグラフ用日別kcalデータを返す（スキップ日・データなし日はNone）"""
+    protein_kcal, fat_kcal, carb_kcal = [], [], []
+    for d in days:
+        if d["date"] in skip_dates or d.get("protein") is None:
+            protein_kcal.append(None)
+            fat_kcal.append(None)
+            carb_kcal.append(None)
+        else:
+            protein_kcal.append((d["protein"] or 0) * 4)
+            fat_kcal.append((d["fat"] or 0) * 9)
+            carb_kcal.append((d["carbs"] or 0) * 4)
+    return {"protein_kcal": protein_kcal, "fat_kcal": fat_kcal, "carb_kcal": carb_kcal}
+
+
+def calculate_trend(dates: list, values: list) -> tuple[float, float] | None:
+    """最小二乗法で傾き(slope)と切片(intercept)を返す。
+    Noneは除外して計算。有効データが2点未満の場合はNoneを返す。
+    戻り値: (slope, intercept) or None
+    """
+    valid = [(i, v) for i, v in enumerate(values) if v is not None]
+    if len(valid) < 2:
+        return None
+    xs = [p[0] for p in valid]
+    ys = [p[1] for p in valid]
+    n = len(xs)
+    sum_x = sum(xs)
+    sum_y = sum(ys)
+    sum_xy = sum(x * y for x, y in zip(xs, ys))
+    sum_xx = sum(x * x for x in xs)
+    denom = n * sum_xx - sum_x * sum_x
+    if denom == 0:
+        return None
+    slope = (n * sum_xy - sum_x * sum_y) / denom
+    intercept = (sum_y - slope * sum_x) / n
+    return slope, intercept
+
+
+def build_achievement_summary(days: list, goal_kcal: int, skip_dates: set) -> dict:
+    """週間達成率サマリーを返す。
+    戻り値: total_days, achieved_days, achievement_rate, avg_diff_kcal, weight_diff
+    """
+    total_days = len(days)
+    achieved_days = 0
+    diffs = []
+
+    morning_weights = [d.get("weight_morning") for d in days if d.get("weight_morning") is not None]
+    weight_diff = None
+    if len(morning_weights) >= 2:
+        weight_diff = round(morning_weights[-1] - morning_weights[0], 1)
+
+    for d in days:
+        if d["date"] in skip_dates:
+            continue
+        cal = d.get("calories")
+        if cal is None:
+            continue
+        diffs.append(cal - goal_kcal)
+        if cal <= goal_kcal:
+            achieved_days += 1
+
+    achievement_rate = round(achieved_days / total_days * 100) if total_days > 0 else 0
+    avg_diff_kcal = round(sum(diffs) / len(diffs)) if diffs else 0
+
+    return {
+        "total_days": total_days,
+        "achieved_days": achieved_days,
+        "achievement_rate": achievement_rate,
+        "avg_diff_kcal": avg_diff_kcal,
+        "weight_diff": weight_diff,
+    }
+
+
+def _build_achievement_html(summary: dict) -> str:
+    """達成率サマリーHTMLを生成"""
+    rate = summary["achievement_rate"]
+    total = summary["total_days"]
+    achieved = summary["achieved_days"]
+    diff = summary["avg_diff_kcal"]
+    wdiff = summary["weight_diff"]
+
+    diff_str = f"+{diff} kcal" if diff > 0 else f"{diff} kcal"
+    wdiff_str = f"{wdiff:+.1f} kg" if wdiff is not None else "&#8212;"
+    rate_color = "#34d399" if rate >= 70 else "#f87171"
+
+    return (
+        f'<div class="achievement-summary">'
+        f'<span class="ach-label">&#128202; 週間サマリー</span>'
+        f'<span>{total}日中<strong>{achieved}日</strong>目標達成'
+        f'（<span id="achievement-rate" style="color:{rate_color}">{rate}%</span>）</span>'
+        f'<span>平均差分: {diff_str}</span>'
+        f'<span>体重変化（週間）: {wdiff_str}</span>'
+        f'</div>'
+    )
+
+
+def _diff_cell(calories, goal_kcal: int) -> str:
+    """カロリー差分セルHTMLを返す"""
+    if calories is None:
+        return '<td style="color:#8e8e93">&#8212;</td>'
+    diff = calories - goal_kcal
+    color = "#34d399" if diff <= 0 else "#f87171"
+    sign = "+" if diff > 0 else ""
+    return f'<td style="color:{color}">{sign}{diff:,}</td>'
 
 
 def generate_report_html(data: dict, charts: dict, comment: str) -> str:
@@ -166,7 +289,13 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         p = dash(d["protein"]); f_ = dash(d["fat"]); c = dash(d["carbs"])
         return f"P{p}<br/>F{f_}<br/>C{c}"
 
+    goal_kcal = data.get("calorie_goal", 1500)
+    achievement_html = _build_achievement_html(
+        build_achievement_summary(days, goal_kcal, skip_dates=set())
+    )
+
     cal_cells   = "".join(f"<td>{dash(d['calories'])}</td>"         for d in days)
+    diff_cells  = "".join(_diff_cell(d.get("calories"), goal_kcal)  for d in days)
     pfc_cells   = "".join(f"<td class='pfc'>{pfc(d)}</td>"          for d in days)
     sod_cells   = "".join(f"<td>{dash(d['sodium'])}</td>"           for d in days)
     wm_cells    = "".join(f"<td>{dash(d['weight_morning'])}</td>"   for d in days)
@@ -275,6 +404,15 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   tr th:first-child {{ text-align: left; width: 6%; }}
   .pfc {{ font-size: 6.5pt; }}
   .skip-cell {{ color: #8e8e93; font-size: 6.5pt; font-style: italic; }}
+  .achievement-summary {{
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: #f0f4ff; border: 0.5pt solid #c0d0f0;
+    border-radius: 4px; padding: 3mm 4mm; margin-bottom: 3mm; font-size: 8pt;
+  }}
+  .ach-label {{ font-weight: 700; margin-right: 4px; }}
+  @media print {{
+    .achievement-summary {{ background: #f5f7ff; }}
+  }}
   .sec-hd th, .sec-hd td {{
     background: #dde8f5; font-weight: 700;
   }}
@@ -358,6 +496,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     氏名：{data["user_name"]}　目標カロリー：{data["calorie_goal"]}kcal/日
   </div>
 
+  {achievement_html}
+
   <table>
     <colgroup>{colgroup}</colgroup>
     <thead>
@@ -365,6 +505,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     </thead>
     <tbody>
       <tr class="sec-hd"><th>Cal(kcal)</th>{cal_cells}</tr>
+      <tr><th>目標差分</th>{diff_cells}</tr>
       <tr><th>P/F/C(g)</th>{pfc_cells}</tr>
       <tr><th>塩分(g)</th>{sod_cells}</tr>
       <tr class="sec-hd"><th>体重・朝</th>{wm_cells}</tr>
