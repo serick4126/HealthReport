@@ -1,8 +1,11 @@
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone, timedelta, date as _date
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 JST = timezone(timedelta(hours=9))
 
@@ -21,6 +24,21 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def _run_migrations(conn: sqlite3.Connection, migrations: list) -> None:
+    """既存DBへのカラム追加等のマイグレーションを安全に実行する。
+    duplicate column name エラーは既適用として無視し、それ以外は再送出する。
+    """
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                logger.debug(f"Migration skip (already applied): {sql}")
+            else:
+                logger.error(f"Migration failed: {sql} — {e}")
+                raise
+
+
 def init_db():
     with get_conn() as conn:
         conn.executescript("""
@@ -35,7 +53,8 @@ def init_db():
                 fat         REAL,
                 carbs       REAL,
                 sodium      REAL,
-                notes       TEXT
+                notes       TEXT,
+                meal_time   TEXT DEFAULT NULL
             );
 
             CREATE TABLE IF NOT EXISTS weight_logs (
@@ -59,6 +78,33 @@ def init_db():
                 meal_date   DATE NOT NULL,
                 meal_type   TEXT NOT NULL,
                 UNIQUE(meal_date, meal_type)
+            );
+
+            CREATE TABLE IF NOT EXISTS sleep_logs (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                date             TEXT    NOT NULL,
+                sleep_start      TEXT    NOT NULL,
+                sleep_end        TEXT    NOT NULL,
+                duration_minutes INTEGER DEFAULT NULL,
+                deep_minutes     INTEGER DEFAULT NULL,
+                rem_minutes      INTEGER DEFAULT NULL,
+                awake_minutes    INTEGER DEFAULT NULL,
+                source           TEXT    DEFAULT 'healthkit'
+                                         CHECK(source IN ('healthkit', 'manual')),
+                recorded_at      TEXT    DEFAULT (datetime('now','localtime')),
+                UNIQUE(date)
+            );
+
+            CREATE TABLE IF NOT EXISTS vitals_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                date        TEXT    NOT NULL,
+                time        TEXT    DEFAULT NULL,
+                type        TEXT    NOT NULL
+                                    CHECK(type IN ('heart_rate', 'spo2', 'bp_alert')),
+                value       REAL    DEFAULT NULL,
+                note        TEXT    DEFAULT NULL,
+                source      TEXT    DEFAULT 'healthkit',
+                recorded_at TEXT    DEFAULT (datetime('now','localtime'))
             );
 
             CREATE TABLE IF NOT EXISTS meal_images (
@@ -109,15 +155,17 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_weight_date      ON weight_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_steps_date       ON steps_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_meal_skips_date  ON meal_skips(meal_date);
+            CREATE INDEX IF NOT EXISTS idx_sleep_logs_date  ON sleep_logs(date);
+            CREATE INDEX IF NOT EXISTS idx_vitals_logs_date ON vitals_logs(date);
+            CREATE INDEX IF NOT EXISTS idx_vitals_logs_type ON vitals_logs(type);
         """)
 
-        # food_defaults に is_favorite カラムを追加（既存DBの移行）
-        try:
-            conn.execute(
-                "ALTER TABLE food_defaults ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0"
-            )
-        except Exception:
-            pass  # カラムが既に存在する場合は無視
+        # 既存DBへのカラム追加マイグレーション
+        _run_migrations(conn, [
+            "ALTER TABLE food_defaults ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE meals ADD COLUMN meal_time TEXT DEFAULT NULL",
+            "ALTER TABLE meal_images ADD COLUMN image_path TEXT DEFAULT NULL",
+        ])
 
         # 初期設定
         conn.executemany(
@@ -349,21 +397,22 @@ def save_meal(
     carbs: Optional[float] = None,
     sodium: Optional[float] = None,
     notes: Optional[str] = None,
+    meal_time: Optional[str] = None,
 ) -> int:
     with get_conn() as conn:
         cur = conn.execute(
             """
             INSERT INTO meals
-                (meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes, meal_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes),
+            (meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes, meal_time),
         )
         return cur.lastrowid
 
 
 def update_meal(meal_id: int, **kwargs) -> bool:
-    allowed = {"description", "meal_type", "calories", "protein", "fat", "carbs", "sodium", "notes"}
+    allowed = {"description", "meal_type", "calories", "protein", "fat", "carbs", "sodium", "notes", "meal_time"}
     updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
     if not updates:
         return False
@@ -410,7 +459,7 @@ def get_meals_by_date(meal_date: str) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT id, meal_type, description, calories, protein, fat, carbs, sodium, notes
+            SELECT id, meal_type, description, calories, protein, fat, carbs, sodium, notes, meal_time
             FROM meals WHERE meal_date = ? ORDER BY recorded_at
             """,
             (meal_date,),
@@ -941,3 +990,209 @@ def get_daily_summary(target_date: Optional[str] = None) -> dict:
             "sodium": round(total_s, 1),
         },
     }
+
+
+# ── BMI・基礎代謝計算 ──────────────────────────────────────────────────────────
+
+def calculate_bmi(weight_kg: float, height_cm: float) -> Optional[float]:
+    """BMIを計算して返す。身長・体重が0以下の場合はNone。"""
+    if height_cm <= 0 or weight_kg <= 0:
+        return None
+    height_m = height_cm / 100
+    return round(weight_kg / (height_m ** 2), 1)
+
+
+def get_bmi_status(bmi: float) -> str:
+    """BMI値に対応するステータス文字列を返す（日本肥満学会基準）。"""
+    if bmi < 18.5:
+        return "低体重"
+    if bmi < 25.0:
+        return "普通体重"
+    if bmi < 30.0:
+        return "肥満(1度)"
+    if bmi < 35.0:
+        return "肥満(2度)"
+    if bmi < 40.0:
+        return "肥満(3度)"
+    return "肥満(4度)"
+
+
+def calculate_bmr(weight_kg: float, height_cm: float) -> dict:
+    """Harris-Benedict式（改訂版）で推定基礎代謝を計算する。
+    年齢は40歳（男性）で近似。
+    戻り値: {"bmr_kcal": int, "bmr_note": str}
+    """
+    if weight_kg <= 0 or height_cm <= 0:
+        return {"bmr_kcal": None, "bmr_note": "計算不可（値が不正）"}
+    bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * 40)
+    return {
+        "bmr_kcal": round(bmr),
+        "bmr_note": "推定値（40歳男性基準）",
+    }
+
+
+def get_latest_bmi_info() -> Optional[dict]:
+    """最新の体重記録からBMI・基礎代謝情報を返す。
+    身長がapp_settingsに設定されていない場合はNone。
+    戻り値: {"weight_kg", "height_cm", "bmi", "bmi_status", "bmr_kcal", "bmr_note", "log_date"}
+    """
+    height_str = get_setting("user_height_cm")
+    if not height_str:
+        return None
+    try:
+        height_cm = float(height_str)
+    except ValueError:
+        return None
+    if height_cm <= 0:
+        return None
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT weight_kg, log_date FROM weight_logs ORDER BY log_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+    if row is None:
+        return None
+
+    weight_kg = row["weight_kg"]
+    bmi = calculate_bmi(weight_kg, height_cm)
+    bmr_info = calculate_bmr(weight_kg, height_cm)
+    return {
+        "weight_kg": weight_kg,
+        "height_cm": height_cm,
+        "bmi": bmi,
+        "bmi_status": get_bmi_status(bmi) if bmi is not None else None,
+        "bmr_kcal": bmr_info["bmr_kcal"],
+        "bmr_note": bmr_info["bmr_note"],
+        "log_date": row["log_date"],
+    }
+
+
+# ── 睡眠ログ ───────────────────────────────────────────────────────────────────
+
+def _calc_sleep_duration(sleep_start: str, sleep_end: str) -> Optional[int]:
+    """HH:MM形式の開始・終了から睡眠時間（分）を計算する。
+    日付跨ぎ（例: 23:00→07:00）に対応。
+    パース失敗時はNoneを返す。
+    """
+    try:
+        sh, sm = map(int, sleep_start.split(":"))
+        eh, em = map(int, sleep_end.split(":"))
+    except (ValueError, AttributeError):
+        return None
+    start_total = sh * 60 + sm
+    end_total = eh * 60 + em
+    if end_total <= start_total:
+        end_total += 24 * 60
+    return end_total - start_total
+
+
+def upsert_sleep_log(
+    date: str,
+    sleep_start: str,
+    sleep_end: str,
+    deep_minutes: Optional[int] = None,
+    rem_minutes: Optional[int] = None,
+    awake_minutes: Optional[int] = None,
+    source: str = "healthkit",
+) -> dict:
+    """睡眠ログを登録（同日は上書き）。戻り値: {"id": int, "updated": bool, "duration_minutes": int}"""
+    duration = _calc_sleep_duration(sleep_start, sleep_end)
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM sleep_logs WHERE date = ?", (date,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE sleep_logs SET
+                    sleep_start=?, sleep_end=?, duration_minutes=?,
+                    deep_minutes=?, rem_minutes=?, awake_minutes=?,
+                    source=?, recorded_at=datetime('now','localtime')
+                WHERE date=?
+                """,
+                (sleep_start, sleep_end, duration, deep_minutes, rem_minutes,
+                 awake_minutes, source, date),
+            )
+            return {"id": existing["id"], "updated": True, "duration_minutes": duration}
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO sleep_logs
+                    (date, sleep_start, sleep_end, duration_minutes,
+                     deep_minutes, rem_minutes, awake_minutes, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (date, sleep_start, sleep_end, duration,
+                 deep_minutes, rem_minutes, awake_minutes, source),
+            )
+            return {"id": cur.lastrowid, "updated": False, "duration_minutes": duration}
+
+
+def get_sleep_logs(start_date: str, end_date: str) -> list[dict]:
+    """指定期間の睡眠ログを日付昇順で返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, date, sleep_start, sleep_end, duration_minutes,
+                   deep_minutes, rem_minutes, awake_minutes, source
+            FROM sleep_logs
+            WHERE date >= ? AND date <= ?
+            ORDER BY date ASC
+            """,
+            (start_date, end_date),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── バイタルログ ───────────────────────────────────────────────────────────────
+
+def insert_vital_log(
+    date: str,
+    vital_type: str,
+    value: Optional[float] = None,
+    time: Optional[str] = None,
+    note: Optional[str] = None,
+    source: str = "healthkit",
+) -> int:
+    """バイタルログを1件挿入する。戻り値: 挿入したID。
+    vital_type は 'heart_rate' / 'spo2' / 'bp_alert' のいずれか。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO vitals_logs (date, time, type, value, note, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (date, time, vital_type, value, note, source),
+        )
+        return cur.lastrowid
+
+
+def get_vital_logs(
+    start_date: str,
+    end_date: str,
+    vital_type: Optional[str] = None,
+) -> list[dict]:
+    """指定期間のバイタルログを返す。vital_type指定で絞り込み可能。"""
+    with get_conn() as conn:
+        if vital_type:
+            rows = conn.execute(
+                """
+                SELECT id, date, time, type, value, note, source
+                FROM vitals_logs
+                WHERE date >= ? AND date <= ? AND type = ?
+                ORDER BY date ASC, id ASC
+                """,
+                (start_date, end_date, vital_type),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, date, time, type, value, note, source
+                FROM vitals_logs
+                WHERE date >= ? AND date <= ?
+                ORDER BY date ASC, id ASC
+                """,
+                (start_date, end_date),
+            ).fetchall()
+    return [dict(r) for r in rows]
