@@ -209,6 +209,10 @@
         <label>メモ</label>
         <input type="text" id="editMealNotes" maxlength="200" />
       </div>
+      <div class="modal-row">
+        <label>食事時刻（任意）</label>
+        <select id="editMealHour" aria-label="食事時刻（時間単位）"></select>
+      </div>
       <div class="modal-actions">
         <button onclick="closeMealModal()">キャンセル</button>
         <button class="primary" onclick="saveMeal()">保存</button>
@@ -603,6 +607,8 @@
       document.getElementById('editMealCarbs').value = meal.carbs ?? '';
       document.getElementById('editMealSodium').value = meal.sodium ?? '';
       document.getElementById('editMealNotes').value = meal.notes ?? '';
+      var mealHour = meal.meal_time ? meal.meal_time.substring(0, 2) + ':00' : '';
+      document.getElementById('editMealHour').value = mealHour;
       clearMealErrors();
       document.getElementById('mealModal').style.display = 'flex';
     }
@@ -668,6 +674,13 @@
             calories, protein, fat, carbs, sodium, notes: notes || null }),
         });
         if (!res.ok) throw new Error();
+        const mealHour = document.getElementById('editMealHour').value;
+        const timeRes = await fetch(`/api/meals/${mealId}/time`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meal_time: mealHour || null }),
+        });
+        if (!timeRes.ok) console.error('食事時刻の更新に失敗:', timeRes.status);
         reload();
       } catch(e) {
         alert('保存に失敗しました');
@@ -1057,6 +1070,20 @@
       if (_imgObserver) _imgObserver.disconnect();
       if (_mutObserver) _mutObserver.disconnect();
     });
+
+    // ── 食事時刻セレクター初期化 ────────────────────────────────────────────────
+    (function() {
+      var sel = document.getElementById('editMealHour');
+      var opt0 = document.createElement('option');
+      opt0.value = ''; opt0.textContent = '-- 未設定 --';
+      sel.appendChild(opt0);
+      for (var h = 0; h < 24; h++) {
+        var opt = document.createElement('option');
+        opt.value = String(h).padStart(2, '0') + ':00';
+        opt.textContent = h + '時';
+        sel.appendChild(opt);
+      }
+    })();
 
     load(7, null, null);
   </script>

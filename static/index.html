@@ -428,6 +428,17 @@
     .qp-modal-actions .cancel { background: var(--toggle-off); color: var(--text-primary); }
     .qp-modal-actions .submit { background: var(--accent); color: #fff; }
     .qp-modal-actions .submit:active { opacity: 0.8; }
+
+    /* ── BMIウィジェット ── */
+    .bmi-widget {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      font-size: 12px; padding: 5px 8px; margin-top: 4px;
+      background: var(--toggle-off); border-radius: 8px;
+    }
+    .bmi-widget .bmi-lbl { color: var(--text-secondary); }
+    .bmi-widget .bmi-val { font-weight: 700; }
+    .bmi-widget .bmi-sep { color: var(--border); margin: 0 2px; }
+    .bmi-widget .bmi-hint { color: var(--text-secondary); font-style: italic; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -465,6 +476,17 @@
     </div>
     <div class="dash-meta-row" id="dashMeta"></div>
     <div class="dash-meals-row" id="dashMeals"></div>
+    <div class="bmi-widget" id="bmiWidget" aria-label="BMI・基礎代謝情報" hidden>
+      <span class="bmi-lbl">BMI</span>
+      <span id="bmiValue" class="bmi-val">—</span>
+      <span id="bmiStatus"></span>
+      <span class="bmi-sep">｜</span>
+      <span class="bmi-lbl">基礎代謝</span>
+      <span id="bmrValue" class="bmi-val">—</span>
+      <span class="bmi-lbl">kcal/日</span>
+      <span id="bmrNote" style="font-size:11px;color:var(--text-secondary)"></span>
+      <span id="bmiHint" class="bmi-hint"></span>
+    </div>
   </div>
 </div>
 
@@ -569,6 +591,33 @@ const MEAL_TYPES = [
 ];
 const WEEKDAYS = ['日','月','火','水','木','金','土'];
 
+async function loadBmi() {
+  var widget = document.getElementById('bmiWidget');
+  try {
+    var res = await fetch('/api/bmi');
+    if (!res.ok) {
+      if (res.status === 404) {
+        var err = await res.json().catch(function() { return {}; });
+        var hint = document.getElementById('bmiHint');
+        if (err.detail === 'no_weight_record') {
+          hint.textContent = '体重を記録するとBMIが表示されます';
+        } else if (err.detail === 'height_not_configured') {
+          hint.textContent = '設定画面で身長を入力してください';
+        }
+        widget.removeAttribute('hidden');
+      }
+      return;
+    }
+    var data = await res.json();
+    document.getElementById('bmiValue').textContent = data.bmi;
+    document.getElementById('bmiStatus').textContent = data.status;
+    document.getElementById('bmrValue').textContent = data.bmr;
+    document.getElementById('bmrNote').textContent = data.bmr_note || '';
+    document.getElementById('bmiHint').textContent = '';
+    widget.removeAttribute('hidden');
+  } catch (e) { console.error('BMI読込エラー:', e); }
+}
+
 async function refreshDashboard() {
   try {
     const [todayRes, settRes] = await Promise.all([
@@ -580,6 +629,7 @@ async function refreshDashboard() {
     const settings = await settRes.json();
     updateDashboard(todayData, settings);
     loadQuickPalette();
+    loadBmi();
   } catch (e) { console.error('dashboard更新エラー:', e); }
 }
 
