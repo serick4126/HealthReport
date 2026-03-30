@@ -65,6 +65,15 @@ TOOLS: list[anthropic.types.ToolParam] = [
                     "enum": ["photo", "label", "barcode"],
                     "description": "画像から記録する場合の画像種別。photo=料理写真, label=栄養成分ラベル, barcode=バーコード",
                 },
+                "meal_time": {
+                    "type": "string",
+                    "description": (
+                        "実際に食べた時刻（HH:MM形式）。"
+                        "会話中に「7時に食べた」「昼の12時ごろ」など時刻が明示されている場合は"
+                        "その時刻を「HH:00」形式で設定する（例: 「7時」→「07:00」、「12時半」→「12:00」）。"
+                        "時刻が明示されていない場合は省略すること（省略時は当日なら送信時刻を自動設定）。"
+                    ),
+                },
             },
             "required": ["meal_date", "meal_type", "description", "calories", "protein", "fat", "carbs", "sodium"],
         },
@@ -229,6 +238,76 @@ TOOLS: list[anthropic.types.ToolParam] = [
                 },
             },
             "required": ["meal_date", "meal_type"],
+        },
+    },
+    # ── Phase 12 追加ツール ─────────────────────────────────────────────────────
+    {
+        "name": "record_sleep",
+        "description": "睡眠ログを記録する。Apple Watch等から取得した就寝・起床時刻と睡眠ステージを保存。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date":          {"type": "string",  "description": "就寝日 YYYY-MM-DD"},
+                "sleep_start":   {"type": "string",  "description": "就寝時刻 HH:MM"},
+                "sleep_end":     {"type": "string",  "description": "起床時刻 HH:MM"},
+                "deep_minutes":  {"type": "integer", "description": "深睡眠（分）"},
+                "rem_minutes":   {"type": "integer", "description": "REM睡眠（分）"},
+                "awake_minutes": {"type": "integer", "description": "覚醒（分）"},
+            },
+            "required": ["date", "sleep_start", "sleep_end"],
+        },
+    },
+    {
+        "name": "get_sleep_summary",
+        "description": "指定期間の睡眠サマリーを取得する（睡眠時間・ステージ等）。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "開始日 YYYY-MM-DD"},
+                "end_date":   {"type": "string", "description": "終了日 YYYY-MM-DD"},
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+    {
+        "name": "record_vital",
+        "description": (
+            "バイタルデータを記録する。"
+            "type='heart_rate'/'spo2' の場合は value が必須（心拍数bpm / SpO2%）。"
+            "type='bp_alert' の場合は value 不要（note で通知内容を記録可能）。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date":  {"type": "string",  "description": "記録日 YYYY-MM-DD"},
+                "type":  {"type": "string",  "enum": ["heart_rate", "spo2", "bp_alert"], "description": "バイタル種別"},
+                "value": {"type": "number",  "description": "脈拍(bpm)またはSpO2(%)。bp_alertは不要"},
+                "time":  {"type": "string",  "description": "測定時刻 HH:MM（省略可）"},
+                "note":  {"type": "string",  "description": "高血圧通知時のメモ（省略可）"},
+            },
+            "required": ["date", "type"],
+        },
+    },
+    {
+        "name": "get_vital_summary",
+        "description": "指定期間のバイタルサマリーを取得する（脈拍・SpO2等）。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "開始日 YYYY-MM-DD"},
+                "end_date":   {"type": "string", "description": "終了日 YYYY-MM-DD"},
+                "type":       {"type": "string", "enum": ["heart_rate", "spo2", "bp_alert"], "description": "絞り込むバイタル種別（省略で全種別）"},
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+    {
+        "name": "get_bmi_info",
+        "description": "最新体重と身長設定からBMIと推定基礎代謝量を計算して返す。",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
 ]
@@ -397,6 +476,14 @@ MEAL_TYPE_JA = {
 
 
 def _tool_record_meal(inp: dict) -> dict:
+    # meal_time: 明示なし × 当日 → 送信時刻(HH:MM)、過去日 → None のまま
+    meal_time = inp.get("meal_time")
+    if meal_time is None:
+        today_str = datetime.now(JST).strftime("%Y-%m-%d")
+        meal_date = inp.get("meal_date", today_str)
+        if meal_date == today_str:
+            meal_time = datetime.now(JST).strftime("%H:%M")
+
     meal_id = database.save_meal(
         meal_date=inp["meal_date"],
         meal_type=inp["meal_type"],
@@ -407,6 +494,7 @@ def _tool_record_meal(inp: dict) -> dict:
         carbs=inp.get("carbs"),
         sodium=inp.get("sodium"),
         notes=inp.get("notes"),
+        meal_time=meal_time,
     )
     return {
         "success": True,
@@ -517,6 +605,78 @@ def _tool_delete_meal_skip(inp: dict) -> dict:
     }
 
 
+# ── Phase 12 ハンドラー ─────────────────────────────────────────────────────────
+
+def _tool_record_sleep(inp: dict) -> dict:
+    result = database.upsert_sleep_log(
+        inp["date"],
+        inp["sleep_start"],
+        inp["sleep_end"],
+        inp.get("deep_minutes"),
+        inp.get("rem_minutes"),
+        inp.get("awake_minutes"),
+        source="manual",
+    )
+    return {
+        "success": True,
+        "tool": "record_sleep",
+        "date": inp["date"],
+        "duration_minutes": result["duration_minutes"],
+        "updated": result["updated"],
+    }
+
+
+def _tool_get_sleep_summary(inp: dict) -> dict:
+    logs = database.get_sleep_logs(inp["start_date"], inp["end_date"])
+    return {"success": True, "tool": "get_sleep_summary", "logs": logs}
+
+
+def _tool_record_vital(inp: dict) -> dict:
+    vital_type = inp.get("type")
+    value = inp.get("value")
+    if vital_type in ("heart_rate", "spo2") and value is None:
+        return {
+            "success": False,
+            "tool": "record_vital",
+            "error": f"type='{vital_type}' の記録には value（数値）が必要です。",
+        }
+    vid = database.insert_vital_log(
+        inp["date"],
+        vital_type,
+        value,
+        time=inp.get("time"),
+        note=inp.get("note"),
+        source="manual",
+    )
+    return {"success": True, "tool": "record_vital", "id": vid, "type": vital_type}
+
+
+def _tool_get_vital_summary(inp: dict) -> dict:
+    logs = database.get_vital_logs(inp["start_date"], inp["end_date"], inp.get("type"))
+    return {"success": True, "tool": "get_vital_summary", "logs": logs}
+
+
+def _tool_get_bmi_info(inp: dict) -> dict:
+    info = database.get_latest_bmi_info()
+    if info is None:
+        return {
+            "success": False,
+            "tool": "get_bmi_info",
+            "message": "体重の記録がないためBMIを計算できません。体重を記録してください。",
+        }
+    return {
+        "success": True,
+        "tool": "get_bmi_info",
+        "bmi": info["bmi"],
+        "bmi_status": info["bmi_status"],
+        "bmr_kcal": info["bmr_kcal"],
+        "bmr_note": info["bmr_note"],
+        "weight_kg": info["weight_kg"],
+        "height_cm": info["height_cm"],
+        "log_date": info["log_date"],
+    }
+
+
 _TOOL_DISPATCH: dict = {
     "record_meal":           _tool_record_meal,
     "record_weight":         _tool_record_weight,
@@ -528,6 +688,11 @@ _TOOL_DISPATCH: dict = {
     "show_choices":          _tool_show_choices,
     "record_meal_skip":      _tool_record_meal_skip,
     "delete_meal_skip":      _tool_delete_meal_skip,
+    "record_sleep":          _tool_record_sleep,
+    "get_sleep_summary":     _tool_get_sleep_summary,
+    "record_vital":          _tool_record_vital,
+    "get_vital_summary":     _tool_get_vital_summary,
+    "get_bmi_info":          _tool_get_bmi_info,
 }
 
 
