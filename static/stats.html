@@ -491,6 +491,12 @@
     }
 
     function renderSleepChart(logs, dates) {
+      var canvas = document.getElementById('chartSleep');
+      if (!logs.length) {
+        if (charts.sleep) { charts.sleep.destroy(); delete charts.sleep; }
+        canvas.parentElement.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:24px">睡眠データがありません。Apple Watch連携で記録できます。</p>';
+        return;
+      }
       var byDate = {};
       logs.forEach(function(log) { byDate[log.date] = log; });
       var labels = dates.map(shortDate);
@@ -505,15 +511,15 @@
       });
       var c = _getChartColors();
       if (charts.sleep) charts.sleep.destroy();
-      charts.sleep = new Chart(document.getElementById('chartSleep'), {
+      charts.sleep = new Chart(canvas, {
         type: 'bar',
         data: {
           labels: labels,
           datasets: [
-            { label: '深睡眠', data: deep,  backgroundColor: 'rgba(147,51,234,0.8)', stack: 'sleep' },
-            { label: 'REM',    data: rem,   backgroundColor: 'rgba(59,130,246,0.8)', stack: 'sleep' },
-            { label: '浅睡眠', data: light, backgroundColor: 'rgba(125,211,252,0.8)', stack: 'sleep' },
-            { label: '覚醒',   data: awake, backgroundColor: 'rgba(248,113,113,0.8)', stack: 'sleep' },
+            { label: '深睡眠', data: deep,  backgroundColor: 'rgba(147,51,234,0.85)', stack: 'sleep' },
+            { label: 'REM',    data: rem,   backgroundColor: 'rgba(59,130,246,0.85)', stack: 'sleep' },
+            { label: '浅睡眠', data: light, backgroundColor: 'rgba(14,165,233,0.75)', stack: 'sleep' },
+            { label: '覚醒',   data: awake, backgroundColor: 'rgba(248,113,113,0.85)', stack: 'sleep' },
           ]
         },
         options: {
@@ -541,6 +547,12 @@
     }
 
     function renderHeartRateChart(logs, dates) {
+      var canvas = document.getElementById('chartHeartRate');
+      if (!logs.length) {
+        if (charts.heartRate) { charts.heartRate.destroy(); delete charts.heartRate; }
+        canvas.parentElement.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:24px">脈拍データがありません。Apple Watch連携で記録できます。</p>';
+        return;
+      }
       var byDate = {};
       logs.forEach(function(log) {
         if (log.value !== null && log.value !== undefined) {
@@ -556,7 +568,7 @@
       });
       var c = _getChartColors();
       if (charts.heartRate) charts.heartRate.destroy();
-      charts.heartRate = new Chart(document.getElementById('chartHeartRate'), {
+      charts.heartRate = new Chart(canvas, {
         type: 'line',
         data: {
           labels: labels,
@@ -588,6 +600,12 @@
     }
 
     function renderSpo2Chart(logs, dates) {
+      var canvas = document.getElementById('chartSpo2');
+      if (!logs.length) {
+        if (charts.spo2) { charts.spo2.destroy(); delete charts.spo2; }
+        canvas.parentElement.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:24px">SpO2データがありません。Apple Watch連携で記録できます。</p>';
+        return;
+      }
       var byDate = {};
       logs.forEach(function(log) {
         if (log.value !== null && log.value !== undefined) {
@@ -604,7 +622,7 @@
       var ptColors = spo2Data.map(function(v) { return (v !== null && v < 95) ? '#f87171' : '#3b82f6'; });
       var c = _getChartColors();
       if (charts.spo2) charts.spo2.destroy();
-      charts.spo2 = new Chart(document.getElementById('chartSpo2'), {
+      charts.spo2 = new Chart(canvas, {
         type: 'line',
         data: {
           labels: labels,

@@ -610,8 +610,15 @@ async function loadBmi() {
     }
     var data = await res.json();
     document.getElementById('bmiValue').textContent = data.bmi;
-    document.getElementById('bmiStatus').textContent = data.status;
-    document.getElementById('bmrValue').textContent = data.bmr;
+    var statusEl = document.getElementById('bmiStatus');
+    statusEl.textContent = data.bmi_status;
+    var statusColors = {
+      '低体重': '#60a5fa', '普通体重': '#34d399',
+      '肥満(1度)': '#fbbf24', '肥満(2度)': '#f97316',
+      '肥満(3度)': '#f87171', '肥満(4度)': '#dc2626'
+    };
+    statusEl.style.color = statusColors[data.bmi_status] || '';
+    document.getElementById('bmrValue').textContent = data.bmr_kcal;
     document.getElementById('bmrNote').textContent = data.bmr_note || '';
     document.getElementById('bmiHint').textContent = '';
     widget.removeAttribute('hidden');

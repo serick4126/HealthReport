@@ -726,10 +726,12 @@ def get_images_without_path(limit: int = 100) -> list[dict]:
 
 
 def update_meal_image_path(image_id: int, image_path: str) -> bool:
-    """image_id のレコードに image_path を設定する（マイグレーション用）。"""
+    """image_id のレコードに image_path を設定し、image_data BLOB を NULL 化する（マイグレーション用）。
+    ファイル移行成功後に呼ぶことで DB サイズを削減する。
+    """
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE meal_images SET image_path = ? WHERE id = ?",
+            "UPDATE meal_images SET image_path = ?, image_data = NULL WHERE id = ?",
             (image_path, image_id),
         )
     return cur.rowcount > 0

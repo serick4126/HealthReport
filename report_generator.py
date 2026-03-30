@@ -290,8 +290,9 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         return f"P{p}<br/>F{f_}<br/>C{c}"
 
     goal_kcal = data.get("calorie_goal", 1500)
+    skip_dates = {d["date"] for d in days if d.get("skipped_types")}
     achievement_html = _build_achievement_html(
-        build_achievement_summary(days, goal_kcal, skip_dates=set())
+        build_achievement_summary(days, goal_kcal, skip_dates=skip_dates)
     )
 
     cal_cells   = "".join(f"<td>{dash(d['calories'])}</td>"         for d in days)
@@ -411,7 +412,12 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   }}
   .ach-label {{ font-weight: 700; margin-right: 4px; }}
   @media print {{
-    .achievement-summary {{ background: #f5f7ff; }}
+    .achievement-summary {{
+      background: #f5f7ff;
+      border: 0.5pt solid #c0d0f0 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
   }}
   .sec-hd th, .sec-hd td {{
     background: #dde8f5; font-weight: 700;

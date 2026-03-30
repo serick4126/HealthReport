@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from fastapi import Cookie, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
@@ -814,10 +814,7 @@ async def migrate_images(request: Request):
     """既存BLOBデータをファイルシステムへ移行する（管理者API）。
     X-API-Key ヘッダーで external_api_key 認証が必要。
     """
-    api_key = request.headers.get("x-api-key", "")
-    stored_key = database.get_setting("external_api_key") or ""
-    if not stored_key or not hmac.compare_digest(api_key, stored_key):
-        raise HTTPException(status_code=401, detail="認証が必要です")
+    _require_api_key(request)
 
     from datetime import datetime as _dt
     migrated = 0
@@ -875,6 +872,10 @@ async def sleep_ingest(request: Request, body: SleepIngestRequest):
     _validate_time(body.sleep_end)
     if body.source not in ("healthkit", "manual"):
         raise HTTPException(status_code=422, detail="sourceはhealthkitまたはmanualを指定してください")
+    for field_name in ("deep_minutes", "rem_minutes", "awake_minutes"):
+        val = getattr(body, field_name)
+        if val is not None and not (0 <= val <= 1440):
+            raise HTTPException(status_code=422, detail=f"{field_name}は0〜1440の範囲で指定してください")
     result = database.upsert_sleep_log(
         body.date, body.sleep_start, body.sleep_end,
         body.deep_minutes, body.rem_minutes, body.awake_minutes,
@@ -909,7 +910,7 @@ class VitalIngestRequest(BaseModel):
 class VitalAlertRequest(BaseModel):
     date: str
     time: Optional[str] = None
-    note: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=1000)
 
 
 @app.post("/api/vitals/ingest", status_code=201)
