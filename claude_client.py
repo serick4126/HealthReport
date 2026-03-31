@@ -13,7 +13,7 @@ import anthropic
 
 import database
 import food_search
-from image_utils import process_image_b64
+from image_utils import process_image_b64, save_image_to_fs
 
 JST = timezone(timedelta(hours=9))
 MODEL = "claude-sonnet-4-6"
@@ -890,9 +890,11 @@ async def _execute_tool_and_format(
         source_type = result.get("image_source_type", "photo")
         for img_b64 in pending_images:
             try:
-                database.save_meal_image(
+                image_bytes = base64.b64decode(img_b64)
+                rel_path = save_image_to_fs(image_bytes)
+                database.save_meal_image_path(
                     meal_id=meal_id,
-                    image_data=base64.b64decode(img_b64),
+                    image_path=rel_path,
                     mime_type="image/jpeg",
                     source_type=source_type,
                 )
