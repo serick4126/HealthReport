@@ -6,8 +6,14 @@
 """
 import base64
 import io
+import uuid
+from datetime import datetime
+from pathlib import Path
 
 from PIL import Image
+
+# アップロードディレクトリ（claude_client.py / main.py から共用）
+_UPLOAD_DIR = Path(__file__).parent / "uploads" / "meal_images"
 
 try:
     import pillow_heif
@@ -17,6 +23,21 @@ except ImportError:
 
 MAX_LONG_SIDE = 1200
 JPEG_QUALITY = 80
+
+
+def save_image_to_fs(image_bytes: bytes) -> str:
+    """JPEG画像バイト列をファイルシステムに保存し、プロジェクトルート相対パスを返す。
+
+    保存先: uploads/meal_images/YYYY/MM/<uuid>.jpg
+    戻り値例: "uploads/meal_images/2026/03/abcd1234-....jpg"
+    """
+    now = datetime.now()
+    sub_dir = _UPLOAD_DIR / f"{now.year:04d}" / f"{now.month:02d}"
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4()}.jpg"
+    file_path = sub_dir / filename
+    file_path.write_bytes(image_bytes)
+    return file_path.relative_to(_UPLOAD_DIR.parent.parent).as_posix()
 
 
 def process_image_b64(b64_data: str) -> str:
