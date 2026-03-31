@@ -1040,8 +1040,9 @@ async def report_preview(request: Request, start: str):
     from datetime import date as _date, timedelta
     end = (_date.fromisoformat(start) + timedelta(days=6)).isoformat()
     data = database.get_report_data(start, end)
+    prev_week = database.get_report_data_previous_week(start)
     charts = report_generator.generate_charts_base64(data)
-    comment = await report_generator.generate_claude_comment(data)
+    comment = await report_generator.generate_claude_comment(data, prev_week=prev_week)
     html = report_generator.generate_report_html(data, charts, comment)
     return Response(content=html, media_type="text/html; charset=utf-8")
 

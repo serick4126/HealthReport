@@ -376,8 +376,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     steps_cells = "".join(f'<td>{dash(d["steps"], "{:,}")}</td>'   for d in days)
 
     if comment:
-        items = [ln.strip().lstrip("・•-").strip() for ln in comment.splitlines() if ln.strip()]
-        comment_html = "<ul>" + "".join(f"<li>{it}</li>" for it in items) + "</ul>"
+        comment_html = _format_structured_comment(comment)
     else:
         comment_html = "<p>特記事項なし</p>"
 
@@ -602,10 +601,10 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   </div>
 
   <div class="bottom">
-    <div>
+    <div style="flex:2">
       <div class="box-title">メモ欄：</div>
     </div>
-    <div>
+    <div style="flex:3">
       <div class="box-title">Claude補足：</div>
       {comment_html}
     </div>
@@ -616,66 +615,144 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 </html>"""
 
 
-async def generate_claude_comment(data: dict) -> str:
-    """Claude Haiku で補足コメントを生成（失敗時は空文字）"""
+def _format_structured_comment(comment: str) -> str:
+    """構造化コメントをHTMLに変換（■見出し→<strong>、・項目→<li>）"""
+    lines = [ln.strip() for ln in comment.splitlines() if ln.strip()]
+    html_parts = []
+    in_list = False
+    for line in lines:
+        if line.startswith("■"):
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            html_parts.append(f'<div style="font-weight:700;font-size:7.5pt;margin-top:2mm">{line}</div>')
+        elif line.startswith("・") or line.startswith("- ") or line.startswith("• "):
+            if not in_list:
+                html_parts.append("<ul>")
+                in_list = True
+            text = line.lstrip("・•-").strip()
+            html_parts.append(f"<li>{text}</li>")
+        else:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            html_parts.append(f"<p>{line}</p>")
+    if in_list:
+        html_parts.append("</ul>")
+    return "\n".join(html_parts)
+
+
+def _build_comment_summary(data: dict) -> dict:
+    """AIコメント用のデータサマリーを構築"""
+    days = data["days"]
+    valid_cals = [d["calories"] for d in days if d["calories"] is not None]
+    avg_cal = round(sum(valid_cals) / len(valid_cals)) if valid_cals else None
+
+    _skip_ja = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食"}
+    skip_counts = {}
+    for d in days:
+        skipped = [
+            mt for mt in ["breakfast", "lunch", "dinner"]
+            if d.get("skipped", {}).get(mt) and not d["meals"].get(mt)
+        ]
+        if skipped:
+            skip_counts[d["date"]] = [_skip_ja.get(mt, mt) for mt in skipped]
+
+    height_cm = float(data.get("height_cm", 160))
+    height_m = height_cm / 100.0
+
+    summary = {
+        "期間": f"{data['start']} 〜 {data['end']}",
+        "目標カロリー": f"{data['calorie_goal']}kcal/日",
+        "平均カロリー": f"{avg_cal}kcal" if avg_cal else "データなし",
+        "記録日数": len(valid_cals),
+        "目標超過日数": len([c for c in valid_cals if c > data["calorie_goal"]]),
+        "日別データ": [],
+    }
+    for d in days:
+        wm = d.get("weight_morning")
+        we = d.get("weight_evening")
+        avg_w = None
+        if wm is not None and we is not None:
+            avg_w = round((wm + we) / 2, 1)
+        elif wm is not None:
+            avg_w = wm
+        elif we is not None:
+            avg_w = we
+        bmi = round(avg_w / (height_m ** 2), 1) if avg_w and height_m > 0 else None
+
+        meal_times = {}
+        for mt in ["breakfast", "lunch", "dinner"]:
+            times = [m.get("meal_time") for m in d["meals"].get(mt, []) if m.get("meal_time")]
+            if times:
+                meal_times[mt] = times[0][:2] + "時"
+
+        summary["日別データ"].append({
+            "日付": d["date"],
+            "カロリー": d["calories"],
+            "タンパク質g": d["protein"],
+            "脂質g": d["fat"],
+            "炭水化物g": d["carbs"],
+            "塩分g": d["sodium"],
+            "体重朝kg": wm,
+            "体重夜kg": we,
+            "BMI": bmi,
+            "歩数": d["steps"],
+            "食事時刻": meal_times if meal_times else None,
+        })
+
+    if skip_counts:
+        summary["食事スキップ"] = skip_counts
+    return summary
+
+
+_COMMENT_PROMPT = """\
+以下の1週間分の健康データを分析し、主治医（糖尿病・代謝・内分泌科）への\
+提出レポートに添付する補足コメントを生成してください。
+
+【出力形式】
+セクションごとに見出しをつけ、各セクション1〜3項目の箇条書き（「・」始め）。
+不要なセクションは省略可。
+
+■ 前週比較（前週データがある場合のみ）
+  - 体重・カロリー・PFC・歩数の前週比変化
+■ パターン分析
+  - 曜日別の傾向（週末の過食傾向、平日の欠食等）
+  - PFCバランスの偏り傾向
+  - 食事時刻と体重変動の相関
+■ 臨床的所見
+  - 目標カロリーとの乖離度
+  - 塩分摂取傾向
+  - 体重トレンド（増加/減少/横ばい）
+  - BMI推移
+
+【ルール】
+- 医師が読むことを前提とした簡潔な医療向け日本語で記載
+- 患者への励まし・アドバイス・提案は不要（医師向けデータ分析のみ）
+- 特記事項がない場合は空文字のみを返す
+- 客観的なデータに基づくコメントのみ
+"""
+
+
+async def generate_claude_comment(data: dict, prev_week: dict | None = None) -> str:
+    """Claude Haiku で構造化補足コメントを生成（失敗時は空文字）"""
     try:
         api_key = os.getenv("ANTHROPIC_API_KEY") or database.get_setting("anthropic_api_key")
         if not api_key:
             return ""
 
-        days = data["days"]
-        valid_cals = [d["calories"] for d in days if d["calories"] is not None]
-        avg_cal = round(sum(valid_cals) / len(valid_cals)) if valid_cals else None
+        summary = _build_comment_summary(data)
 
-        _skip_ja = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食"}
-        skip_counts = {}
-        for d in days:
-            skipped = [
-                mt for mt in ["breakfast", "lunch", "dinner"]
-                if d.get("skipped", {}).get(mt) and not d["meals"].get(mt)
-            ]
-            if skipped:
-                skip_counts[d["date"]] = [_skip_ja.get(mt, mt) for mt in skipped]
+        data_section = f"【今週データ】\n{json.dumps(summary, ensure_ascii=False, indent=2)}"
+        if prev_week:
+            data_section += f"\n\n【前週サマリー】\n{json.dumps(prev_week, ensure_ascii=False, indent=2)}"
 
-        summary = {
-            "期間": f"{data['start']} 〜 {data['end']}",
-            "目標カロリー": f"{data['calorie_goal']}kcal/日",
-            "平均カロリー": f"{avg_cal}kcal" if avg_cal else "データなし",
-            "記録日数": len(valid_cals),
-            "目標超過日数": len([c for c in valid_cals if c > data["calorie_goal"]]),
-            "日別データ": [
-                {
-                    "日付": d["date"],
-                    "カロリー": d["calories"],
-                    "タンパク質g": d["protein"],
-                    "脂質g": d["fat"],
-                    "炭水化物g": d["carbs"],
-                    "塩分g": d["sodium"],
-                    "体重朝kg": d["weight_morning"],
-                    "体重夜kg": d["weight_evening"],
-                    "歩数": d["steps"],
-                }
-                for d in days
-            ],
-        }
-        if skip_counts:
-            summary["食事スキップ"] = skip_counts
-
-        prompt = (
-            "以下の1週間分の食事・体重・歩数データを分析し、"
-            "主治医（糖尿病・代謝・内分泌科）への提出レポートに添付する補足コメントを生成してください。\n\n"
-            "【ルール】\n"
-            "- 医師が読むことを前提とした簡潔な日本語で記載\n"
-            "- 特記事項がない場合は空文字のみを返す\n"
-            "- 箇条書きで3項目以内（各項目は「・」で始める）\n"
-            "- 客観的なデータに基づくコメントのみ（励ましや感想は不要）\n\n"
-            f"【データ】\n{json.dumps(summary, ensure_ascii=False, indent=2)}"
-        )
+        prompt = f"{_COMMENT_PROMPT}\n{data_section}"
 
         client = anthropic.AsyncAnthropic(api_key=api_key)
         msg = await client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=512,
+            max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text.strip()
