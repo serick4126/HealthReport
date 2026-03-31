@@ -16,7 +16,6 @@ memory/
 logs/
 仕様書/
 設計書/
-*.bat
 *.lock
 CLAUDE.md
 uploads/
