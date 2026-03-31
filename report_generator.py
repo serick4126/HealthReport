@@ -3,17 +3,17 @@
 import io
 import base64
 import json
+import logging
 import os
 from datetime import date as _date
+
+logger = logging.getLogger(__name__)
 
 import anthropic
 import database
 from database import SKIP_MEAL_TYPES as SKIP_LABEL_TYPES
 
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
-
-# 1セルあたりの最大文字数（溢れ防止のフォールバック）
-_TRUNCATE_LEN = 30
 
 
 def _date_label(iso: str) -> str:
@@ -141,11 +141,6 @@ def generate_charts_base64(data: dict) -> dict:
     plt.close(fig_s)
 
     return {"weight": weight_b64, "calories": cal_b64, "steps": steps_b64}
-
-
-def _truncate(text: str, max_len: int = _TRUNCATE_LEN) -> str:
-    """フォールバック省略（30文字超のみ）"""
-    return text if len(text) <= max_len else text[:max_len] + "…"
 
 
 def build_pfc_chart_data(days: list, skip_dates: set) -> dict:
@@ -320,9 +315,9 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
             p_pct = round(p_kcal / total_kcal * 100)
             f_pct = round(f_kcal / total_kcal * 100)
             c_pct = round(c_kcal / total_kcal * 100)
-            return (f"P{dash(p)}g({p_pct}%)<br/>"
-                    f"F{dash(f_)}g({f_pct}%)<br/>"
-                    f"C{dash(c)}g({c_pct}%)")
+            return (f'<span style="color:#60a5fa">P{p_pct}%</span> {dash(p)}g<br/>'
+                    f'<span style="color:#fbbf24">F{f_pct}%</span> {dash(f_)}g<br/>'
+                    f'<span style="color:#34d399">C{c_pct}%</span> {dash(c)}g')
         return f"P{dash(p)}g<br/>F{dash(f_)}g<br/>C{dash(c)}g"
 
     goal_kcal = data.get("calorie_goal", 1500)
@@ -343,8 +338,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
                 if mt_val:
                     times.add(mt_val[:2])
             if times:
-                parts.append(f"{label}{sorted(times)[0]}時")
-        return "<br/>".join(parts) if parts else "&#8212;"
+                parts.append(f"{label}{sorted(times)[0]}")
+        return "/".join(parts) if parts else "&#8212;"
 
     # R-4: 日別BMI行
     height_m = float(data.get("height_cm", 160)) / 100.0
@@ -363,7 +358,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         if height_m <= 0:
             return "&#8212;"
         bmi = avg_w / (height_m ** 2)
-        return f"{bmi:.1f}"
+        color = "#34d399" if 18.5 <= bmi < 25 else "#f87171"
+        return f'<span style="color:{color}">{bmi:.1f}</span>'
 
     meal_time_cells = "".join(f"<td class='pfc'>{_meal_time_cell(d)}</td>" for d in days)
     cal_cells   = "".join(f"<td>{dash(d['calories'])}</td>"         for d in days)
@@ -536,6 +532,12 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     th {{ font-size: 7.5pt; }}
     .page-label {{ display: none; }}
     .skip-cell {{ color: #636366; }}
+    .sec-hd th, .sec-hd td {{
+      border-top: 1.5pt solid #666;
+      background: #e8e8e8 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
   }}
 </style>
 </head>
@@ -583,7 +585,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       <tr><th></th>{date_headers}</tr>
     </thead>
     <tbody>
-      <tr><th>食事時刻</th>{meal_time_cells}</tr>
+      <tr class="sec-hd"><th>食事時刻</th>{meal_time_cells}</tr>
       <tr class="sec-hd"><th>Cal(kcal)</th>{cal_cells}</tr>
       <tr><th>目標差分</th>{diff_cells}</tr>
       <tr><th>PFC</th>{pfc_cells}</tr>
@@ -679,7 +681,7 @@ def _build_comment_summary(data: dict) -> dict:
             avg_w = wm
         elif we is not None:
             avg_w = we
-        bmi = round(avg_w / (height_m ** 2), 1) if avg_w and height_m > 0 else None
+        bmi = round(avg_w / (height_m ** 2), 1) if avg_w is not None and height_m > 0 else None
 
         meal_times = {}
         for mt in ["breakfast", "lunch", "dinner"]:
@@ -756,5 +758,6 @@ async def generate_claude_comment(data: dict, prev_week: dict | None = None) -> 
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text.strip()
-    except Exception:
+    except Exception as e:
+        logger.error("Claude comment generation failed: %s", e)
         return ""

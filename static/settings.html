@@ -559,7 +559,7 @@
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください', 'error'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
-      if (!settings.daily_steps_goal || isNaN(settings.daily_steps_goal)) { showToast('歩数目標を入力してください', 'error'); return; }
+      if (settings.daily_steps_goal && isNaN(settings.daily_steps_goal)) { showToast('歩数目標に正しい数値を入力してください', 'error'); return; }
       // 機密項目は入力があった場合のみ送信（空＝変更なし）
       const pw = document.getElementById('app_password').value;
       if (pw) settings.app_password = pw;

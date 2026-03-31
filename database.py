@@ -1082,7 +1082,7 @@ def get_report_data_previous_week(start_date: str) -> dict | None:
             (prev_start, prev_end),
         ).fetchall()
         steps_rows = conn.execute(
-            "SELECT steps FROM steps_logs WHERE log_date BETWEEN ? AND ?",
+            "SELECT log_date, steps FROM steps_logs WHERE log_date BETWEEN ? AND ?",
             (prev_start, prev_end),
         ).fetchall()
 
@@ -1109,9 +1109,13 @@ def get_report_data_previous_week(start_date: str) -> dict | None:
     morning_w = [w["weight_kg"] for w in weights if w["time_of_day"] == "morning"]
     steps_vals = [r["steps"] for r in steps_rows if r["steps"] is not None]
 
+    all_dates = set(m["meal_date"] for m in meals)
+    all_dates |= set(w["log_date"] for w in weights)
+    all_dates |= set(r["log_date"] for r in steps_rows if r["steps"] is not None)
+
     return {
         "period": f"{prev_start} ~ {prev_end}",
-        "days_count": len(set(m["meal_date"] for m in meals)),
+        "days_count": len(all_dates),
         "avg_calories": _avg(cal_vals),
         "avg_protein": _avg(list(day_p.values())),
         "avg_fat": _avg(list(day_f.values())),
