@@ -298,8 +298,26 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     meal_rows += f'<tr><th>間食<br/>夜食</th>{snack_cells}</tr>\n'
 
     def pfc(d: dict) -> str:
-        p = dash(d["protein"]); f_ = dash(d["fat"]); c = dash(d["carbs"])
-        return f"P{p}<br/>F{f_}<br/>C{c}"
+        p = d["protein"]
+        f_ = d["fat"]
+        c = d["carbs"]
+        if p is None and f_ is None and c is None:
+            return "&#8212;"
+        p_val = p or 0
+        f_val = f_ or 0
+        c_val = c or 0
+        p_kcal = p_val * 4
+        f_kcal = f_val * 9
+        c_kcal = c_val * 4
+        total_kcal = p_kcal + f_kcal + c_kcal
+        if total_kcal > 0:
+            p_pct = round(p_kcal / total_kcal * 100)
+            f_pct = round(f_kcal / total_kcal * 100)
+            c_pct = round(c_kcal / total_kcal * 100)
+            return (f"P{dash(p)}g({p_pct}%)<br/>"
+                    f"F{dash(f_)}g({f_pct}%)<br/>"
+                    f"C{dash(c)}g({c_pct}%)")
+        return f"P{dash(p)}g<br/>F{dash(f_)}g<br/>C{dash(c)}g"
 
     goal_kcal = data.get("calorie_goal", 1500)
     skip_dates = {d["date"] for d in days if d.get("skipped_types")}
@@ -307,12 +325,48 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         build_achievement_summary(days, goal_kcal, skip_dates=skip_dates)
     )
 
+    # R-2: 食事時刻行
+    def _meal_time_cell(d: dict) -> str:
+        time_labels = {"breakfast": "朝", "lunch": "昼", "dinner": "夕"}
+        parts = []
+        for mt, label in time_labels.items():
+            meals_for_type = d["meals"].get(mt, [])
+            times = set()
+            for m in meals_for_type:
+                mt_val = m.get("meal_time")
+                if mt_val:
+                    times.add(mt_val[:2])
+            if times:
+                parts.append(f"{label}{sorted(times)[0]}時")
+        return "<br/>".join(parts) if parts else "&#8212;"
+
+    # R-4: 日別BMI行
+    height_m = float(data.get("height_cm", 160)) / 100.0
+
+    def _bmi_cell(d: dict) -> str:
+        wm = d.get("weight_morning")
+        we = d.get("weight_evening")
+        if wm is not None and we is not None:
+            avg_w = (wm + we) / 2
+        elif wm is not None:
+            avg_w = wm
+        elif we is not None:
+            avg_w = we
+        else:
+            return "&#8212;"
+        if height_m <= 0:
+            return "&#8212;"
+        bmi = avg_w / (height_m ** 2)
+        return f"{bmi:.1f}"
+
+    meal_time_cells = "".join(f"<td class='pfc'>{_meal_time_cell(d)}</td>" for d in days)
     cal_cells   = "".join(f"<td>{dash(d['calories'])}</td>"         for d in days)
     diff_cells  = "".join(_diff_cell(d.get("calories"), goal_kcal)  for d in days)
     pfc_cells   = "".join(f"<td class='pfc'>{pfc(d)}</td>"          for d in days)
     sod_cells   = "".join(f"<td>{dash(d['sodium'])}</td>"           for d in days)
     wm_cells    = "".join(f"<td>{dash(d['weight_morning'])}</td>"   for d in days)
     we_cells    = "".join(f"<td>{dash(d['weight_evening'])}</td>"   for d in days)
+    bmi_cells   = "".join(f"<td>{_bmi_cell(d)}</td>"                for d in days)
     steps_cells = "".join(f'<td>{dash(d["steps"], "{:,}")}</td>'   for d in days)
 
     if comment:
@@ -524,12 +578,14 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       <tr><th></th>{date_headers}</tr>
     </thead>
     <tbody>
+      <tr><th>食事時刻</th>{meal_time_cells}</tr>
       <tr class="sec-hd"><th>Cal(kcal)</th>{cal_cells}</tr>
       <tr><th>目標差分</th>{diff_cells}</tr>
-      <tr><th>P/F/C(g)</th>{pfc_cells}</tr>
+      <tr><th>PFC</th>{pfc_cells}</tr>
       <tr><th>塩分(g)</th>{sod_cells}</tr>
       <tr class="sec-hd"><th>体重・朝</th>{wm_cells}</tr>
       <tr><th>体重・夜</th>{we_cells}</tr>
+      <tr><th>BMI</th>{bmi_cells}</tr>
       <tr><th>歩数</th>{steps_cells}</tr>
     </tbody>
   </table>
