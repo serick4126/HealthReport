@@ -22,7 +22,7 @@ load_dotenv()
 import claude_client
 import database
 import report_generator
-from image_utils import save_image_to_fs
+from image_utils import _UPLOAD_DIR as UPLOAD_DIR, save_image_to_fs
 
 # ── セッション管理（シングルユーザー・インメモリ） ────────────────────────────
 
@@ -116,7 +116,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-UPLOAD_DIR = Path(__file__).parent / "uploads" / "meal_images"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(lifespan=lifespan)
