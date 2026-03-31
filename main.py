@@ -22,6 +22,7 @@ load_dotenv()
 import claude_client
 import database
 import report_generator
+from image_utils import save_image_to_fs
 
 # ── セッション管理（シングルユーザー・インメモリ） ────────────────────────────
 
@@ -769,17 +770,8 @@ async def add_meal_image(request: Request, meal_id: int, body: ImageUploadReques
         logger.error("画像処理に失敗しました", exc_info=True)
         raise HTTPException(status_code=422, detail="画像の処理に失敗しました")
 
-    # YYYY/MM/ サブディレクトリにUUIDファイル名で保存
-    from datetime import datetime as _dt
-    now = _dt.now()
-    sub_dir = UPLOAD_DIR / f"{now.year:04d}" / f"{now.month:02d}"
-    sub_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid.uuid4()}.jpg"
-    file_path = sub_dir / filename
-    file_path.write_bytes(image_bytes)
-
     # DBには image_path のみ記録（BLOB保存なし）
-    rel_path = file_path.relative_to(UPLOAD_DIR.parent.parent).as_posix()
+    rel_path = save_image_to_fs(image_bytes)
     image_id = database.save_meal_image_path(meal_id, rel_path, "image/jpeg", "photo")
     return JSONResponse({"success": True, "image_id": image_id})
 
