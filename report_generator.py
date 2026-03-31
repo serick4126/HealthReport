@@ -121,8 +121,14 @@ def generate_charts_base64(data: dict) -> dict:
     s_labels = c_labels
     s_vals   = [d["steps"] if d["steps"] is not None else 0 for d in days]
 
+    steps_goal = data.get("steps_goal", 8000)
+
     fig_s, ax_s = plt.subplots(figsize=(4.8, 2.2))
     ax_s.bar(s_labels, s_vals, color="#34c759", alpha=0.8)
+    if steps_goal and steps_goal > 0:
+        ax_s.axhline(steps_goal, color="#ff3b30", linestyle="--", linewidth=1,
+                     label=f"目標 {steps_goal:,}歩")
+        ax_s.legend(fontsize=7)
     ax_s.set_title("歩数推移", fontsize=9)
     ax_s.set_ylabel("歩", fontsize=7)
     ax_s.tick_params(axis="x", labelsize=6.5, rotation=30)
