@@ -739,10 +739,10 @@ def update_meal_image_path(image_id: int, image_path: str) -> bool:
 
 
 def get_meal_images(meal_id: int) -> list[dict]:
-    """食事に紐づく全画像を [{id, mime_type}, ...] で返す"""
+    """食事に紐づく全画像を [{id, mime_type, image_path}, ...] で返す"""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, mime_type FROM meal_images WHERE meal_id = ? ORDER BY id",
+            "SELECT id, mime_type, image_path FROM meal_images WHERE meal_id = ? ORDER BY id",
             (meal_id,),
         ).fetchall()
     return [dict(r) for r in rows]

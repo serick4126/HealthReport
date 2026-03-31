@@ -443,9 +443,16 @@ async def update_meal(request: Request, meal_id: int, body: MealUpdateRequest):
 @app.delete("/api/meals/{meal_id}")
 async def delete_meal(request: Request, meal_id: int):
     require_auth(request)
+    images = database.get_meal_images(meal_id)
     ok = database.delete_meal(meal_id)
     if not ok:
         raise HTTPException(status_code=404, detail="食事記録が見つかりません")
+    for img in images:
+        if img.get("image_path"):
+            try:
+                Path(img["image_path"]).unlink(missing_ok=True)
+            except Exception:
+                logger.warning("画像ファイルの削除に失敗 (path=%s)", img["image_path"], exc_info=True)
     return JSONResponse({"success": True})
 
 
@@ -792,9 +799,17 @@ async def get_image_by_id(request: Request, image_id: int):
 @app.delete("/api/images/{image_id}")
 async def delete_image(request: Request, image_id: int):
     require_auth(request)
+    row = database.get_meal_image_by_id(image_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="画像が見つかりません")
     ok = database.delete_meal_image(image_id)
     if not ok:
         raise HTTPException(status_code=404, detail="画像が見つかりません")
+    if row["image_path"]:
+        try:
+            Path(row["image_path"]).unlink(missing_ok=True)
+        except Exception:
+            logger.warning("画像ファイルの削除に失敗 (path=%s)", row["image_path"], exc_info=True)
     return JSONResponse({"success": True})
 
 
