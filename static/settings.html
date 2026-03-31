@@ -239,6 +239,11 @@
               <input type="number" id="daily_calorie_goal" value="${escVal(s.daily_calorie_goal)}" placeholder="1800" min="500" max="5000" />
               <span class="row-unit">kcal/日</span>
             </div>
+            <div class="row">
+              <span class="row-label">歩数目標</span>
+              <input type="number" id="daily_steps_goal" value="${escVal(s.daily_steps_goal)}" placeholder="8000" min="0" max="999999" />
+              <span class="row-unit">歩/日</span>
+            </div>
             <div class="row" style="align-items:flex-start">
               <span class="row-label" style="padding-top:6px">注意事項</span>
               <div style="flex:1;display:flex;flex-direction:column;gap:6px">
@@ -542,6 +547,7 @@
         user_name:          document.getElementById('user_name').value.trim(),
         user_height_cm:     document.getElementById('user_height_cm').value.trim(),
         daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
+        daily_steps_goal:   document.getElementById('daily_steps_goal').value.trim(),
         user_notes:         document.getElementById('user_notes').value.trim(),
         savings_mode:       document.getElementById('savings_mode').checked ? 'true' : 'false',
         normal_model:       document.getElementById('normal_model').value,
@@ -553,6 +559,7 @@
       };
       if (!settings.user_name) { showToast('ユーザー名を入力してください', 'error'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
+      if (!settings.daily_steps_goal || isNaN(settings.daily_steps_goal)) { showToast('歩数目標を入力してください', 'error'); return; }
       // 機密項目は入力があった場合のみ送信（空＝変更なし）
       const pw = document.getElementById('app_password').value;
       if (pw) settings.app_password = pw;

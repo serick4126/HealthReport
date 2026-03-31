@@ -224,6 +224,7 @@ def init_db():
                 ("split_multiple_items", "false"),
                 ("theme", "auto"),
                 ("external_api_key", ""),
+                ("daily_steps_goal", "8000"),
             ],
         )
 
@@ -996,7 +997,7 @@ def get_report_data(start_date: str, end_date: str) -> dict:
         meals = conn.execute(
             """
             SELECT meal_date, meal_type, description,
-                   calories, protein, fat, carbs, sodium
+                   calories, protein, fat, carbs, sodium, meal_time
             FROM meals WHERE meal_date BETWEEN ? AND ?
             ORDER BY meal_date, meal_type, recorded_at
             """,
@@ -1057,6 +1058,68 @@ def get_report_data(start_date: str, end_date: str) -> dict:
         "user_name":    get_setting("user_name") or "—",
         "height_cm":    get_setting("user_height_cm") or "—",
         "calorie_goal": int(get_setting("daily_calorie_goal") or 1500),
+        "steps_goal":   int(get_setting("daily_steps_goal") or 8000),
+    }
+
+
+def get_report_data_previous_week(start_date: str) -> dict | None:
+    """前週のサマリーデータを返す（AIコメント用）。データなしならNone。"""
+    start = _date.fromisoformat(start_date)
+    prev_start = (start - timedelta(days=7)).isoformat()
+    prev_end = (start - timedelta(days=1)).isoformat()
+
+    with get_conn() as conn:
+        meals = conn.execute(
+            """
+            SELECT meal_date, calories, protein, fat, carbs, sodium
+            FROM meals WHERE meal_date BETWEEN ? AND ?
+            """,
+            (prev_start, prev_end),
+        ).fetchall()
+        weights = conn.execute(
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs "
+            "WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (prev_start, prev_end),
+        ).fetchall()
+        steps_rows = conn.execute(
+            "SELECT steps FROM steps_logs WHERE log_date BETWEEN ? AND ?",
+            (prev_start, prev_end),
+        ).fetchall()
+
+    if not meals and not weights and not steps_rows:
+        return None
+
+    day_cals: dict[str, float] = {}
+    day_p: dict[str, float] = {}
+    day_f: dict[str, float] = {}
+    day_c: dict[str, float] = {}
+    day_sod: dict[str, float] = {}
+    for m in meals:
+        d = m["meal_date"]
+        day_cals[d] = day_cals.get(d, 0) + (m["calories"] or 0)
+        day_p[d] = day_p.get(d, 0) + (m["protein"] or 0)
+        day_f[d] = day_f.get(d, 0) + (m["fat"] or 0)
+        day_c[d] = day_c.get(d, 0) + (m["carbs"] or 0)
+        day_sod[d] = day_sod.get(d, 0) + (m["sodium"] or 0)
+
+    def _avg(vals: list) -> float | None:
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    cal_vals = list(day_cals.values())
+    morning_w = [w["weight_kg"] for w in weights if w["time_of_day"] == "morning"]
+    steps_vals = [r["steps"] for r in steps_rows if r["steps"] is not None]
+
+    return {
+        "period": f"{prev_start} ~ {prev_end}",
+        "days_count": len(set(m["meal_date"] for m in meals)),
+        "avg_calories": _avg(cal_vals),
+        "avg_protein": _avg(list(day_p.values())),
+        "avg_fat": _avg(list(day_f.values())),
+        "avg_carbs": _avg(list(day_c.values())),
+        "avg_sodium": _avg(list(day_sod.values())),
+        "avg_steps": _avg(steps_vals),
+        "weight_start": morning_w[0] if morning_w else None,
+        "weight_end": morning_w[-1] if morning_w else None,
     }
 
 
