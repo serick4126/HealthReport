@@ -257,24 +257,24 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         d = _date.fromisoformat(iso)
         return f"{d.month}/{d.day}<br/>({WEEKDAYS_JA[d.weekday()]})"
 
-    def meals_cell(meal_list: list, is_skipped: bool = False) -> str:
+    def meals_cell(meal_list: list, is_skipped: bool = False, css_class: str = "meal-cell") -> str:
         if meal_list:
-            return "<br/>".join(_truncate(m["description"]) for m in meal_list)
+            inner = "<br/>".join(m["description"] for m in meal_list)
+            return f'<div class="{css_class}">{inner}</div>'
         if is_skipped:
-            return '<span class="skip-cell">食べなかった</span>'
+            return f'<div class="{css_class}"><span class="skip-cell">食べなかった</span></div>'
         return ""
 
     def dash(v, fmt: str = "{}") -> str:
         return "&#8212;" if v is None else fmt.format(v)
 
-    MEAL_TYPES  = ["breakfast", "lunch", "dinner", "snack", "late_night"]
-    MEAL_LABELS = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食",
-                   "snack": "間食", "late_night": "夜食"}
+    MAIN_MEAL_TYPES = ["breakfast", "lunch", "dinner"]
+    MAIN_MEAL_LABELS = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食"}
 
     date_headers = "".join(f"<th>{fmt_header(d['date'])}</th>" for d in days)
 
     meal_rows = ""
-    for mt in MEAL_TYPES:
+    for mt in MAIN_MEAL_TYPES:
         cells = ""
         for d in days:
             is_skipped = (
@@ -283,7 +283,19 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
                 and not d["meals"][mt]
             )
             cells += f"<td>{meals_cell(d['meals'][mt], is_skipped)}</td>"
-        meal_rows += f"<tr><th>{MEAL_LABELS[mt]}</th>{cells}</tr>\n"
+        meal_rows += f"<tr><th>{MAIN_MEAL_LABELS[mt]}</th>{cells}</tr>\n"
+
+    # 間食/夜食統合行
+    snack_cells = ""
+    for d in days:
+        combined = d["meals"].get("snack", []) + d["meals"].get("late_night", [])
+        both_skipped = (
+            d.get("skipped", {}).get("snack", False)
+            and d.get("skipped", {}).get("late_night", False)
+            and not combined
+        )
+        snack_cells += f"<td>{meals_cell(combined, both_skipped, css_class='meal-cell-sub')}</td>"
+    meal_rows += f'<tr><th>間食<br/>夜食</th>{snack_cells}</tr>\n'
 
     def pfc(d: dict) -> str:
         p = dash(d["protein"]); f_ = dash(d["fat"]); c = dash(d["carbs"])
@@ -404,6 +416,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   td {{ line-height: 1.4; }}
   tr th:first-child {{ text-align: left; width: 6%; }}
   .pfc {{ font-size: 6.5pt; }}
+  .meal-cell {{ max-height: 22mm; overflow: hidden; line-height: 1.35; }}
+  .meal-cell-sub {{ font-size: 6.5pt; max-height: 14mm; overflow: hidden; line-height: 1.35; }}
   .skip-cell {{ color: #8e8e93; font-size: 6.5pt; font-style: italic; }}
   .achievement-summary {{
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
