@@ -57,10 +57,23 @@ APP_PASSWORD=your_password_here
 ### 起動
 
 ```bash
+# 標準起動（ブラウザ自動オープン）
+uv run run.py --browser
+
+# 開発時（ホットリロード）
+uv run run.py --browser --reload
+```
+
+Windows の場合は `start.bat` をダブルクリックでも起動できます。
+
+<details>
+<summary>uvicorn を直接使う場合</summary>
+
+```bash
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-ブラウザで `http://localhost:8000` を開いてください。
+</details>
 
 ---
 
