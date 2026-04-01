@@ -624,7 +624,12 @@ def _select_best_weight_records(
 ) -> dict[tuple[str, str], WeightRecord]:
     """同一 (log_date, time_of_day) バケット内で最も遅い recorded_at のレコードを選択。
     戻り値: {(log_date, time_of_day): record}"""
-    day_start = int(database.get_setting("day_start_hour") or "4")
+    raw_hour = database.get_setting("day_start_hour") or "4"
+    try:
+        day_start = int(raw_hour)
+    except ValueError:
+        logger.warning("day_start_hour の設定値が不正です: %s。デフォルト値 4 を使用します。", raw_hour)
+        day_start = 4
     best: dict[tuple[str, str], tuple[datetime, WeightRecord]] = {}
     for rec in records:
         key = _classify_weight_record(rec.recorded_at, day_start)
