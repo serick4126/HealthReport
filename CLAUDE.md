@@ -85,6 +85,7 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | Phase 13 | 週次レポート改善・AIコメント強化（PFC比率・食事時刻・BMI・歩数目標ライン・前週比較・間食夜食統合・build_system_promptリファクタ）781テスト ALL PASSED | ✅ 完了（2026-03-31）|
 | Phase 14 | CLI起動ラッパー（run.py / start.bat）追加。ブラウザ自動オープン・reload+workers排他チェック・Windowsダブルクリック起動対応。評点 C:9.5 U:9.0 | ✅ 完了（2026-04-01）|
 | Phase 15 | 日の区切り設定（`day_start_hour`）追加 + AI サマリーバグ修正（前日食事が翌日サマリーに混入する問題）。論理日付統一・設定UI改善。810テスト ALL PASSED。評点 C:9.0 D:9.0 U:9.0 | ✅ 完了（2026-04-01）|
+| Phase 16 | パスワードなしオプション（`password_disabled`）追加。ローカル環境向けに認証スキップ機能。設定画面トグルUI・ダークモード対応警告・ログアウト時フラッシュ回避。10テスト ALL PASSED。評点 C:9.5 D:9.5 U:9.5 | ✅ 完了（2026-04-02）|
 
 ## 重要な設計上の決定事項
 
