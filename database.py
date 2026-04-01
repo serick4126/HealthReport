@@ -226,6 +226,7 @@ def init_db():
                 ("external_api_key", ""),
                 ("daily_steps_goal", "8000"),
                 ("day_start_hour", "4"),
+                ("password_disabled", "false"),
             ],
         )
 
