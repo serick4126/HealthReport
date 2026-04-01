@@ -108,6 +108,7 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | `external_api_key` | (空) | 外部API連携キー（歩数・体重共用）|
 | `daily_steps_goal` | 8000 | 1日の歩数目標 |
 | `day_start_hour` | 4 | 日の区切り時間（0〜23。この時刻より前は前日扱い）|
+| `password_disabled` | false | パスワード認証無効化（true=無効）|
 
 ## 仕様書
 

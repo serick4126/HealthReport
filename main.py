@@ -130,6 +130,8 @@ def get_session_id(request: Request) -> str | None:
 
 
 def require_auth(request: Request):
+    if database.get_setting("password_disabled") == "true":
+        return  # パスワード認証が無効化されている場合はスキップ
     sid = get_session_id(request)
     if not sid or sid not in sessions:
         raise HTTPException(status_code=401, detail="認証が必要です")
@@ -268,7 +270,7 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -277,7 +279,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
