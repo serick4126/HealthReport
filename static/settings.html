@@ -383,8 +383,8 @@
                 </label>
               </div>
             </div>
-            <div id="passwordDisabledWarning" style="display:${s.password_disabled === 'true' ? 'block' : 'none'}; padding:8px 14px; background:var(--warning-bg,#fff3cd); color:var(--warning-text,#856404); font-size:13px; border-top:1px solid var(--border);">
-              ⚠️ パスワード認証が無効化されています。ローカル環境でのみ使用してください。
+            <div id="passwordDisabledWarning" class="row note-warn" style="display:${s.password_disabled === 'true' ? 'block' : 'none'}">
+              ⚠️ <strong>パスワード認証OFF：</strong>パスワードなしでアプリにアクセスできます。ローカル環境でのみ使用してください。
             </div>
             <div class="row">
               <span class="row-label">アクセスパスワード</span>

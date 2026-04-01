@@ -830,9 +830,16 @@ async function doLogout() {
   }
   document.getElementById('passwordInput').value = '';
   document.getElementById('loginError').textContent = '';
+  // パスワード無効化時: /api/me が通るためオーバーレイを表示せずチャットを継続
+  try {
+    const r = await fetch('/api/me');
+    if (r.ok) {
+      await loadChatHistory();
+      refreshDashboard();
+      return;
+    }
+  } catch (_) {}
   document.getElementById('loginOverlay').style.display = 'flex';
-  // パスワード無効化時は checkAuth() が即座に成功しオーバーレイが消える
-  await checkAuth();
 }
 
 // ── 会話リセット ──────────────────────────────────────────────────────────────
