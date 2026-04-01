@@ -1139,7 +1139,7 @@ def get_report_data_previous_week(start_date: str) -> dict | None:
 
 
 def get_daily_summary(target_date: Optional[str] = None) -> dict:
-    target_date = target_date or today_jst()
+    target_date = target_date or get_logical_today_jst()
     with get_conn() as conn:
         meals = conn.execute(
             """
