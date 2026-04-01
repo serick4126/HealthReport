@@ -225,6 +225,7 @@ def init_db():
                 ("theme", "auto"),
                 ("external_api_key", ""),
                 ("daily_steps_goal", "8000"),
+                ("day_start_hour", "4"),
             ],
         )
 
@@ -263,6 +264,16 @@ def save_setting(key: str, value: str):
             """,
             (key, value),
         )
+
+
+def get_logical_today_jst() -> str:
+    """day_start_hour 設定を考慮した論理上の今日の日付を YYYY-MM-DD 形式で返す。
+    例: day_start_hour=4 かつ現在時刻が 02:30 → 前日を返す（0:00-3:59 は前日扱い）"""
+    hour = int(get_setting("day_start_hour") or "4")
+    now = datetime.now(JST)
+    if now.hour < hour:
+        return (now.date() - timedelta(days=1)).isoformat()
+    return now.date().isoformat()
 
 
 # ── 会話履歴永続化 ────────────────────────────────────────────────────────────
