@@ -392,7 +392,13 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
                        auto_save: str, split: str, day_start_hour: int = 4) -> str:
     """Block 1（キャッシュ対象）のプロンプトテキストを構築"""
     notes_line = "\n- 注意事項: " + user_notes if user_notes else ""
-    hour_end = day_start_hour - 1
+    if day_start_hour > 0:
+        hour_end = day_start_hour - 1
+        day_boundary_rule = (
+            f"- 日の区切りは午前{day_start_hour}時。0:00〜{hour_end}:59 の記録は前日として扱う\n"
+        )
+    else:
+        day_boundary_rule = ""
     return f"""あなたは食事記録アシスタントです。ユーザー {user_name} の食事・体重・歩数を記録します。
 
 【ユーザー情報】
@@ -410,8 +416,7 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
 - 「朝食抜いた」「昼食べなかった」「夕食スキップ」などの報告時は record_meal_skip を呼ぶこと（間食・夜食は対象外）
 - スキップ記録の訂正時は delete_meal_skip を呼ぶこと
 - delete_meal_skip の結果で deleted=false の場合は「スキップ記録がありませんでした」と応答すること
-- 日の区切りは午前{day_start_hour}時。0:00〜{hour_end}:59 の記録は前日として扱う
-- 食事・体重記録後に日の合計を表示する際は、必ず get_daily_summary ツールを呼んでDBから取得した当日分のみを表示すること。会話履歴から以前の日付の食事を推測してサマリーに含めることを厳禁とする
+{day_boundary_rule}- 食事・体重記録後に日の合計を表示する際は、必ず get_daily_summary ツールを呼んでDBから取得した当日分のみを表示すること。会話履歴から以前の日付の食事を推測してサマリーに含めることを厳禁とする
 
 【確認メッセージの形式】
 ✅ 朝食を記録しました
@@ -452,7 +457,12 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
     height_cm = database.get_setting("user_height_cm") or "160"
     user_notes = database.get_setting("user_notes") or ""
     cache_ttl = database.get_setting("cache_ttl") or "5min"
-    day_start_hour = int(database.get_setting("day_start_hour") or "4")
+    raw_hour = database.get_setting("day_start_hour") or "4"
+    try:
+        day_start_hour = int(raw_hour)
+    except ValueError:
+        logger.warning("day_start_hour の設定値が不正です: %s。デフォルト値 4 を使用します。", raw_hour)
+        day_start_hour = 4
 
     if summary is None:
         summary = database.load_conversation_summary()
@@ -494,7 +504,7 @@ def _tool_record_meal(inp: dict) -> dict:
     # meal_time: 明示なし × 当日 → 送信時刻(HH:MM)、過去日 → None のまま
     meal_time = inp.get("meal_time")
     if meal_time is None:
-        today_str = datetime.now(JST).strftime("%Y-%m-%d")
+        today_str = database.get_logical_today_jst()
         meal_date = inp.get("meal_date", today_str)
         if meal_date == today_str:
             meal_time = datetime.now(JST).strftime("%H:%M")

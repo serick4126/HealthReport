@@ -420,7 +420,7 @@ def save_food_default(
 
 def get_frequent_meals(days: int = 30, limit: int = 10) -> list[dict]:
     """直近N日間で頻出の食事をランキング形式で返す"""
-    cutoff = (datetime.now(JST).date() - timedelta(days=days)).isoformat()
+    cutoff = (_date.fromisoformat(get_logical_today_jst()) - timedelta(days=days)).isoformat()
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -581,7 +581,7 @@ def delete_weight_by_id(weight_id: int) -> bool:
 
 def get_previous_weight(time_of_day: str, before_date: Optional[str] = None) -> Optional[float]:
     """同じ時間帯の直前の体重を返す"""
-    before_date = before_date or today_jst()
+    before_date = before_date or get_logical_today_jst()
     with get_conn() as conn:
         row = conn.execute(
             """
@@ -825,7 +825,7 @@ def get_history(
     end_date: Optional[str] = None,
 ) -> list[dict]:
     """指定期間の記録を日付降順で返す"""
-    today = datetime.now(JST).date()
+    today = _date.fromisoformat(get_logical_today_jst())
     if start_date and end_date:
         since = start_date
         until = end_date
@@ -900,7 +900,7 @@ def get_stats(
     end_date: Optional[str] = None,
 ) -> dict:
     """グラフ用の集計データを返す"""
-    today = datetime.now(JST).date()
+    today = _date.fromisoformat(get_logical_today_jst())
     if start_date and end_date:
         start = _date.fromisoformat(start_date)
         end = _date.fromisoformat(end_date)

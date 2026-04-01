@@ -245,12 +245,12 @@
               <span class="row-unit">歩/日</span>
             </div>
             <div class="row">
-              <span class="row-label">日の区切り時間</span>
+              <span class="row-label">1日の開始時刻</span>
               <input type="number" id="day_start_hour" value="${escVal(s.day_start_hour || '4')}" min="0" max="23" />
               <span class="row-unit">時（0〜23）</span>
             </div>
-            <div class="row" style="padding:6px 14px;border-bottom:1px solid var(--border)">
-              <span style="font-size:12px;color:var(--text-secondary)">例: 4 に設定すると 0:00〜3:59 の記録は前日扱いになります（深夜の夕食を前日として集計）</span>
+            <div class="row" style="padding:6px 14px">
+              <span style="font-size:12px;color:var(--text-secondary)">例: 4 に設定すると、0:00〜3:59 に記録した食事や体重は前日分として扱います。変更しても過去に記録済みの食事データの日付は変わりません。</span>
             </div>
             <div class="row" style="align-items:flex-start">
               <span class="row-label" style="padding-top:6px">注意事項</span>
@@ -570,7 +570,7 @@
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
       if (settings.daily_steps_goal && isNaN(settings.daily_steps_goal)) { showToast('歩数目標に正しい数値を入力してください', 'error'); return; }
       const dsh = parseInt(settings.day_start_hour, 10);
-      if (isNaN(dsh) || dsh < 0 || dsh > 23) { showToast('日の区切り時間は 0〜23 の整数で入力してください', 'error'); return; }
+      if (isNaN(dsh) || dsh < 0 || dsh > 23) { showToast('1日の開始時刻は 0〜23 の整数で入力してください', 'error'); return; }
       // 機密項目は入力があった場合のみ送信（空＝変更なし）
       const pw = document.getElementById('app_password').value;
       if (pw) settings.app_password = pw;
