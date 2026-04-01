@@ -389,9 +389,10 @@ def _build_split_section(enabled: bool) -> str:
 
 def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
                        user_notes: str, search_flow: str,
-                       auto_save: str, split: str) -> str:
+                       auto_save: str, split: str, day_start_hour: int = 4) -> str:
     """Block 1（キャッシュ対象）のプロンプトテキストを構築"""
     notes_line = "\n- 注意事項: " + user_notes if user_notes else ""
+    hour_end = day_start_hour - 1
     return f"""あなたは食事記録アシスタントです。ユーザー {user_name} の食事・体重・歩数を記録します。
 
 【ユーザー情報】
@@ -409,6 +410,8 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
 - 「朝食抜いた」「昼食べなかった」「夕食スキップ」などの報告時は record_meal_skip を呼ぶこと（間食・夜食は対象外）
 - スキップ記録の訂正時は delete_meal_skip を呼ぶこと
 - delete_meal_skip の結果で deleted=false の場合は「スキップ記録がありませんでした」と応答すること
+- 日の区切りは午前{day_start_hour}時。0:00〜{hour_end}:59 の記録は前日として扱う
+- 食事・体重記録後に日の合計を表示する際は、必ず get_daily_summary ツールを呼んでDBから取得した当日分のみを表示すること。会話履歴から以前の日付の食事を推測してサマリーに含めることを厳禁とする
 
 【確認メッセージの形式】
 ✅ 朝食を記録しました
@@ -440,15 +443,16 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
     Block 1（キャッシュ対象）: ユーザー設定・ルール（日付を含まない）
     Block 2（キャッシュ対象外）: 今日の日付・会話サマリー
     """
-    now_jst = datetime.now(JST)
-    today = now_jst.date().isoformat()
-    weekday = ["月", "火", "水", "木", "金", "土", "日"][now_jst.weekday()]
+    today = database.get_logical_today_jst()
+    logical_dt = datetime.strptime(today, "%Y-%m-%d")
+    weekday = ["月", "火", "水", "木", "金", "土", "日"][logical_dt.weekday()]
 
     calorie_goal = database.get_setting("daily_calorie_goal") or "1800"
     user_name = database.get_setting("user_name") or "DefaultName"
     height_cm = database.get_setting("user_height_cm") or "160"
     user_notes = database.get_setting("user_notes") or ""
     cache_ttl = database.get_setting("cache_ttl") or "5min"
+    day_start_hour = int(database.get_setting("day_start_hour") or "4")
 
     if summary is None:
         summary = database.load_conversation_summary()
@@ -464,6 +468,7 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
         search_flow=_build_search_flow_section(savings_mode),
         auto_save=_build_auto_save_section(database.get_setting("auto_save_food_defaults") != "false"),
         split=_build_split_section(database.get_setting("split_multiple_items") == "true"),
+        day_start_hour=day_start_hour,
     )
 
     block2_text = f"【セッション情報】\n今日の日付: {today}（{weekday}曜日）{summary_section}"
