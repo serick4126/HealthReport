@@ -268,7 +268,7 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -277,7 +277,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -295,6 +295,13 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
     for key, value in body.settings.items():
         if key not in EDITABLE_SETTINGS:
             raise HTTPException(status_code=400, detail=f"編集不可のキーです: {key}")
+        if key == "day_start_hour":
+            try:
+                hour = int(value)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="day_start_hourは整数で指定してください")
+            if not (0 <= hour <= 23):
+                raise HTTPException(status_code=422, detail="day_start_hourは0〜23の範囲で指定してください")
         database.save_setting(key, value)
     return JSONResponse({"success": True})
 
@@ -599,11 +606,11 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
 
 # ── 体重受付API（iPhoneショートカット連携） ────────────────────────────────────
 
-def _classify_weight_record(recorded_at_str: str) -> tuple[str, str]:
+def _classify_weight_record(recorded_at_str: str, day_start_hour: int = 4) -> tuple[str, str]:
     """recorded_at（"YYYY/MM/DD HH:MM"）を (log_date, time_of_day) に変換。
-    0:00-3:59 は前日の evening として扱う（4:00 が日の境界）。"""
+    day_start_hour より前（0:00〜(day_start_hour-1):59）は前日の evening として扱う。"""
     dt = datetime.strptime(recorded_at_str, "%Y/%m/%d %H:%M")
-    if dt.hour < 4:
+    if dt.hour < day_start_hour:
         logical_date = (dt - timedelta(days=1)).date()
         return str(logical_date), "evening"
     elif dt.hour < 12:
@@ -617,9 +624,10 @@ def _select_best_weight_records(
 ) -> dict[tuple[str, str], WeightRecord]:
     """同一 (log_date, time_of_day) バケット内で最も遅い recorded_at のレコードを選択。
     戻り値: {(log_date, time_of_day): record}"""
+    day_start = int(database.get_setting("day_start_hour") or "4")
     best: dict[tuple[str, str], tuple[datetime, WeightRecord]] = {}
     for rec in records:
-        key = _classify_weight_record(rec.recorded_at)
+        key = _classify_weight_record(rec.recorded_at, day_start)
         dt = datetime.strptime(rec.recorded_at, "%Y/%m/%d %H:%M")
         if key not in best or dt > best[key][0]:
             best[key] = (dt, rec)
