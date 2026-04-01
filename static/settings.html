@@ -371,9 +371,24 @@
         <div class="section">
           <div class="section-title">セキュリティ</div>
           <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="flex:1;margin-right:12px">
+                <div class="row-label" style="font-size:15px">パスワード認証を無効化</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">ローカル環境専用。ONにするとパスワードなしでアクセスできます</div>
+              </div>
+              <div class="toggle-wrap">
+                <label class="toggle">
+                  <input type="checkbox" id="password_disabled" ${s.password_disabled === 'true' ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div id="passwordDisabledWarning" style="display:${s.password_disabled === 'true' ? 'block' : 'none'}; padding:8px 14px; background:var(--warning-bg,#fff3cd); color:var(--warning-text,#856404); font-size:13px; border-top:1px solid var(--border);">
+              ⚠️ パスワード認証が無効化されています。ローカル環境でのみ使用してください。
+            </div>
             <div class="row">
               <span class="row-label">アクセスパスワード</span>
-              <input type="password" id="app_password" value="" placeholder="${s.app_password === 'set' ? '（設定済み）変更する場合のみ入力' : 'パスワードを設定'}" autocomplete="new-password" />
+              <input type="password" id="app_password" value="" placeholder="${s.app_password === 'set' ? '（設定済み）変更する場合のみ入力' : 'パスワードを設定'}" autocomplete="new-password" ${s.password_disabled === 'true' ? 'disabled' : ''} style="opacity:${s.password_disabled === 'true' ? '0.4' : '1'}" />
             </div>
             <div class="row">
               <span class="row-label">Claude APIキー</span>
@@ -505,13 +520,20 @@
       `;
     }
 
-    // 節約モードトグル・キャッシュTTL変更時に注意書きを表示/非表示
+    // トグル・セレクト変更時の連動UI更新
     document.addEventListener('change', e => {
       if (e.target.id === 'savings_mode') {
         document.getElementById('savingsNote').style.display = e.target.checked ? 'block' : 'none';
       }
       if (e.target.id === 'cache_ttl') {
         document.getElementById('cacheTtlNote1hour').style.display = e.target.value === '1hour' ? 'block' : 'none';
+      }
+      if (e.target.id === 'password_disabled') {
+        const disabled = e.target.checked;
+        document.getElementById('passwordDisabledWarning').style.display = disabled ? 'block' : 'none';
+        const pwInput = document.getElementById('app_password');
+        pwInput.disabled = disabled;
+        pwInput.style.opacity = disabled ? '0.4' : '1';
       }
     });
 
@@ -571,6 +593,7 @@
       if (settings.daily_steps_goal && isNaN(settings.daily_steps_goal)) { showToast('歩数目標に正しい数値を入力してください', 'error'); return; }
       const dsh = parseInt(settings.day_start_hour, 10);
       if (isNaN(dsh) || dsh < 0 || dsh > 23) { showToast('1日の開始時刻は 0〜23 の整数で入力してください', 'error'); return; }
+      settings.password_disabled = document.getElementById('password_disabled').checked ? 'true' : 'false';
       // 機密項目は入力があった場合のみ送信（空＝変更なし）
       const pw = document.getElementById('app_password').value;
       if (pw) settings.app_password = pw;
