@@ -823,10 +823,16 @@ async function doLogin() {
 
 // index.html固有: ログアウトはリダイレクトせずログインオーバーレイを表示
 async function doLogout() {
-  await fetch('/api/logout', { method: 'POST' });
-  document.getElementById('loginOverlay').style.display = 'flex';
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch (e) {
+    // ネットワーク障害でもログアウトUI処理は継続する
+  }
   document.getElementById('passwordInput').value = '';
   document.getElementById('loginError').textContent = '';
+  document.getElementById('loginOverlay').style.display = 'flex';
+  // パスワード無効化時は checkAuth() が即座に成功しオーバーレイが消える
+  await checkAuth();
 }
 
 // ── 会話リセット ──────────────────────────────────────────────────────────────
