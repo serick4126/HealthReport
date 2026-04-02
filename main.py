@@ -270,7 +270,7 @@ async def today(request: Request):
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -279,7 +279,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -304,6 +304,20 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
                 raise HTTPException(status_code=422, detail="day_start_hourは整数で指定してください")
             if not (0 <= hour <= 23):
                 raise HTTPException(status_code=422, detail="day_start_hourは0〜23の範囲で指定してください")
+        if key == "user_gender":
+            if value not in ("male", "female", ""):
+                raise HTTPException(status_code=400, detail="user_genderは 'male', 'female', '' のいずれかです")
+        if key == "user_birthdate" and value:
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+                raise HTTPException(status_code=400, detail="user_birthdateはYYYY-MM-DD形式で入力してください")
+            try:
+                bd = datetime.strptime(value, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="user_birthdateの日付が不正です")
+            today = date.today()
+            calc_age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+            if not (1 <= calc_age <= 120):
+                raise HTTPException(status_code=400, detail="誕生日から計算した年齢が不正です（1〜120歳の範囲で設定してください）")
         database.save_setting(key, value)
     return JSONResponse({"success": True})
 
