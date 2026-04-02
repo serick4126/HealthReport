@@ -227,6 +227,8 @@ def init_db():
                 ("daily_steps_goal", "8000"),
                 ("day_start_hour", "4"),
                 ("password_disabled", "false"),
+                ("user_gender", ""),
+                ("user_birthdate", ""),
             ],
         )
 
@@ -1210,18 +1212,53 @@ def get_bmi_status(bmi: float) -> str:
     return "肥満(4度)"
 
 
-def calculate_bmr(weight_kg: float, height_cm: float) -> dict:
+def _calc_age_from_birthdate(birthdate_str: str) -> Optional[int]:
+    """YYYY-MM-DD文字列から現在の年齢（整数）を返す。不正な場合はNone。"""
+    try:
+        bd = datetime.strptime(birthdate_str, "%Y-%m-%d").date()
+    except (ValueError, AttributeError):
+        logger.warning("誕生日のパース失敗: %r", birthdate_str)
+        return None
+    today = _date.today()
+    age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+    return age if 1 <= age <= 120 else None
+
+
+def calculate_bmr(
+    weight_kg: float,
+    height_cm: float,
+    age: Optional[int] = None,
+    gender: Optional[str] = None,
+) -> dict:
     """Harris-Benedict式（改訂版）で推定基礎代謝を計算する。
-    年齢は40歳（男性）で近似。
+    age: 整数年齢（None または範囲外の場合は 40 でフォールバック）
+    gender: "male" | "female"（None または不正値の場合は男性でフォールバック）
     戻り値: {"bmr_kcal": int, "bmr_note": str}
     """
     if weight_kg <= 0 or height_cm <= 0:
         return {"bmr_kcal": None, "bmr_note": "計算不可（値が不正）"}
-    bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * 40)
-    return {
-        "bmr_kcal": round(bmr),
-        "bmr_note": "推定値（40歳男性基準）",
-    }
+
+    is_fallback = (
+        age is None or not (1 <= age <= 120)
+        or gender not in ("male", "female")
+    )
+    effective_age = age if (age is not None and 1 <= age <= 120) else 40
+    effective_gender = gender if gender in ("male", "female") else "male"
+
+    if effective_gender == "male":
+        bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * effective_age)
+        gender_label = "男性"
+    else:
+        bmr = 447.593 + (9.247 * weight_kg) + (3.098 * height_cm) - (4.330 * effective_age)
+        gender_label = "女性"
+
+    if is_fallback:
+        note = "推定値（40歳男性基準・性別/年齢未設定）"
+    else:
+        age_label = str(effective_age)
+        note = "推定値（" + age_label + "歳・" + gender_label + "）"
+
+    return {"bmr_kcal": round(bmr), "bmr_note": note}
 
 
 def get_latest_bmi_info() -> Optional[dict]:
@@ -1248,7 +1285,10 @@ def get_latest_bmi_info() -> Optional[dict]:
 
     weight_kg = row["weight_kg"]
     bmi = calculate_bmi(weight_kg, height_cm)
-    bmr_info = calculate_bmr(weight_kg, height_cm)
+    gender = get_setting("user_gender") or ""
+    birthdate_str = get_setting("user_birthdate") or ""
+    age = _calc_age_from_birthdate(birthdate_str) if birthdate_str else None
+    bmr_info = calculate_bmr(weight_kg, height_cm, age=age, gender=gender or None)
     return {
         "weight_kg": weight_kg,
         "height_cm": height_cm,
