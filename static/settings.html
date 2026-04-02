@@ -210,6 +210,20 @@
               <input type="number" id="user_height_cm" value="${escVal(s.user_height_cm)}" placeholder="160" min="100" max="250" />
               <span class="row-unit">cm</span>
             </div>
+            <div class="row" style="justify-content:space-between">
+              <span class="row-label">性別</span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="user_gender">
+                  <option value=""      ${!s.user_gender ? 'selected' : ''}>未設定</option>
+                  <option value="male"  ${s.user_gender === 'male'   ? 'selected' : ''}>男性</option>
+                  <option value="female"${s.user_gender === 'female' ? 'selected' : ''}>女性</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <span class="row-label">誕生日</span>
+              <input type="date" id="user_birthdate" value="${escVal(s.user_birthdate || '')}" max="${new Date().toISOString().slice(0,10)}" style="flex:1;min-width:0" />
+            </div>
           </div>
         </div>
 
@@ -576,6 +590,8 @@
         theme:              document.getElementById('theme').value,
         user_name:          document.getElementById('user_name').value.trim(),
         user_height_cm:     document.getElementById('user_height_cm').value.trim(),
+        user_gender:        document.getElementById('user_gender').value,
+        user_birthdate:     document.getElementById('user_birthdate').value,
         daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
         daily_steps_goal:   document.getElementById('daily_steps_goal').value.trim(),
         day_start_hour:     document.getElementById('day_start_hour').value.trim(),
