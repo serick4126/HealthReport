@@ -86,6 +86,7 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | Phase 14 | CLI起動ラッパー（run.py / start.bat）追加。ブラウザ自動オープン・reload+workers排他チェック・Windowsダブルクリック起動対応。評点 C:9.5 U:9.0 | ✅ 完了（2026-04-01）|
 | Phase 15 | 日の区切り設定（`day_start_hour`）追加 + AI サマリーバグ修正（前日食事が翌日サマリーに混入する問題）。論理日付統一・設定UI改善。810テスト ALL PASSED。評点 C:9.0 D:9.0 U:9.0 | ✅ 完了（2026-04-01）|
 | Phase 16 | パスワードなしオプション（`password_disabled`）追加。ローカル環境向けに認証スキップ機能。設定画面トグルUI・ダークモード対応警告・ログアウト時フラッシュ回避。10テスト ALL PASSED。評点 C:9.5 D:9.5 U:9.5 | ✅ 完了（2026-04-02）|
+| Phase 17 | 性別・誕生日設定による正確な基礎代謝表示（Harris-Benedict女性式追加・フォールバック仕様・バリデーション）。22テスト ALL PASSED。評点 C:9.0 D:8.5 U:9.0 | ✅ 完了（2026-04-02）|
 
 ## 重要な設計上の決定事項
 
@@ -110,6 +111,8 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | `daily_steps_goal` | 8000 | 1日の歩数目標 |
 | `day_start_hour` | 4 | 日の区切り時間（0〜23。この時刻より前は前日扱い）|
 | `password_disabled` | false | パスワード認証無効化（true=無効）|
+| `user_gender` | (空) | 性別（`"male"` / `"female"` / 空=未設定）|
+| `user_birthdate` | (空) | 誕生日（`"YYYY-MM-DD"` / 空=未設定）基礎代謝計算に使用 |
 
 ## 仕様書
 
