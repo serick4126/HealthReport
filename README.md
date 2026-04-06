@@ -45,7 +45,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```powershell
 # uv のインストール — Windows (PowerShell)
-winget install --id astral.uv 
+winget install --id astral-sh.uv 
 ```
 
 ### セットアップと起動
