@@ -129,6 +129,10 @@
       const labels = data.dates.map(shortDate);
       const goal = data.calories_goal;
       const mealSkips = data.meal_skips || {};
+      const totalExp = data.total_expenditure || [];
+      const exCal = data.exercise_calories || [];
+      const bmrKcal = data.bmr_kcal || null;
+      const hasExpenditure = totalExp.some(function(v) { return v != null; });
       pageState.dates = data.dates;
 
       // サマリーカード
@@ -210,26 +214,33 @@
         if (cal === null && skips.length > 0) return '#c7c7cc';  // スキップあり・食事記録なし
         return '#007aff';
       });
+      var calDatasets = [
+        {
+          label: '摂取カロリー',
+          data: data.calories,
+          borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+          tension: 0.3, fill: true, spanGaps: true,
+          pointRadius: 4, pointBackgroundColor: calPointColors,
+        },
+        {
+          label: '目標 ' + goal + 'kcal',
+          data: Array(labels.length).fill(goal),
+          borderColor: '#ff3b30', borderDash: [6,3],
+          borderWidth: 1.5, pointRadius: 0, fill: false,
+        }
+      ];
+      if (hasExpenditure) {
+        calDatasets.push({
+          label: '消費カロリー',
+          data: totalExp,
+          borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.08)',
+          tension: 0.3, fill: false, spanGaps: true,
+          pointRadius: 3, pointBackgroundColor: '#ff9500',
+        });
+      }
       charts.cal = new Chart(document.getElementById('chartCalories'), {
         type: 'line',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'カロリー',
-              data: data.calories,
-              borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
-              tension: 0.3, fill: true, spanGaps: true,
-              pointRadius: 4, pointBackgroundColor: calPointColors,
-            },
-            {
-              label: `目標 ${goal}kcal`,
-              data: Array(labels.length).fill(goal),
-              borderColor: '#ff3b30', borderDash: [6,3],
-              borderWidth: 1.5, pointRadius: 0, fill: false,
-            }
-          ]
-        },
+        data: { labels, datasets: calDatasets },
         options: {
           ...defaults,
           plugins: {
@@ -238,10 +249,32 @@
               callbacks: {
                 afterBody: function(tooltipItems) {
                   if (!tooltipItems.length) return [];
-                  var d = data.dates[tooltipItems[0].dataIndex];
+                  var idx = tooltipItems[0].dataIndex;
+                  var d = data.dates[idx];
+                  var lines = [];
                   var skips = mealSkips[d] || [];
-                  if (!skips.length) return [];
-                  return ['食べなかった: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・')];
+                  if (skips.length) {
+                    lines.push('食べなかった: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・'));
+                  }
+                  if (hasExpenditure) {
+                    var intakeVal = data.calories[idx];
+                    var expVal = totalExp[idx];
+                    if (expVal != null) {
+                      var exVal = exCal[idx] || 0;
+                      var bmrPart = bmrKcal != null ? bmrKcal : (expVal - exVal);
+                      lines.push('');
+                      if (intakeVal != null) {
+                        lines.push('摂取: ' + intakeVal + ' kcal');
+                      }
+                      lines.push('消費: ' + expVal + ' kcal（BMR ' + bmrPart + ' + 運動 ' + exVal + '）');
+                      if (intakeVal != null) {
+                        var balance = intakeVal - expVal;
+                        var sign = balance >= 0 ? '+' : '';
+                        lines.push('収支: ' + sign + balance + ' kcal');
+                      }
+                    }
+                  }
+                  return lines;
                 }
               }
             }
