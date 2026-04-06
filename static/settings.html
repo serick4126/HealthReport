@@ -9,6 +9,17 @@
     .content { padding: 16px; max-width: 600px; margin: 0 auto; }
     .section { margin-bottom: 24px; }
     .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding: 0 4px; }
+    details.collapsible-section { margin-bottom: 24px; }
+    details.collapsible-section > summary {
+      font-size: 13px; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 0 4px; margin-bottom: 8px;
+      cursor: pointer; list-style: none; user-select: none;
+      display: flex; align-items: center; gap: 6px;
+    }
+    details.collapsible-section > summary::-webkit-details-marker { display: none; }
+    details.collapsible-section > summary::after { content: '▶'; font-size: 10px; }
+    details.collapsible-section[open] > summary::after { content: '▼'; }
     .card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
     .row { display: flex; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); gap: 12px; }
     .row:last-child { border-bottom: none; }
@@ -411,12 +422,12 @@
           </div>
         </div>
 
-        <!-- 外部API連携 -->
-        <div class="section">
-          <div class="section-title">外部API連携（iPhoneショートカット）</div>
+        <!-- 外部API連携（折りたたみ） -->
+        <details class="collapsible-section">
+          <summary>外部API連携（iPhoneショートカット）</summary>
           <div class="card">
             <div class="row">
-              <span class="row-label">外部APIキー（歩数・体重共用）</span>
+              <span class="row-label">外部APIキー（全API共用）</span>
               <input type="password" id="external_api_key" value="" placeholder="${s.external_api_key === 'set' ? '（設定済み）変更する場合のみ入力' : '任意の文字列を設定'}" autocomplete="off" />
             </div>
             <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
@@ -433,24 +444,31 @@
                 <button class="copy-endpoint-btn" data-url="/api/weight/ingest" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
               </div>
             </div>
+            <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
+              <span class="row-label" style="font-size:13px;color:var(--text-secondary)">エンドポイント（運動・消費カロリー）</span>
+              <div style="display:flex;align-items:center;gap:8px;width:100%">
+                <code style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all">${window.location.origin}/api/exercise/ingest</code>
+                <button class="copy-endpoint-btn" data-url="/api/exercise/ingest" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
+              </div>
+            </div>
             <div class="row note-tip" style="flex-direction:column;align-items:flex-start;gap:4px">
               <div style="font-weight:600;font-size:13px">📱 iPhoneショートカット設定</div>
               <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+                すべてのAPIで共通ヘッダ:<br>
+                <strong>Authorization: Bearer &lt;設定したAPIキー&gt;</strong><br>
+                <strong>Content-Type: application/json</strong><br><br>
                 <strong>【歩数】</strong><br>
-                <strong>メソッド:</strong> POST<br>
-                <strong>ヘッダ:</strong> Authorization: Bearer &lt;設定したAPIキー&gt;<br>
-                <strong>ヘッダ:</strong> Content-Type: application/json<br>
                 <strong>ボディ:</strong> {"steps": &lt;歩数&gt;, "date": "YYYY-MM-DD"}<br><br>
                 <strong>【体重】</strong><br>
-                <strong>メソッド:</strong> POST<br>
-                <strong>ヘッダ:</strong> Authorization: Bearer &lt;設定したAPIキー（歩数と同じ）&gt;<br>
-                <strong>ヘッダ:</strong> Content-Type: application/json<br>
                 <strong>ボディ:</strong> {"records": [{"recorded_at": "YYYY/MM/DD HH:MM", "weight": XX.X}]}<br><br>
+                <strong>【運動・消費カロリー（iOSアクティブエネルギー）】</strong><br>
+                <strong>ボディ:</strong> {"date": "YYYY-MM-DD", "calories_burned": &lt;kcal整数&gt;, "description": "iOSショートカット"}<br>
+                iOSヘルスケアの「アクティブエネルギー」をショートカットの「ヘルスケア」アクションで取得し、毎日自動送信できます。<br><br>
                 ヘルスケアから前日のデータを取得し、毎朝自動実行するオートメーションに設定することで自動記録できます。
               </div>
             </div>
           </div>
-        </div>
+        </details>
 
         <button class="save-btn" onclick="saveSettings()">保存する</button>
 
