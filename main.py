@@ -554,6 +554,73 @@ async def delete_steps(request: Request, steps_id: int):
     return JSONResponse({"success": True})
 
 
+# ── 運動ログ CRUD ──────────────────────────────────────────────────────────────
+
+class ExerciseRequest(BaseModel):
+    log_date: str
+    calories_burned: int
+    description: str = ""
+
+
+class ExerciseUpdateRequest(BaseModel):
+    calories_burned: int
+    description: str = ""
+
+
+def _validate_exercise_body(log_date: str, calories_burned: int, description: str) -> None:
+    """運動ログ入力のバリデーション。違反時は HTTPException を送出。"""
+    try:
+        datetime.strptime(log_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="log_date は YYYY-MM-DD 形式で指定してください")
+    if not (0 <= calories_burned <= 9999):
+        raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
+    if len(description) > 500:
+        raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
+
+
+@app.post("/api/exercise")
+async def create_exercise(request: Request, body: ExerciseRequest):
+    require_auth(request)
+    _validate_exercise_body(body.log_date, body.calories_burned, body.description)
+    try:
+        eid = database.save_exercise(body.log_date, body.calories_burned, body.description, source="manual")
+    except Exception:
+        logger.error("運動ログの保存に失敗しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="運動ログの保存に失敗しました")
+    return JSONResponse({"success": True, "id": eid})
+
+
+@app.put("/api/exercise/{exercise_id}")
+async def update_exercise(request: Request, exercise_id: int, body: ExerciseUpdateRequest):
+    require_auth(request)
+    if not (0 <= body.calories_burned <= 9999):
+        raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
+    if len(body.description) > 500:
+        raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
+    try:
+        ok = database.update_exercise_by_id(exercise_id, body.calories_burned, body.description)
+    except Exception:
+        logger.error("運動ログの更新に失敗しました id=%s", exercise_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="運動ログの更新に失敗しました")
+    if not ok:
+        raise HTTPException(status_code=404, detail="運動ログが見つかりません")
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/exercise/{exercise_id}")
+async def delete_exercise(request: Request, exercise_id: int):
+    require_auth(request)
+    try:
+        ok = database.delete_exercise_by_id(exercise_id)
+    except Exception:
+        logger.error("運動ログの削除に失敗しました id=%s", exercise_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="運動ログの削除に失敗しました")
+    if not ok:
+        raise HTTPException(status_code=404, detail="運動ログが見つかりません")
+    return JSONResponse({"deleted": True, "id": exercise_id})
+
+
 # ── 歩数受付API（iPhoneショートカット連携） ────────────────────────────────────
 
 _JST = timezone(timedelta(hours=9))
@@ -617,6 +684,61 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
         "date": body.date,
         "steps": body.steps,
         "updated": result["updated"],
+    })
+
+
+# ── 運動受付API（iPhoneショートカット連携） ────────────────────────────────────
+
+class ExerciseIngestRequest(BaseModel):
+    date: str            # "YYYY-MM-DD"
+    calories_burned: int  # HealthKit アクティブエネルギー (kcal)
+    description: str = "iOSショートカット"
+
+
+@app.post("/api/exercise/ingest")
+async def exercise_ingest(request: Request, body: ExerciseIngestRequest):
+    """iPhoneショートカット等から消費カロリー（アクティブエネルギー）を受け付けるAPI。
+    セッション認証不要。external_api_key（歩数・体重APIと共用）による Bearer トークン認証。
+    iOS ショートカット設定: POST {host}/api/exercise/ingest
+    ヘッダー: Authorization: Bearer {external_api_key}
+    ボディ: {"date":"YYYY-MM-DD","calories_burned":{アクティブエネルギー整数},"description":"iOSショートカット"}
+    """
+    # 1. APIキー認証
+    stored_key = database.get_setting("external_api_key") or ""
+    if not stored_key:
+        raise HTTPException(status_code=503, detail="外部APIキーが設定されていません")
+    auth_header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not auth_header.startswith(prefix):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    provided_key = auth_header[len(prefix):]
+    if not hmac.compare_digest(provided_key.encode(), stored_key.encode()):
+        raise HTTPException(status_code=401, detail="APIキーが正しくありません")
+
+    # 2. バリデーション
+    if not (0 <= body.calories_burned <= 9999):
+        raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
+    if len(body.description) > 500:
+        raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
+    try:
+        log_date = datetime.strptime(body.date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date は YYYY-MM-DD 形式で指定してください")
+    today = datetime.now(_JST).date()
+    if log_date > today:
+        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+
+    # 3. 保存
+    try:
+        eid = database.save_exercise(body.date, body.calories_burned, body.description, source="api")
+    except Exception:
+        logger.error("運動ログ(ingest)の保存に失敗しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="運動ログの保存に失敗しました")
+    return JSONResponse({
+        "success": True,
+        "id": eid,
+        "date": body.date,
+        "calories_burned": body.calories_burned,
     })
 
 
