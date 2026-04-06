@@ -285,7 +285,7 @@ WIDGET_REGISTRY = [
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "available_models"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -294,7 +294,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "available_models"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -359,7 +359,7 @@ async def get_widget_registry(request: Request):
 
 @app.get("/api/models")
 async def list_models(request: Request):
-    """Anthropic APIから利用可能なモデル一覧を取得する"""
+    """Anthropic APIから利用可能なモデル一覧を取得してDBにキャッシュする"""
     require_auth(request)
     try:
         client = claude_client.get_client()
@@ -368,8 +368,8 @@ async def list_models(request: Request):
             {"id": m.id, "display_name": getattr(m, "display_name", m.id)}
             for m in models_page.data
         ]
-        # IDでソート（新しいものが上に来るよう降順）
         models.sort(key=lambda m: m["id"], reverse=True)
+        database.save_setting("available_models", json.dumps(models, ensure_ascii=False))
         return JSONResponse({"models": models})
     except Exception as e:
         logger.error("モデル一覧の取得に失敗: %s", e, exc_info=True)
@@ -584,6 +584,58 @@ async def delete_steps(request: Request, steps_id: int):
     ok = database.delete_steps_by_id(steps_id)
     if not ok:
         raise HTTPException(status_code=404, detail="歩数記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+# ── 血圧記録 CRUD ──────────────────────────────────────────────────────────────
+
+def _validate_blood_pressure(systolic: int, diastolic: int) -> None:
+    """血圧値のバリデーション。違反時は HTTPException(422) を送出。"""
+    if not (50 <= systolic <= 300):
+        raise HTTPException(status_code=422, detail="systolicは50〜300の範囲で指定してください")
+    if not (30 <= diastolic <= 200):
+        raise HTTPException(status_code=422, detail="diastolicは30〜200の範囲で指定してください")
+
+
+class BloodPressureCreateRequest(BaseModel):
+    log_date: str
+    time_of_day: str
+    systolic: int
+    diastolic: int
+
+
+class BloodPressureUpdateRequest(BaseModel):
+    systolic: int
+    diastolic: int
+
+
+@app.post("/api/blood-pressure")
+async def create_blood_pressure(request: Request, body: BloodPressureCreateRequest):
+    require_auth(request)
+    if body.time_of_day not in ("morning", "evening"):
+        raise HTTPException(status_code=422, detail="time_of_dayはmorning/eveningのみ有効です")
+    _validate_date(body.log_date)
+    _validate_blood_pressure(body.systolic, body.diastolic)
+    bp_id = database.save_blood_pressure(body.log_date, body.time_of_day, body.systolic, body.diastolic)
+    return JSONResponse({"success": True, "id": bp_id})
+
+
+@app.put("/api/blood-pressure/{bp_id}")
+async def update_blood_pressure(request: Request, bp_id: int, body: BloodPressureUpdateRequest):
+    require_auth(request)
+    _validate_blood_pressure(body.systolic, body.diastolic)
+    ok = database.update_blood_pressure_by_id(bp_id, body.systolic, body.diastolic)
+    if not ok:
+        raise HTTPException(status_code=404, detail="血圧記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/blood-pressure/{bp_id}")
+async def delete_blood_pressure(request: Request, bp_id: int):
+    require_auth(request)
+    ok = database.delete_blood_pressure_by_id(bp_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="血圧記録が見つかりません")
     return JSONResponse({"success": True})
 
 
@@ -877,6 +929,73 @@ async def weight_ingest(request: Request, body: WeightIngestRequest):
         raise HTTPException(status_code=500, detail="体重データの保存に失敗しました")
 
     return JSONResponse({"success": True, "saved": saved})
+
+
+# ── 血圧受付API（iPhoneショートカット連携） ────────────────────────────────────
+
+class BloodPressureIngestRequest(BaseModel):
+    recorded_at: str  # "YYYY/MM/DD HH:MM"
+    systolic: int
+    diastolic: int
+
+
+@app.post("/api/external/blood-pressure")
+async def blood_pressure_ingest(request: Request, body: BloodPressureIngestRequest):
+    """iPhoneショートカット等から血圧を受け付けるAPI。
+    セッション認証不要。external_api_key（歩数・体重と共用）による Bearer トークン認証。
+    ヘッダー: Authorization: Bearer {external_api_key}
+    ボディ: {"recorded_at":"YYYY/MM/DD HH:MM","systolic":120,"diastolic":80}
+    """
+    # 1. APIキー認証
+    stored_key = database.get_setting("external_api_key") or ""
+    if not stored_key:
+        raise HTTPException(status_code=503, detail="外部APIキーが設定されていません")
+    auth_header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not auth_header.startswith(prefix):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    provided_key = auth_header[len(prefix):]
+    if not hmac.compare_digest(provided_key.encode(), stored_key.encode()):
+        raise HTTPException(status_code=401, detail="APIキーが正しくありません")
+
+    # 2. バリデーション
+    try:
+        datetime.strptime(body.recorded_at, "%Y/%m/%d %H:%M")
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="recorded_atはYYYY/MM/DD HH:MM形式で指定してください",
+        )
+    _validate_blood_pressure(body.systolic, body.diastolic)
+
+    # 3. 日付・時間帯分類
+    raw_hour = database.get_setting("day_start_hour") or "4"
+    try:
+        day_start = int(raw_hour)
+    except ValueError:
+        day_start = 4
+    log_date_str, time_of_day = _classify_weight_record(body.recorded_at, day_start)
+    log_date = date.fromisoformat(log_date_str)
+    today = datetime.now(_JST).date()
+    if log_date > today:
+        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+
+    # 4. 保存（同日同時間帯は上書き）
+    try:
+        result = database.upsert_blood_pressure(log_date_str, time_of_day, body.systolic, body.diastolic)
+    except Exception:
+        logger.error("血圧データの保存中にエラーが発生しました", exc_info=True)
+        raise HTTPException(status_code=500, detail="血圧データの保存に失敗しました")
+
+    return JSONResponse({
+        "success": True,
+        "id": result["id"],
+        "log_date": log_date_str,
+        "time_of_day": time_of_day,
+        "systolic": body.systolic,
+        "diastolic": body.diastolic,
+        "updated": result["updated"],
+    })
 
 
 # ── 食事スキップ CRUD ──────────────────────────────────────────────────────────

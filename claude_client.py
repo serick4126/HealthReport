@@ -338,6 +338,33 @@ TOOLS: list[anthropic.types.ToolParam] = [
             "required": ["log_date", "calories_burned", "description"],
         },
     },
+    {
+        "name": "record_blood_pressure",
+        "description": "血圧（最高・最低）を記録する。朝または夜の区分を指定する。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "log_date": {
+                    "type": "string",
+                    "description": "記録日（YYYY-MM-DD）。ユーザーが指定しない場合は今日の日付。",
+                },
+                "time_of_day": {
+                    "type": "string",
+                    "enum": ["morning", "evening"],
+                    "description": "朝=morning / 夜=evening。ユーザーが指定しない場合は現在時刻から判断する。",
+                },
+                "systolic": {
+                    "type": "integer",
+                    "description": "最高血圧（mmHg）。50〜300の範囲。",
+                },
+                "diastolic": {
+                    "type": "integer",
+                    "description": "最低血圧（mmHg）。30〜200の範囲。",
+                },
+            },
+            "required": ["log_date", "time_of_day", "systolic", "diastolic"],
+        },
+    },
 ]
 
 
@@ -755,6 +782,29 @@ def _tool_record_exercise(inp: dict) -> dict:
     }
 
 
+def _tool_record_blood_pressure(inp: dict) -> dict:
+    systolic = int(inp["systolic"])
+    diastolic = int(inp["diastolic"])
+    if not (50 <= systolic <= 300):
+        return {"success": False, "error": "systolicは50〜300の範囲で指定してください"}
+    if not (30 <= diastolic <= 200):
+        return {"success": False, "error": "diastolicは30〜200の範囲で指定してください"}
+    time_of_day = inp["time_of_day"]
+    log_date = inp["log_date"]
+    result = database.upsert_blood_pressure(log_date, time_of_day, systolic, diastolic)
+    return {
+        "success": True,
+        "tool": "record_blood_pressure",
+        "id": result["id"],
+        "log_date": log_date,
+        "time_of_day": time_of_day,
+        "time_of_day_ja": "朝" if time_of_day == "morning" else "夜",
+        "systolic": systolic,
+        "diastolic": diastolic,
+        "updated": result["updated"],
+    }
+
+
 _TOOL_DISPATCH: dict = {
     "record_meal":           _tool_record_meal,
     "record_weight":         _tool_record_weight,
@@ -772,6 +822,7 @@ _TOOL_DISPATCH: dict = {
     "get_vital_summary":     _tool_get_vital_summary,
     "get_bmi_info":          _tool_get_bmi_info,
     "record_exercise":       _tool_record_exercise,
+    "record_blood_pressure": _tool_record_blood_pressure,
 }
 
 
