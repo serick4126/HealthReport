@@ -1037,7 +1037,16 @@ def get_stats(
         skip_map.setdefault(r["meal_date"], []).append(r["meal_type"])
 
     calories, protein, fat, carbs = [], [], [], []
+    # 運動消費カロリー集計
+    ex_totals = get_daily_exercise_totals(start.isoformat(), end.isoformat())
+
+    # BMR（最新体重・設定から1回計算し全日共通値として使用）
+    bmi_info = get_latest_bmi_info()
+    bmr_kcal = bmi_info["bmr_kcal"] if bmi_info else None
+
     wm, we, steps = [], [], []
+    exercise_calories: list = []
+    total_expenditure: list = []
     for d in dates:
         c = cal_map.get(d)
         calories.append(int(c["cal"]) if c and c["cal"] is not None else None)
@@ -1048,6 +1057,12 @@ def get_stats(
         wm.append(w.get("morning"))
         we.append(w.get("evening"))
         steps.append(s_map.get(d))
+        ex = ex_totals.get(d)  # None = 運動記録なし
+        exercise_calories.append(ex)
+        if bmr_kcal is not None:
+            total_expenditure.append(bmr_kcal + (ex or 0))
+        else:
+            total_expenditure.append(None)
 
     return {
         "period": total,
@@ -1061,6 +1076,9 @@ def get_stats(
         "fat": fat,
         "carbs": carbs,
         "meal_skips": skip_map,
+        "exercise_calories": exercise_calories,
+        "bmr_kcal": bmr_kcal,
+        "total_expenditure": total_expenditure,
     }
 
 
