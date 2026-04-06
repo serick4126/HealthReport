@@ -175,6 +175,15 @@ def init_db():
                 value      TEXT NOT NULL,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS blood_pressure_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_date    TEXT    NOT NULL,
+                time_of_day TEXT    NOT NULL CHECK(time_of_day IN ('morning', 'evening')),
+                systolic    INTEGER NOT NULL,
+                diastolic   INTEGER NOT NULL,
+                recorded_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            );
         """)
 
         conn.executescript("""
@@ -203,6 +212,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_vitals_logs_date ON vitals_logs(date);
             CREATE INDEX IF NOT EXISTS idx_vitals_logs_type ON vitals_logs(type);
             CREATE INDEX IF NOT EXISTS idx_exercise_date     ON exercise_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_bp_date           ON blood_pressure_logs(log_date);
         """)
 
         # 既存DBへのカラム追加マイグレーション
@@ -239,7 +249,8 @@ def init_db():
                 ("password_disabled", "false"),
                 ("user_gender", ""),
                 ("user_birthdate", ""),
-                ("stats_widgets", '[{"id":"summary","visible":true},{"id":"calories","visible":true},{"id":"weight","visible":true},{"id":"steps","visible":true},{"id":"pfc","visible":true},{"id":"sleep","visible":true},{"id":"heart_rate","visible":true},{"id":"spo2","visible":true}]'),
+                ("stats_widgets", '[{"id":"summary","visible":true},{"id":"calories","visible":true},{"id":"weight","visible":true},{"id":"steps","visible":true},{"id":"pfc","visible":true},{"id":"sleep","visible":true},{"id":"heart_rate","visible":true},{"id":"spo2","visible":true},{"id":"blood_pressure","visible":true}]'),
+                ("available_models", "[]"),
             ],
         )
 
@@ -644,6 +655,70 @@ def delete_steps_by_id(steps_id: int) -> bool:
     return cur.rowcount > 0
 
 
+# ── 血圧記録 ───────────────────────────────────────────────────────────────────
+
+def save_blood_pressure(log_date: str, time_of_day: str, systolic: int, diastolic: int) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO blood_pressure_logs (log_date, time_of_day, systolic, diastolic) VALUES (?, ?, ?, ?)",
+            (log_date, time_of_day, systolic, diastolic),
+        )
+        return cur.lastrowid
+
+
+def upsert_blood_pressure(log_date: str, time_of_day: str, systolic: int, diastolic: int) -> dict:
+    """血圧をUPSERT（同日同時間帯が存在すれば上書き）。戻り値: {"id": int, "updated": bool}"""
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM blood_pressure_logs WHERE log_date = ? AND time_of_day = ?",
+            (log_date, time_of_day),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE blood_pressure_logs SET systolic=?, diastolic=?, recorded_at=datetime('now','localtime') WHERE id=?",
+                (systolic, diastolic, existing["id"]),
+            )
+            return {"id": existing["id"], "updated": True}
+        else:
+            cur = conn.execute(
+                "INSERT INTO blood_pressure_logs (log_date, time_of_day, systolic, diastolic) VALUES (?, ?, ?, ?)",
+                (log_date, time_of_day, systolic, diastolic),
+            )
+            return {"id": cur.lastrowid, "updated": False}
+
+
+def update_blood_pressure_by_id(bp_id: int, systolic: int, diastolic: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE blood_pressure_logs SET systolic=?, diastolic=?, recorded_at=datetime('now','localtime') WHERE id=?",
+            (systolic, diastolic, bp_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_blood_pressure_by_id(bp_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM blood_pressure_logs WHERE id=?", (bp_id,))
+    return cur.rowcount > 0
+
+
+def get_blood_pressure_by_date(log_date: str) -> dict:
+    """指定日の血圧データを返す。戻り値: {"morning": {"id":..., "systolic":..., "diastolic":...}, "evening": {...}}"""
+    result: dict = {}
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, time_of_day, systolic, diastolic FROM blood_pressure_logs WHERE log_date = ?",
+            (log_date,),
+        ).fetchall()
+    for row in rows:
+        result[row["time_of_day"]] = {
+            "id": row["id"],
+            "systolic": row["systolic"],
+            "diastolic": row["diastolic"],
+        }
+    return result
+
+
 # ── 運動ログ ───────────────────────────────────────────────────────────────────
 
 def save_exercise(
@@ -951,10 +1026,15 @@ def get_history(
             "FROM exercise_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC, id ASC",
             (since, until),
         ).fetchall()
+        bp_rows = conn.execute(
+            "SELECT id, log_date, time_of_day, systolic, diastolic "
+            "FROM blood_pressure_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
+            (since, until),
+        ).fetchall()
 
     from collections import defaultdict
     days_map: dict = defaultdict(
-        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": [], "exercise": []}
+        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": [], "exercise": [], "blood_pressure": {}}
     )
     for m in meals:
         days_map[m["meal_date"]]["meals"].append(dict(m))
@@ -967,6 +1047,10 @@ def get_history(
         days_map[sk["meal_date"]]["skipped_meal_types"].append(sk["meal_type"])
     for ex in exercise_rows:
         days_map[ex["log_date"]]["exercise"].append(dict(ex))
+    for bp in bp_rows:
+        days_map[bp["log_date"]]["blood_pressure"][bp["time_of_day"]] = {
+            "id": bp["id"], "systolic": bp["systolic"], "diastolic": bp["diastolic"],
+        }
 
     result = []
     for date in sorted(days_map.keys(), reverse=True):
@@ -980,6 +1064,7 @@ def get_history(
             "steps_id": d["steps_id"],
             "skipped_meal_types": d["skipped_meal_types"],
             "exercise": d["exercise"],
+            "blood_pressure": d["blood_pressure"],
             "totals": {
                 "calories": int(sum(m.get("calories") or 0 for m in ml)),
                 "protein": round(sum(m.get("protein") or 0 for m in ml), 1),
@@ -1035,6 +1120,11 @@ def get_stats(
             "WHERE meal_date >= ? AND meal_date <= ?",
             (since, until),
         ).fetchall()
+        bp_stat_rows = conn.execute(
+            "SELECT log_date, systolic, diastolic FROM blood_pressure_logs "
+            "WHERE log_date >= ? AND log_date <= ?",
+            (since, until),
+        ).fetchall()
 
     cal_map = {r["meal_date"]: r for r in cal_rows}
     w_map: dict = {}
@@ -1044,6 +1134,9 @@ def get_stats(
     skip_map: dict = {}
     for r in skip_stat_rows:
         skip_map.setdefault(r["meal_date"], []).append(r["meal_type"])
+    bp_stat_map: dict = {}
+    for r in bp_stat_rows:
+        bp_stat_map.setdefault(r["log_date"], []).append((r["systolic"], r["diastolic"]))
 
     calories, protein, fat, carbs = [], [], [], []
     # 運動消費カロリー集計
@@ -1056,6 +1149,8 @@ def get_stats(
     wm, we, steps = [], [], []
     exercise_calories: list = []
     total_expenditure: list = []
+    bp_systolic: list = []
+    bp_diastolic: list = []
     for d in dates:
         c = cal_map.get(d)
         calories.append(int(c["cal"]) if c and c["cal"] is not None else None)
@@ -1072,6 +1167,13 @@ def get_stats(
             total_expenditure.append(bmr_kcal + (ex or 0))
         else:
             total_expenditure.append(None)
+        bp_entries = bp_stat_map.get(d, [])
+        if bp_entries:
+            bp_systolic.append(round(sum(e[0] for e in bp_entries) / len(bp_entries), 1))
+            bp_diastolic.append(round(sum(e[1] for e in bp_entries) / len(bp_entries), 1))
+        else:
+            bp_systolic.append(None)
+            bp_diastolic.append(None)
 
     return {
         "period": total,
@@ -1088,6 +1190,7 @@ def get_stats(
         "exercise_calories": exercise_calories,
         "bmr_kcal": bmr_kcal,
         "total_expenditure": total_expenditure,
+        "blood_pressure": {"systolic": bp_systolic, "diastolic": bp_diastolic},
     }
 
 
