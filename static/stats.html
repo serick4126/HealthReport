@@ -37,6 +37,32 @@
     /* モーダルサイズのみ上書き（stats固有: 小さめサイズ） */
     .modal-box { width: min(360px, 90vw); max-height: unset; }
     .modal-row { margin-bottom: 14px; }
+    /* 表示設定モーダル */
+    #widgetModal .modal-box { width: min(340px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+    .widget-modal-body { overflow-y: auto; flex: 1; padding: 4px 0; }
+    .widget-list { list-style: none; margin: 0; padding: 0; }
+    .widget-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+      cursor: grab; user-select: none;
+    }
+    .widget-item:last-child { border-bottom: none; }
+    .widget-item.drag-over { background: var(--accent-light, rgba(0,122,255,0.1)); }
+    .widget-drag-handle { color: var(--text-secondary); font-size: 16px; flex-shrink: 0; }
+    .widget-item-label { flex: 1; font-size: 14px; }
+    .widget-toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+    .widget-toggle input { opacity: 0; width: 0; height: 0; }
+    .widget-toggle-slider {
+      position: absolute; inset: 0; border-radius: 24px;
+      background: var(--border); transition: background 0.2s;
+    }
+    .widget-toggle-slider::before {
+      content: ''; position: absolute; width: 18px; height: 18px;
+      border-radius: 50%; background: #fff; left: 3px; top: 3px;
+      transition: transform 0.2s;
+    }
+    .widget-toggle input:checked + .widget-toggle-slider { background: var(--accent); }
+    .widget-toggle input:checked + .widget-toggle-slider::before { transform: translateX(20px); }
     /* モバイル: サマリー3カラム → 1カラム横並び */
     @media (max-width: 480px) {
       .summary-row { grid-template-columns: 1fr; gap: 6px; }
@@ -58,6 +84,7 @@
     <button class="period-btn active" onclick="setPeriod(7, this)">直近7日</button>
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
+    <button class="period-btn" id="widgetSettingsBtn" onclick="openWidgetSettings()">⚙️ 表示設定</button>
   </div>
   <div class="content" id="content">
     <div class="loading-spinner">読み込み中...</div>
@@ -82,16 +109,337 @@
     </div>
   </div>
 
+  <!-- 表示設定モーダル -->
+  <div class="modal-overlay" id="widgetModal" style="display:none" onclick="handleWidgetOverlayClick(event)">
+    <div class="modal-box">
+      <div class="modal-title">⚙️ 表示設定</div>
+      <div class="widget-modal-body">
+        <ul class="widget-list" id="widgetList"></ul>
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeWidgetSettings()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // datalabels プラグインを登録・デフォルト無効（必要なチャートのみ有効化）
     Chart.register(ChartDataLabels);
     Chart.defaults.plugins.datalabels.display = false;
 
     let charts = {};
-    const pageState = { dateRange: { start: null, end: null }, dates: [] };
+    const pageState = {
+      dateRange: { start: null, end: null },
+      dates: [],
+      currentDays: 7,
+      widgetConfig: [],      // [{id, visible}, ...] 表示順（保存済み＋マージ済み）
+      widgetRegistry: [],    // [{id, label, emoji, widget_type, canvas_id, wrap_style}, ...]
+      modalWidgetConfig: [], // モーダル編集中の一時状態（完了/キャンセルで確定/破棄）
+    };
+
+    // ── ウィジェットヘルパー ──────────────────────────────────────────────────
+
+    function mergeWidgetConfig(saved, registry) {
+      var registryIds = registry.map(function(r) { return r.id; });
+      var merged = saved.filter(function(w) { return registryIds.indexOf(w.id) !== -1; });
+      var savedIds = merged.map(function(w) { return w.id; });
+      registry.forEach(function(r) {
+        if (savedIds.indexOf(r.id) === -1) {
+          merged.push({ id: r.id, visible: true });
+        }
+      });
+      return merged;
+    }
+
+    function isWidgetVisible(id) {
+      var w = pageState.widgetConfig.find(function(w) { return w.id === id; });
+      return w ? w.visible : true;
+    }
+
+    function _canvasId(widgetId) {
+      var meta = pageState.widgetRegistry.find(function(r) { return r.id === widgetId; });
+      return meta ? meta.canvas_id : null;
+    }
+
+    // ── サマリーHTML生成 ──────────────────────────────────────────────────────
+
+    function buildSummaryHtml(avgCal, latestWeight, avgSteps) {
+      return '<div class="summary-row">' +
+        '<div class="summary-card"><div class="summary-val">' + avgCal + '</div>' +
+        '<div class="summary-label">平均カロリー (kcal)</div></div>' +
+        '<div class="summary-card"><div class="summary-val">' + (latestWeight != null ? latestWeight : '—') + '</div>' +
+        '<div class="summary-label">最新体重 (kg)</div></div>' +
+        '<div class="summary-card"><div class="summary-val">' + (avgSteps > 0 ? avgSteps.toLocaleString() : '—') + '</div>' +
+        '<div class="summary-label">平均歩数</div></div>' +
+        '</div>';
+    }
+
+    // ── チャート描画ディスパッチテーブル ──────────────────────────────────────
+    // 新ウィジェット追加時はここに1エントリ追加するだけ。render()本体は変更不要。
+
+    var CHART_DRAW_FUNCTIONS = {
+
+      calories: function(data, labels, defaults, extras) {
+        var SKIP_LABELS_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食' };
+        var calPointColors = data.dates.map(function(d, i) {
+          var cal = data.calories[i];
+          var skips = extras.mealSkips[d] || [];
+          if (cal === null && skips.length > 0) return '#c7c7cc';
+          return '#007aff';
+        });
+        var calDatasets = [
+          {
+            label: '摂取カロリー',
+            data: data.calories,
+            borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+            tension: 0.3, fill: true, spanGaps: true,
+            pointRadius: 4, pointBackgroundColor: calPointColors,
+          },
+          {
+            label: '目標 ' + extras.goal + 'kcal',
+            data: Array(labels.length).fill(extras.goal),
+            borderColor: '#ff3b30', borderDash: [6,3],
+            borderWidth: 1.5, pointRadius: 0, fill: false,
+          }
+        ];
+        if (extras.hasExpenditure) {
+          calDatasets.push({
+            label: '消費カロリー',
+            data: extras.totalExp,
+            borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.08)',
+            tension: 0.3, fill: false, spanGaps: true,
+            pointRadius: 3, pointBackgroundColor: '#ff9500',
+          });
+        }
+        charts.cal = new Chart(document.getElementById(_canvasId('calories')), {
+          type: 'line',
+          data: { labels: labels, datasets: calDatasets },
+          options: {
+            ...defaults,
+            plugins: {
+              ...defaults.plugins,
+              tooltip: {
+                callbacks: {
+                  afterBody: function(tooltipItems) {
+                    if (!tooltipItems.length) return [];
+                    var idx = tooltipItems[0].dataIndex;
+                    var d = data.dates[idx];
+                    var lines = [];
+                    var skips = extras.mealSkips[d] || [];
+                    if (skips.length) {
+                      lines.push('食べなかった: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・'));
+                    }
+                    if (extras.hasExpenditure) {
+                      var intakeVal = data.calories[idx];
+                      var expVal = extras.totalExp[idx];
+                      if (expVal != null) {
+                        var exVal = extras.exCal[idx] || 0;
+                        var bmrPart = extras.bmrKcal != null ? extras.bmrKcal : (expVal - exVal);
+                        lines.push('');
+                        if (intakeVal != null) {
+                          lines.push('摂取: ' + intakeVal + ' kcal');
+                        }
+                        lines.push('消費: ' + expVal + ' kcal（BMR ' + bmrPart + ' + 運動 ' + exVal + '）');
+                        if (intakeVal != null) {
+                          var balance = intakeVal - expVal;
+                          var sign = balance >= 0 ? '+' : '';
+                          lines.push('収支: ' + sign + balance + ' kcal');
+                        }
+                      }
+                    }
+                    return lines;
+                  }
+                }
+              }
+            },
+            scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } }
+          }
+        });
+      },
+
+      weight: function(data, labels, defaults, extras) {
+        var allW = (data.weights_morning || []).concat(data.weights_evening || []).filter(function(v) { return v != null; });
+        var wMin = allW.length ? Math.floor(Math.min.apply(null, allW) - 1) : undefined;
+        var wMax = allW.length ? Math.ceil(Math.max.apply(null, allW) + 1) : undefined;
+        var chartTextColor = extras.chartTextColor;
+        var chartGridColor = extras.chartGridColor;
+        var xMaxTicks = extras.xMaxTicks;
+        var wChartData, wChartOptions;
+
+        if (extras.isLong) {
+          wChartData = {
+            labels: labels,
+            datasets: [
+              {
+                label: '朝', data: data.weights_morning || [],
+                borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,0.1)',
+                tension: 0.3, fill: false, spanGaps: true,
+                pointRadius: 3, pointBackgroundColor: '#34c759',
+              },
+              {
+                label: '夜', data: data.weights_evening || [],
+                borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.1)',
+                tension: 0.3, fill: false, spanGaps: true,
+                pointRadius: 3, pointBackgroundColor: '#ff9500',
+              }
+            ]
+          };
+          wChartOptions = {
+            ...defaults,
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxTicksLimit: xMaxTicks, maxRotation: 45, color: chartTextColor }, grid: { color: chartGridColor } },
+              y: { ticks: { font: { size: 11 }, color: chartTextColor }, grid: { color: chartGridColor }, min: wMin, max: wMax }
+            }
+          };
+        } else {
+          var wLabels = [], wData = [], wPointColors = [];
+          for (var i = 0; i < data.dates.length; i++) {
+            var d = shortDate(data.dates[i]);
+            var wm = (data.weights_morning || [])[i] ?? null;
+            var we = (data.weights_evening || [])[i] ?? null;
+            wLabels.push(d + '朝'); wData.push(wm); wPointColors.push('#34c759');
+            wLabels.push(d + '夜'); wData.push(we); wPointColors.push('#ff9500');
+          }
+          wChartData = {
+            labels: wLabels,
+            datasets: [{
+              label: '体重', data: wData,
+              borderColor: '#8e8e93',
+              tension: 0.3, fill: false, spanGaps: true,
+              pointRadius: 5, pointBackgroundColor: wPointColors, pointBorderColor: wPointColors,
+            }]
+          };
+          wChartOptions = {
+            ...defaults,
+            plugins: {
+              ...defaults.plugins,
+              legend: {
+                ...defaults.plugins.legend,
+                labels: {
+                  ...defaults.plugins.legend.labels,
+                  generateLabels: () => [
+                    { text: '朝', fillStyle: '#34c759', strokeStyle: '#34c759', lineWidth: 2, fontColor: chartTextColor },
+                    { text: '夜', fillStyle: '#ff9500', strokeStyle: '#ff9500', lineWidth: 2, fontColor: chartTextColor },
+                  ]
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxRotation: 45, color: chartTextColor }, grid: { color: chartGridColor } },
+              y: { ticks: { font: { size: 11 }, color: chartTextColor }, grid: { color: chartGridColor }, min: wMin, max: wMax }
+            }
+          };
+        }
+        charts.weight = new Chart(document.getElementById(_canvasId('weight')), {
+          type: 'line',
+          data: wChartData,
+          options: wChartOptions,
+        });
+      },
+
+      steps: function(data, labels, defaults, extras) {
+        charts.steps = new Chart(document.getElementById(_canvasId('steps')), {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '歩数', data: data.steps,
+              backgroundColor: 'rgba(90,200,250,0.7)', borderColor: '#5ac8fa', borderWidth: 1,
+            }]
+          },
+          options: {
+            ...defaults,
+            layout: { padding: { top: 20 } },
+            plugins: {
+              ...defaults.plugins,
+              datalabels: {
+                display: function(ctx) {
+                  var v = ctx.dataset.data[ctx.dataIndex];
+                  if (v == null) return false;
+                  var ca = ctx.chart.chartArea;
+                  if (!ca) return false;
+                  return (ca.width / ctx.chart.data.labels.length) >= 24;
+                },
+                anchor: 'end',
+                align: 'top',
+                color: extras.chartTextColor,
+                font: { size: 10, weight: '600' },
+                formatter: function(v) { return v != null ? v.toLocaleString() : ''; },
+              }
+            },
+            scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: true } }
+          }
+        });
+      },
+
+      pfc: function(data, labels, defaults, extras) {
+        charts.pfc = new Chart(document.getElementById(_canvasId('pfc')), {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [
+              { label: 'タンパク質(g)', data: data.protein, backgroundColor: 'rgba(52,199,89,0.8)', stack: 'pfc' },
+              { label: '脂質(g)',       data: data.fat,     backgroundColor: 'rgba(255,149,0,0.8)',  stack: 'pfc' },
+              { label: '炭水化物(g)',   data: data.carbs,   backgroundColor: 'rgba(0,122,255,0.8)',  stack: 'pfc' },
+            ]
+          },
+          options: {
+            ...defaults,
+            plugins: {
+              ...defaults.plugins,
+              datalabels: {
+                display: function(ctx) {
+                  var v = ctx.dataset.data[ctx.dataIndex];
+                  if (v == null || v === 0) return false;
+                  if (ctx.chart.data.labels.length > 30) return false;
+                  var ca = ctx.chart.chartArea;
+                  if (!ca) return false;
+                  if ((ca.width / ctx.chart.data.labels.length) < 28) return false;
+                  var yScale = ctx.chart.scales.y;
+                  if (!yScale) return false;
+                  var pixPerUnit = ca.height / (yScale.max - yScale.min);
+                  return (v * pixPerUnit) >= 20;
+                },
+                anchor: 'center',
+                align: 'center',
+                color: '#fff',
+                font: { size: 10, weight: '600' },
+                textAlign: 'center',
+                formatter: function(v, ctx) {
+                  if (v == null || v === 0) return '';
+                  var i = ctx.dataIndex;
+                  var datasets = ctx.chart.data.datasets;
+                  var total = datasets.reduce(function(s, ds) { return s + (ds.data[i] || 0); }, 0);
+                  if (total === 0) return '';
+                  var pct = Math.round(v / total * 100);
+                  return v + 'g\n(' + pct + '%)';
+                },
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var v = ctx.parsed.y;
+                    if (v == null) return ctx.dataset.label + ': —';
+                    var i = ctx.dataIndex;
+                    var datasets = ctx.chart.data.datasets;
+                    var total = datasets.reduce(function(s, ds) { return s + (ds.data[i] || 0); }, 0);
+                    var pct = total > 0 ? Math.round(v / total * 100) : 0;
+                    return ctx.dataset.label + ': ' + v + 'g (' + pct + '%)';
+                  }
+                }
+              }
+            },
+            scales: { ...defaults.scales, x: { ...defaults.scales.x, stacked: true }, y: { ...defaults.scales.y, stacked: true, beginAtZero: true } }
+          }
+        });
+      },
+
+    };
+
+    // ── メイン処理 ────────────────────────────────────────────────────────────
 
     function destroyCharts() {
-      Object.values(charts).forEach(c => c.destroy());
+      Object.values(charts).forEach(function(c) { c.destroy(); });
       charts = {};
     }
 
@@ -102,9 +450,40 @@
       if (start && end) {
         pageState.dateRange = { start, end };
       } else {
+        pageState.currentDays = days;
         const s = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
         pageState.dateRange = { start: s, end: today };
       }
+
+      // レジストリ未取得の場合のみ取得（ページ内で1回）
+      if (!pageState.widgetRegistry.length) {
+        try {
+          const [settRes, regRes] = await Promise.all([
+            fetch('/api/settings'),
+            fetch('/api/stats/widgets'),
+          ]);
+          if (settRes.status === 401 || regRes.status === 401) { location.href = '/'; return; }
+          if (!settRes.ok) throw settRes;
+          if (!regRes.ok) throw regRes;
+          const sett = await settRes.json();
+          const reg = await regRes.json();
+          pageState.widgetRegistry = reg.widgets || [];
+          var savedRaw = sett.stats_widgets || '[]';
+          var savedConfig = [];
+          try {
+            savedConfig = JSON.parse(savedRaw);
+            if (!Array.isArray(savedConfig)) savedConfig = [];
+          } catch (e) {
+            console.error('stats_widgets parse error, using default:', e);
+            savedConfig = [];
+          }
+          pageState.widgetConfig = mergeWidgetConfig(savedConfig, pageState.widgetRegistry);
+        } catch(e) {
+          handleFetchError(document.getElementById('content'), e);
+          return;
+        }
+      }
+
       const url = start && end
         ? `/api/stats?start=${start}&end=${end}`
         : `/api/stats?days=${days}`;
@@ -135,69 +514,44 @@
       const hasExpenditure = totalExp.some(function(v) { return v != null; });
       pageState.dates = data.dates;
 
-      // サマリーカード
-      const validCal = data.calories.filter(v => v != null);
-      const avgCal = validCal.length ? Math.round(validCal.reduce((a,b) => a+b, 0) / validCal.length) : 0;
-      const allWeights = [...(data.weights_morning || []), ...(data.weights_evening || [])].filter(v => v != null);
+      // サマリー計算
+      const validCal = data.calories.filter(function(v) { return v != null; });
+      const avgCal = validCal.length ? Math.round(validCal.reduce(function(a,b) { return a+b; }, 0) / validCal.length) : 0;
+      const allWeights = (data.weights_morning || []).concat(data.weights_evening || []).filter(function(v) { return v != null; });
       const latestWeight = allWeights.length ? allWeights[allWeights.length - 1] : null;
-      const validSteps = (data.steps || []).filter(v => v != null);
-      const avgSteps = validSteps.length ? Math.round(validSteps.reduce((a,b) => a+b, 0) / validSteps.length) : 0;
+      const validSteps = (data.steps || []).filter(function(v) { return v != null; });
+      const avgSteps = validSteps.length ? Math.round(validSteps.reduce(function(a,b) { return a+b; }, 0) / validSteps.length) : 0;
 
-      document.getElementById('content').innerHTML = `
-        <div class="summary-row">
-          <div class="summary-card">
-            <div class="summary-val">${avgCal}</div>
-            <div class="summary-label">平均カロリー (kcal)</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-val">${latestWeight != null ? latestWeight : '—'}</div>
-            <div class="summary-label">最新体重 (kg)</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-val">${avgSteps > 0 ? avgSteps.toLocaleString() : '—'}</div>
-            <div class="summary-label">平均歩数</div>
-          </div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">🔥 カロリー推移</div>
-          <div class="chart-wrap"><canvas id="chartCalories" role="img" aria-label="カロリー推移グラフ"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">⚖️ 体重推移</div>
-          <div class="chart-wrap"><canvas id="chartWeight" role="img" aria-label="体重推移グラフ"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">👟 歩数推移</div>
-          <div class="chart-wrap"><canvas id="chartSteps" role="img" aria-label="歩数推移グラフ"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">🥩 PFCバランス</div>
-          <div class="chart-wrap"><canvas id="chartPFC" role="img" aria-label="PFCバランスグラフ"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">🛏️ 睡眠ログ</div>
-          <div class="chart-wrap" style="height:180px"><canvas id="chartSleep" role="img" aria-label="睡眠ロググラフ"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">💓 脈拍推移</div>
-          <div class="chart-wrap"><canvas id="chartHeartRate" role="img" aria-label="脈拍推移グラフ"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">🫁 SpO2推移</div>
-          <div class="chart-wrap"><canvas id="chartSpo2" role="img" aria-label="SpO2推移グラフ"></canvas></div>
-        </div>
-      `;
+      // ── HTML生成 ─────────────────────────────────────────────────────────
+      // ウィジェットIDのif-else分岐なし。widgetRegistryのmetaで完全制御。
+      var html = '';
+      pageState.widgetConfig.forEach(function(w) {
+        if (!w.visible) return;
+        var meta = pageState.widgetRegistry.find(function(r) { return r.id === w.id; });
+        if (!meta) return;
+        if (meta.widget_type === 'summary') {
+          html += buildSummaryHtml(avgCal, latestWeight, avgSteps);
+        } else if (meta.widget_type === 'chart') {
+          var wrapStyle = meta.wrap_style ? ' style="' + meta.wrap_style + '"' : '';
+          html += '<div class="chart-card">' +
+                  '<div class="chart-title">' + meta.emoji + ' ' + meta.label + '</div>' +
+                  '<div class="chart-wrap"' + wrapStyle + '>' +
+                  '<canvas id="' + meta.canvas_id + '" role="img" aria-label="' + meta.label + 'グラフ"></canvas>' +
+                  '</div></div>';
+        }
+      });
+      document.getElementById('content').innerHTML = html;
 
+      // ── チャート描画 ──────────────────────────────────────────────────────
       const period = data.period || labels.length;
       const isLong = period > 60;
       const xMaxTicks = period <= 14 ? period : period <= 31 ? 10 : period <= 90 ? 12 : 13;
-
-      // CSS変数からダークモード対応の色を取得
       const rootStyle = getComputedStyle(document.documentElement);
       const chartTextColor = rootStyle.getPropertyValue('--text-secondary').trim() || '#8e8e93';
       const chartGridColor = rootStyle.getPropertyValue('--border').trim() || '#e5e5ea';
 
-      const defaults = { responsive: true, maintainAspectRatio: false,
+      const defaults = {
+        responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'nearest', intersect: false, axis: 'x' },
         plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12, color: chartTextColor } } },
         scales: {
@@ -205,260 +559,13 @@
           y: { ticks: { font: { size: 11 }, color: chartTextColor }, grid: { color: chartGridColor } }
         }
       };
+      const extras = { isLong, mealSkips, hasExpenditure, exCal, bmrKcal, totalExp, goal, xMaxTicks, chartTextColor, chartGridColor, period };
 
-      // カロリー推移（スキップあり・カロリーなし日はグレー点で可視化）
-      const SKIP_LABELS_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食' };
-      const calPointColors = data.dates.map(function(d, i) {
-        const cal = data.calories[i];
-        const skips = mealSkips[d] || [];
-        if (cal === null && skips.length > 0) return '#c7c7cc';  // スキップあり・食事記録なし
-        return '#007aff';
-      });
-      var calDatasets = [
-        {
-          label: '摂取カロリー',
-          data: data.calories,
-          borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
-          tension: 0.3, fill: true, spanGaps: true,
-          pointRadius: 4, pointBackgroundColor: calPointColors,
-        },
-        {
-          label: '目標 ' + goal + 'kcal',
-          data: Array(labels.length).fill(goal),
-          borderColor: '#ff3b30', borderDash: [6,3],
-          borderWidth: 1.5, pointRadius: 0, fill: false,
-        }
-      ];
-      if (hasExpenditure) {
-        calDatasets.push({
-          label: '消費カロリー',
-          data: totalExp,
-          borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.08)',
-          tension: 0.3, fill: false, spanGaps: true,
-          pointRadius: 3, pointBackgroundColor: '#ff9500',
-        });
-      }
-      charts.cal = new Chart(document.getElementById('chartCalories'), {
-        type: 'line',
-        data: { labels, datasets: calDatasets },
-        options: {
-          ...defaults,
-          plugins: {
-            ...defaults.plugins,
-            tooltip: {
-              callbacks: {
-                afterBody: function(tooltipItems) {
-                  if (!tooltipItems.length) return [];
-                  var idx = tooltipItems[0].dataIndex;
-                  var d = data.dates[idx];
-                  var lines = [];
-                  var skips = mealSkips[d] || [];
-                  if (skips.length) {
-                    lines.push('食べなかった: ' + skips.map(function(mt) { return SKIP_LABELS_JA[mt] || mt; }).join('・'));
-                  }
-                  if (hasExpenditure) {
-                    var intakeVal = data.calories[idx];
-                    var expVal = totalExp[idx];
-                    if (expVal != null) {
-                      var exVal = exCal[idx] || 0;
-                      var bmrPart = bmrKcal != null ? bmrKcal : (expVal - exVal);
-                      lines.push('');
-                      if (intakeVal != null) {
-                        lines.push('摂取: ' + intakeVal + ' kcal');
-                      }
-                      lines.push('消費: ' + expVal + ' kcal（BMR ' + bmrPart + ' + 運動 ' + exVal + '）');
-                      if (intakeVal != null) {
-                        var balance = intakeVal - expVal;
-                        var sign = balance >= 0 ? '+' : '';
-                        lines.push('収支: ' + sign + balance + ' kcal');
-                      }
-                    }
-                  }
-                  return lines;
-                }
-              }
-            }
-          },
-          scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } }
-        }
-      });
-
-      // 体重推移
-      const allW_check = [...(data.weights_morning||[]), ...(data.weights_evening||[])].filter(v => v != null);
-      const wMin = allW_check.length ? Math.floor(Math.min(...allW_check) - 1) : undefined;
-      const wMax = allW_check.length ? Math.ceil(Math.max(...allW_check) + 1) : undefined;
-      let wChartData, wChartOptions;
-
-      if (isLong) {
-        // 長期間：日次で朝夜の平均または利用可能な値を1点/日表示（2データセット）
-        const wmData = data.weights_morning || [];
-        const weData = data.weights_evening || [];
-        wChartData = {
-          labels,
-          datasets: [
-            {
-              label: '朝', data: wmData,
-              borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,0.1)',
-              tension: 0.3, fill: false, spanGaps: true,
-              pointRadius: 3, pointBackgroundColor: '#34c759',
-            },
-            {
-              label: '夜', data: weData,
-              borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.1)',
-              tension: 0.3, fill: false, spanGaps: true,
-              pointRadius: 3, pointBackgroundColor: '#ff9500',
-            }
-          ]
-        };
-        wChartOptions = {
-          ...defaults,
-          scales: {
-            x: { ticks: { font: { size: 10 }, maxTicksLimit: xMaxTicks, maxRotation: 45, color: chartTextColor }, grid: { color: chartGridColor } },
-            y: { ticks: { font: { size: 11 }, color: chartTextColor }, grid: { color: chartGridColor }, min: wMin, max: wMax }
-          }
-        };
-      } else {
-        // 短期間：朝→夜→朝→夜 の時系列1本線
-        const wLabels = [], wData = [], wPointColors = [];
-        for (let i = 0; i < data.dates.length; i++) {
-          const d = shortDate(data.dates[i]);
-          const wm = (data.weights_morning||[])[i] ?? null;
-          const we = (data.weights_evening||[])[i] ?? null;
-          wLabels.push(d + '朝'); wData.push(wm); wPointColors.push('#34c759');
-          wLabels.push(d + '夜'); wData.push(we); wPointColors.push('#ff9500');
-        }
-        wChartData = {
-          labels: wLabels,
-          datasets: [{
-            label: '体重', data: wData,
-            borderColor: '#8e8e93',
-            tension: 0.3, fill: false, spanGaps: true,
-            pointRadius: 5, pointBackgroundColor: wPointColors, pointBorderColor: wPointColors,
-          }]
-        };
-        wChartOptions = {
-          ...defaults,
-          plugins: {
-            ...defaults.plugins,
-            legend: {
-              ...defaults.plugins.legend,
-              labels: {
-                ...defaults.plugins.legend.labels,
-                generateLabels: () => [
-                  { text: '朝', fillStyle: '#34c759', strokeStyle: '#34c759', lineWidth: 2, fontColor: chartTextColor },
-                  { text: '夜', fillStyle: '#ff9500', strokeStyle: '#ff9500', lineWidth: 2, fontColor: chartTextColor },
-                ]
-              }
-            }
-          },
-          scales: {
-            x: { ticks: { font: { size: 10 }, maxRotation: 45, color: chartTextColor }, grid: { color: chartGridColor } },
-            y: { ticks: { font: { size: 11 }, color: chartTextColor }, grid: { color: chartGridColor }, min: wMin, max: wMax }
-          }
-        };
-      }
-
-      charts.weight = new Chart(document.getElementById('chartWeight'), {
-        type: 'line',
-        data: wChartData,
-        options: wChartOptions,
-      });
-
-      // 歩数推移
-      charts.steps = new Chart(document.getElementById('chartSteps'), {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            label: '歩数', data: data.steps,
-            backgroundColor: 'rgba(90,200,250,0.7)', borderColor: '#5ac8fa', borderWidth: 1,
-          }]
-        },
-        options: {
-          ...defaults,
-          layout: { padding: { top: 20 } },
-          plugins: {
-            ...defaults.plugins,
-            datalabels: {
-              display: function(ctx) {
-                var v = ctx.dataset.data[ctx.dataIndex];
-                if (v == null) return false;
-                var ca = ctx.chart.chartArea;
-                if (!ca) return false;
-                return (ca.width / ctx.chart.data.labels.length) >= 24;
-              },
-              anchor: 'end',
-              align: 'top',
-              color: chartTextColor,
-              font: { size: 10, weight: '600' },
-              formatter: function(v) { return v != null ? v.toLocaleString() : ''; },
-            }
-          },
-          scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: true } }
-        }
-      });
-
-      // PFCバランス
-      charts.pfc = new Chart(document.getElementById('chartPFC'), {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            { label: 'タンパク質(g)', data: data.protein, backgroundColor: 'rgba(52,199,89,0.8)', stack: 'pfc' },
-            { label: '脂質(g)',       data: data.fat,     backgroundColor: 'rgba(255,149,0,0.8)',  stack: 'pfc' },
-            { label: '炭水化物(g)',   data: data.carbs,   backgroundColor: 'rgba(0,122,255,0.8)',  stack: 'pfc' },
-          ]
-        },
-        options: {
-          ...defaults,
-          plugins: {
-            ...defaults.plugins,
-            datalabels: {
-              display: function(ctx) {
-                var v = ctx.dataset.data[ctx.dataIndex];
-                if (v == null || v === 0) return false;
-                // 30日超はラベル非表示（ツールチップのみ）
-                if (ctx.chart.data.labels.length > 30) return false;
-                var ca = ctx.chart.chartArea;
-                if (!ca) return false;
-                if ((ca.width / ctx.chart.data.labels.length) < 28) return false;
-                // y軸スケールとデータ値から最終セグメント高さを算出（アニメーション非依存）
-                var yScale = ctx.chart.scales.y;
-                if (!yScale) return false;
-                var pixPerUnit = ca.height / (yScale.max - yScale.min);
-                return (v * pixPerUnit) >= 20;
-              },
-              anchor: 'center',
-              align: 'center',
-              color: '#fff',
-              font: { size: 10, weight: '600' },
-              textAlign: 'center',
-              formatter: function(v, ctx) {
-                if (v == null || v === 0) return '';
-                var i = ctx.dataIndex;
-                var datasets = ctx.chart.data.datasets;
-                var total = datasets.reduce(function(s, ds) { return s + (ds.data[i] || 0); }, 0);
-                if (total === 0) return '';
-                var pct = Math.round(v / total * 100);
-                return v + 'g\n(' + pct + '%)';
-              },
-            },
-            tooltip: {
-              callbacks: {
-                label: function(ctx) {
-                  var v = ctx.parsed.y;
-                  if (v == null) return ctx.dataset.label + ': —';
-                  var i = ctx.dataIndex;
-                  var datasets = ctx.chart.data.datasets;
-                  var total = datasets.reduce(function(s, ds) { return s + (ds.data[i] || 0); }, 0);
-                  var pct = total > 0 ? Math.round(v / total * 100) : 0;
-                  return ctx.dataset.label + ': ' + v + 'g (' + pct + '%)';
-                }
-              }
-            }
-          },
-          scales: { ...defaults.scales, x: { ...defaults.scales.x, stacked: true }, y: { ...defaults.scales.y, stacked: true, beginAtZero: true } }
-        }
+      // ディスパッチテーブルで分岐なし
+      pageState.widgetConfig.forEach(function(w) {
+        if (!w.visible) return;
+        var drawFn = CHART_DRAW_FUNCTIONS[w.id];
+        if (drawFn) drawFn(data, labels, defaults, extras);
       });
     }
 
@@ -498,21 +605,37 @@
     }
 
     async function loadVitalCharts() {
-      const { start, end } = pageState.dateRange;
-      const dates = pageState.dates;
+      var start = pageState.dateRange.start;
+      var end = pageState.dateRange.end;
+      var dates = pageState.dates;
       if (!dates.length || !start || !end) return;
-      const [sleepRes, heartRes, spo2Res] = await Promise.all([
-        fetch('/api/sleep/summary?start_date=' + start + '&end_date=' + end),
-        fetch('/api/vitals/summary?start_date=' + start + '&end_date=' + end + '&type=heart_rate'),
-        fetch('/api/vitals/summary?start_date=' + start + '&end_date=' + end + '&type=spo2'),
-      ]);
-      if (!sleepRes.ok || !heartRes.ok || !spo2Res.ok) return;
-      const [sleepData, heartData, spo2Data] = await Promise.all([
-        sleepRes.json(), heartRes.json(), spo2Res.json()
-      ]);
-      renderSleepChart(sleepData.logs || [], dates);
-      renderHeartRateChart(heartData.logs || [], dates);
-      renderSpo2Chart(spo2Data.logs || [], dates);
+
+      var needSleep = isWidgetVisible('sleep');
+      var needHeart = isWidgetVisible('heart_rate');
+      var needSpo2  = isWidgetVisible('spo2');
+      if (!needSleep && !needHeart && !needSpo2) return;
+
+      var promises = [];
+      if (needSleep) promises.push(fetch('/api/sleep/summary?start_date=' + start + '&end_date=' + end));
+      else           promises.push(Promise.resolve(null));
+      if (needHeart) promises.push(fetch('/api/vitals/summary?start_date=' + start + '&end_date=' + end + '&type=heart_rate'));
+      else           promises.push(Promise.resolve(null));
+      if (needSpo2)  promises.push(fetch('/api/vitals/summary?start_date=' + start + '&end_date=' + end + '&type=spo2'));
+      else           promises.push(Promise.resolve(null));
+
+      const [sleepRes, heartRes, spo2Res] = await Promise.all(promises);
+      if (needSleep && sleepRes && sleepRes.ok) {
+        var sleepData = await sleepRes.json();
+        renderSleepChart(sleepData.logs || [], dates);
+      }
+      if (needHeart && heartRes && heartRes.ok) {
+        var heartData = await heartRes.json();
+        renderHeartRateChart(heartData.logs || [], dates);
+      }
+      if (needSpo2 && spo2Res && spo2Res.ok) {
+        var spo2Data = await spo2Res.json();
+        renderSpo2Chart(spo2Data.logs || [], dates);
+      }
     }
 
     function _getChartColors() {
@@ -681,6 +804,134 @@
             y: { min: 88, max: 101, ticks: { font: { size: 10 }, color: c.text }, grid: { color: c.grid } }
           }
         }
+      });
+    }
+
+    // ---- 表示設定モーダル ----
+
+    function openWidgetSettings() {
+      // モーダル開く前にpageState.widgetConfigのコピーをmodalWidgetConfigに設定
+      pageState.modalWidgetConfig = pageState.widgetConfig.map(function(w) {
+        return { id: w.id, visible: w.visible };
+      });
+      renderWidgetList();
+      document.getElementById('widgetModal').style.display = 'flex';
+    }
+
+    function closeWidgetSettings() {
+      document.getElementById('widgetModal').style.display = 'none';
+    }
+
+    function handleWidgetOverlayClick(event) {
+      if (event.target === document.getElementById('widgetModal')) {
+        closeWidgetSettings();
+      }
+    }
+
+    function renderWidgetList() {
+      var ul = document.getElementById('widgetList');
+      ul.innerHTML = '';
+      pageState.modalWidgetConfig.forEach(function(w) {
+        var meta = pageState.widgetRegistry.find(function(r) { return r.id === w.id; });
+        if (!meta) return;
+        var li = document.createElement('li');
+        li.className = 'widget-item';
+        li.draggable = true;
+        li.dataset.id = w.id;
+        var checkId = 'wtoggle_' + w.id;
+        li.innerHTML =
+          '<span class="widget-drag-handle" aria-hidden="true">☰</span>' +
+          '<span class="widget-item-label">' + meta.emoji + ' ' + meta.label + '</span>' +
+          '<label class="widget-toggle" aria-label="' + meta.label + 'の表示切替">' +
+          '<input type="checkbox" id="' + checkId + '"' + (w.visible ? ' checked' : '') + ' data-id="' + w.id + '">' +
+          '<span class="widget-toggle-slider"></span>' +
+          '</label>';
+        ul.appendChild(li);
+      });
+      attachDragEvents(ul);
+      // トグル変更時に即時保存
+      ul.querySelectorAll('.widget-toggle input').forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          var wid = chk.dataset.id;
+          var entry = pageState.modalWidgetConfig.find(function(w) { return w.id === wid; });
+          if (entry) { entry.visible = chk.checked; }
+          saveWidgetSettings();
+        });
+      });
+    }
+
+    var _dragSrcEl = null;
+
+    function attachDragEvents(ul) {
+      ul.querySelectorAll('.widget-item').forEach(function(item) {
+        item.addEventListener('dragstart', function(e) {
+          _dragSrcEl = item;
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        item.addEventListener('dragover', function(e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
+          item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', function() {
+          item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', function(e) {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          if (_dragSrcEl && _dragSrcEl !== item) {
+            // DOM上で入れ替え
+            var items = Array.from(ul.querySelectorAll('.widget-item'));
+            var srcIdx = items.indexOf(_dragSrcEl);
+            var tgtIdx = items.indexOf(item);
+            if (srcIdx < tgtIdx) {
+              ul.insertBefore(_dragSrcEl, item.nextSibling);
+            } else {
+              ul.insertBefore(_dragSrcEl, item);
+            }
+            syncModalConfigFromDom(ul);
+            saveWidgetSettings();
+          }
+        });
+        item.addEventListener('dragend', function() {
+          ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
+          _dragSrcEl = null;
+        });
+      });
+    }
+
+    function syncModalConfigFromDom(ul) {
+      var newOrder = [];
+      ul.querySelectorAll('.widget-item').forEach(function(li) {
+        var wid = li.dataset.id;
+        var entry = pageState.modalWidgetConfig.find(function(w) { return w.id === wid; });
+        if (entry) { newOrder.push({ id: entry.id, visible: entry.visible }); }
+      });
+      pageState.modalWidgetConfig = newOrder;
+    }
+
+    function saveWidgetSettings() {
+      var config = pageState.modalWidgetConfig.map(function(w) {
+        return { id: w.id, visible: w.visible };
+      });
+      var json = JSON.stringify(config);
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { stats_widgets: json } })
+      }).then(function(res) {
+        if (!res.ok) {
+          console.error('表示設定の保存に失敗しました: HTTP ' + res.status);
+          return;
+        }
+        // 保存成功 → widgetConfig更新して再描画
+        pageState.widgetConfig = pageState.modalWidgetConfig.map(function(w) {
+          return { id: w.id, visible: w.visible };
+        });
+        render();
+      }).catch(function(e) {
+        console.error('表示設定の保存に失敗しました:', e);
       });
     }
 
