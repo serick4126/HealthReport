@@ -267,6 +267,28 @@
     </div>
   </div>
 
+  <!-- ── 運動ログ編集モーダル ── -->
+  <div class="modal-overlay" id="exerciseModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">🏃 運動を記録</div>
+      <input type="hidden" id="editExerciseId" />
+      <input type="hidden" id="editExerciseDate" />
+      <div class="modal-row">
+        <label>消費カロリー (kcal) <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="editExerciseCal" min="0" max="9999" step="1" placeholder="例: 300" />
+        <div class="field-error" id="err-exercise-cal">0〜9999の整数を入力してください</div>
+      </div>
+      <div class="modal-row">
+        <label>内容（任意）</label>
+        <input type="text" id="editExerciseDesc" maxlength="500" placeholder="例: ランニング30分" />
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeExerciseModal()">キャンセル</button>
+        <button class="primary" onclick="saveExercise()">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 保存中オーバーレイ ── -->
   <div class="saving-overlay" id="savingOverlay" style="display:none">
     <div class="saving-box">保存中...</div>
@@ -385,6 +407,31 @@
           </span>`;
       }
 
+      // 運動ログメタ
+      let exerciseHtml = '';
+      const exList = day.exercise || [];
+      if (exList.length > 0) {
+        const exTotal = exList.reduce(function(sum, e) { return sum + e.calories_burned; }, 0);
+        exerciseHtml = exList.map(function(e) {
+          const descAttr = 'data-desc="' + escHtml(e.description) + '"';
+          const label = e.description ? escHtml(e.description) + ' ' + e.calories_burned + 'kcal' : e.calories_burned + 'kcal';
+          return `<span class="meta-item">🏃 ${label}
+            <button class="action-btn" style="padding:2px 6px;font-size:11px"
+              onclick="openExerciseModal(${e.id},'${day.date}',${e.calories_burned})"
+              ${descAttr} aria-label="運動を編集">✏️</button>
+            <button class="action-btn danger" style="padding:2px 6px;font-size:11px"
+              onclick="confirmDeleteExercise(${e.id})" aria-label="運動を削除">🗑️</button>
+          </span>`;
+        }).join('');
+        if (exList.length > 1) {
+          exerciseHtml += `<span class="meta-item" style="font-size:11px;color:var(--text-secondary)">合計 ${exTotal} kcal</span>`;
+        }
+      }
+      exerciseHtml += `<span class="meta-item">
+        <button class="action-btn" style="padding:2px 6px;font-size:11px"
+          onclick="openExerciseModal(null,'${day.date}',null)" aria-label="運動を追加">＋運動</button>
+      </span>`;
+
       const mealsHtml = day.meals.length
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
@@ -418,7 +465,7 @@
             <div class="calorie-bar-wrap" style="flex:1"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
             ${remainingText}
           </div>
-          <div class="day-meta">${weightHtml}${stepsHtml}</div>
+          <div class="day-meta">${weightHtml}${stepsHtml}${exerciseHtml}</div>
           ${skipSectionHtml}
           ${mealsHtml}
         </div>`;
@@ -847,6 +894,90 @@
         reload();
       } catch(e) {
         alert('削除に失敗しました');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    // ── 運動ログ編集モーダル ───────────────────────────────────────────────────
+    function openExerciseModal(exerciseId, date, calories) {
+      document.getElementById('editExerciseId').value = exerciseId != null ? exerciseId : '';
+      document.getElementById('editExerciseDate').value = date;
+      document.getElementById('editExerciseCal').value = calories != null ? calories : '';
+      document.getElementById('editExerciseDesc').value = '';
+      // 編集時は description を data-desc 属性から取得
+      if (exerciseId != null) {
+        var btn = document.querySelector('[onclick="openExerciseModal(' + exerciseId + ',\'' + date + '\',' + calories + ')"]');
+        if (btn) {
+          document.getElementById('editExerciseDesc').value = btn.getAttribute('data-desc') || '';
+        }
+      }
+      document.getElementById('err-exercise-cal').classList.remove('show');
+      document.getElementById('exerciseModal').querySelector('.modal-title').textContent =
+        exerciseId != null ? '🏃 運動を編集' : '🏃 運動を追加';
+      document.getElementById('exerciseModal').style.display = 'flex';
+    }
+
+    function closeExerciseModal() {
+      document.getElementById('exerciseModal').style.display = 'none';
+    }
+
+    async function saveExercise() {
+      const exerciseIdStr = document.getElementById('editExerciseId').value;
+      const exerciseId = exerciseIdStr !== '' ? parseInt(exerciseIdStr) : null;
+      const date = document.getElementById('editExerciseDate').value;
+      const calStr = document.getElementById('editExerciseCal').value;
+      const cal = parseInt(calStr);
+      if (calStr === '' || isNaN(cal) || cal < 0 || cal > 9999) {
+        document.getElementById('err-exercise-cal').classList.add('show');
+        return;
+      }
+      const desc = document.getElementById('editExerciseDesc').value;
+      closeExerciseModal();
+      showSaving();
+      try {
+        let res;
+        if (exerciseId != null) {
+          res = await fetch('/api/exercise/' + exerciseId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ calories_burned: cal, description: desc }),
+          });
+        } else {
+          res = await fetch('/api/exercise', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ log_date: date, calories_burned: cal, description: desc }),
+          });
+        }
+        if (!res.ok) {
+          showToast('保存に失敗しました', 'error');
+          return;
+        }
+        reload();
+      } catch(e) {
+        showToast('通信エラーが発生しました', 'error');
+      } finally {
+        hideSaving();
+      }
+    }
+
+    function confirmDeleteExercise(exerciseId) {
+      if (!confirm('この運動ログを削除しますか？\nこの操作は元に戻せません。')) return;
+      deleteExercise(exerciseId);
+    }
+
+    async function deleteExercise(exerciseId) {
+      showSaving();
+      try {
+        const res = await fetch('/api/exercise/' + exerciseId, { method: 'DELETE' });
+        if (!res.ok) {
+          showToast('削除に失敗しました', 'error');
+          return;
+        }
+        reload();
+      } catch(e) {
+        showToast('通信エラーが発生しました', 'error');
       } finally {
         hideSaving();
       }
