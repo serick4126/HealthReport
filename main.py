@@ -281,6 +281,7 @@ WIDGET_REGISTRY = [
     {"id": "sleep",      "label": "睡眠ログ",     "emoji": "🛏️", "widget_type": "chart",   "canvas_id": "chartSleep",     "wrap_style": "height:180px"},
     {"id": "heart_rate", "label": "脈拍推移",     "emoji": "💓", "widget_type": "chart",   "canvas_id": "chartHeartRate", "wrap_style": None},
     {"id": "spo2",       "label": "SpO2推移",    "emoji": "🫁", "widget_type": "chart",   "canvas_id": "chartSpo2",      "wrap_style": None},
+    {"id": "blood_pressure", "label": "血圧推移", "emoji": "💉", "widget_type": "chart",   "canvas_id": "chartBloodPressure", "wrap_style": None},
 ]
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────

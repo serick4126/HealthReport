@@ -71,6 +71,11 @@
     }
     .toast.show { opacity: 1; }
     .toast.toast-error { background: var(--danger); color: #fff; }
+    .period-shift-btn {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; color: var(--accent); font-size: 13px; cursor: pointer;
+    }
+    .period-shift-btn:disabled { color: var(--text-secondary); opacity: 0.5; cursor: default; }
     /* D-3: タッチターゲット最低44px確保 */
     @media (hover: none) {
       .widget-item { min-height: 44px; }
@@ -98,6 +103,10 @@
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
     <button class="period-btn" id="widgetSettingsBtn" onclick="openWidgetSettings()">⚙️ 表示設定</button>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="period-shift-btn" id="prevBtn" onclick="shiftPeriod(-1)" title="前の期間（最大1年前まで）">◀ 前</button>
+      <button class="period-shift-btn" id="nextBtn" onclick="shiftPeriod(1)" disabled>次 ▶</button>
+    </div>
   </div>
   <div class="content" id="content">
     <div class="loading-spinner">読み込み中...</div>
@@ -143,10 +152,13 @@
     Chart.defaults.plugins.datalabels.display = false;
 
     let charts = {};
+    var _touchDragState = { srcEl: null };
+    var _touchCleanups = [];
     const pageState = {
       dateRange: { start: null, end: null },
       dates: [],
       currentDays: 7,
+      _shiftedEnd: null,     // 期間シフト後の実効end日付
       widgetConfig: [],      // [{id, visible}, ...] 表示順（保存済み＋マージ済み）
       widgetRegistry: [],    // [{id, label, emoji, widget_type, canvas_id, wrap_style}, ...]
       modalWidgetConfig: [], // モーダル編集中の一時状態（完了/キャンセルで確定/破棄）
@@ -450,6 +462,46 @@
         });
       },
 
+      blood_pressure: function(data, labels, defaults, extras) {
+        var bpData = data.blood_pressure || { systolic: [], diastolic: [] };
+        var sysList = bpData.systolic || [];
+        var diasList = bpData.diastolic || [];
+        var hasData = sysList.some(function(v) { return v != null; }) ||
+                      diasList.some(function(v) { return v != null; });
+        var canvas = document.getElementById(_canvasId('blood_pressure'));
+        if (!hasData) {
+          canvas.parentElement.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:24px">血圧データがありません。</p>';
+          return;
+        }
+        if (charts.bloodPressure) charts.bloodPressure.destroy();
+        charts.bloodPressure = new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: '最高血圧 (mmHg)',
+                data: sysList,
+                borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.1)',
+                tension: 0.3, fill: false, spanGaps: true,
+                pointRadius: 4, pointBackgroundColor: '#ff3b30',
+              },
+              {
+                label: '最低血圧 (mmHg)',
+                data: diasList,
+                borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+                tension: 0.3, fill: false, spanGaps: true,
+                pointRadius: 4, pointBackgroundColor: '#007aff',
+              },
+            ]
+          },
+          options: {
+            ...defaults,
+            scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } }
+          }
+        });
+      },
+
     };
 
     // ── メイン処理 ────────────────────────────────────────────────────────────
@@ -470,6 +522,8 @@
         const s = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
         pageState.dateRange = { start: s, end: today };
       }
+
+      updateShiftButtons();
 
       // レジストリ未取得の場合のみ取得（ページ内で1回）
       if (!pageState.widgetRegistry.length) {
@@ -593,6 +647,7 @@
     function setPeriod(days, btn) {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      pageState._shiftedEnd = null;
       load(days, null, null);
     }
 
@@ -622,7 +677,63 @@
       document.getElementById('customBtn').classList.add('active');
       document.getElementById('customBtn').textContent =
         `📅 ${start.slice(5).replace('-','/')} 〜 ${end.slice(5).replace('-','/')}`;
+      pageState._shiftedEnd = null;
       load(null, start, end);
+    }
+
+    // ── 前後ナビゲーション ────────────────────────────────────────────────────
+
+    function shiftPeriod(direction) {
+      var dr = pageState.dateRange;
+      if (!dr.start || !dr.end) return;
+      var s = new Date(dr.start + 'T00:00:00');
+      var e = new Date(dr.end + 'T00:00:00');
+      var shiftDays = Math.round((e - s) / 86400000) + 1;
+
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      var ms = shiftDays * 86400000 * direction;
+      var newStart = new Date(s.getTime() + ms);
+      var newEnd   = new Date(e.getTime() + ms);
+
+      if (newStart > today) return;
+      if (newEnd > today) newEnd = today;
+
+      var minDate = new Date(today);
+      minDate.setFullYear(minDate.getFullYear() - 1);
+      if (direction === -1 && newStart < minDate) {
+        newStart = minDate;
+        if (newStart >= newEnd) return;
+      }
+
+      var startStr = newStart.toISOString().slice(0, 10);
+      var endStr   = newEnd.toISOString().slice(0, 10);
+
+      document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.getElementById('customBtn').classList.add('active');
+      document.getElementById('customBtn').textContent =
+        '\u{1f4c5} ' + startStr.slice(5).replace('-', '/') + ' \u301c ' + endStr.slice(5).replace('-', '/');
+
+      load(null, startStr, endStr);
+    }
+
+    function updateShiftButtons() {
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      var todayStr = today.toISOString().slice(0, 10);
+      var dr = pageState.dateRange;
+
+      var nextBtn = document.getElementById('nextBtn');
+      var prevBtn = document.getElementById('prevBtn');
+      if (!nextBtn || !prevBtn) return;
+
+      nextBtn.disabled = (!dr.end || dr.end >= todayStr);
+
+      var minDate = new Date(today);
+      minDate.setFullYear(minDate.getFullYear() - 1);
+      var minDateStr = minDate.toISOString().slice(0, 10);
+      prevBtn.disabled = (!dr.start || dr.start <= minDateStr);
     }
 
     async function loadVitalCharts() {
@@ -883,7 +994,12 @@
     }
 
     function attachDragEvents(ul) {
+      // 前回のタッチリスナーをクリーンアップ
+      _touchCleanups.forEach(function(fn) { fn(); });
+      _touchCleanups = [];
+
       ul.querySelectorAll('.widget-item').forEach(function(item) {
+        // PC: HTML5 Drag and Drop
         item.addEventListener('dragstart', function(e) {
           pageState._dragSrcEl = item;
           e.dataTransfer.effectAllowed = 'move';
@@ -901,7 +1017,6 @@
           e.preventDefault();
           item.classList.remove('drag-over');
           if (pageState._dragSrcEl && pageState._dragSrcEl !== item) {
-            // DOM上で入れ替え
             var items = Array.from(ul.querySelectorAll('.widget-item'));
             var srcIdx = items.indexOf(pageState._dragSrcEl);
             var tgtIdx = items.indexOf(item);
@@ -918,8 +1033,58 @@
           ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
           pageState._dragSrcEl = null;
         });
+
+        // スマホ: Touch Events
+        function onTouchStart(e) {
+          if (e.target.closest('.widget-toggle')) return;
+          e.preventDefault();
+          _touchDragState.srcEl = item;
+          item.classList.add('drag-over');
+        }
+        function onTouchMove(e) {
+          if (!_touchDragState.srcEl || _touchDragState.srcEl !== item) return;
+          e.preventDefault();
+          var touch = e.touches[0];
+          var saved = item.style.display;
+          item.style.display = 'none';
+          var el = document.elementFromPoint(touch.clientX, touch.clientY);
+          item.style.display = saved;
+          if (!el) return;
+          var target = el.closest('.widget-item');
+          if (!target || target === item) return;
+          var items = Array.from(ul.querySelectorAll('.widget-item'));
+          var srcIdx = items.indexOf(item);
+          var tgtIdx = items.indexOf(target);
+          if (srcIdx !== tgtIdx) {
+            if (srcIdx < tgtIdx) {
+              ul.insertBefore(item, target.nextSibling);
+            } else {
+              ul.insertBefore(item, target);
+            }
+          }
+        }
+        function onTouchEnd() {
+          if (!_touchDragState.srcEl) return;
+          item.classList.remove('drag-over');
+          _touchDragState.srcEl = null;
+          syncModalConfigFromDom(ul);
+          saveWidgetSettings();
+        }
+        item.addEventListener('touchstart', onTouchStart, { passive: false });
+        item.addEventListener('touchmove', onTouchMove, { passive: false });
+        item.addEventListener('touchend', onTouchEnd);
+        _touchCleanups.push(function() {
+          item.removeEventListener('touchstart', onTouchStart);
+          item.removeEventListener('touchmove', onTouchMove);
+          item.removeEventListener('touchend', onTouchEnd);
+        });
       });
     }
+
+    window.addEventListener('beforeunload', function() {
+      _touchCleanups.forEach(function(fn) { fn(); });
+      _touchCleanups = [];
+    });
 
     function syncModalConfigFromDom(ul) {
       var newOrder = [];
