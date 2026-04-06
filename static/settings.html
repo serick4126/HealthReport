@@ -116,6 +116,15 @@
       color: var(--accent); flex-shrink: 0;
     }
     .model-reload-btn:disabled { opacity: 0.4; cursor: default; }
+    /* 固定保存ボタン */
+    .save-btn-fixed {
+      position: fixed; top: 12px; right: 16px; z-index: 200;
+      padding: 7px 18px; border-radius: 20px; border: none;
+      background: var(--accent); color: #fff; font-size: 14px; font-weight: 600;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      white-space: nowrap;
+    }
+    .save-btn-fixed:active { opacity: 0.8; }
     /* モバイル: food_defaultsテーブルをカード形式に変換 */
     @media (max-width: 600px) {
       .food-table thead { display: none; }
@@ -143,6 +152,8 @@
     <div class="header-title">⚙️ 設定</div>
     <div class="header-nav" id="headerNav"></div>
   </div>
+
+  <button class="save-btn-fixed" onclick="saveSettings()">保存する</button>
 
   <div class="content">
     <div id="mainContent"><div class="loading-spinner">読み込み中...</div></div>
@@ -200,6 +211,13 @@
         if (!settRes.ok) throw settRes;
         const settings = await settRes.json();
         foodDefaults = await fdRes.json();
+        // available_models をパースして buildModelOptions で使えるように
+        try {
+          availableModels = settings.available_models ? JSON.parse(settings.available_models) : [];
+          if (!Array.isArray(availableModels)) availableModels = [];
+        } catch (_) {
+          availableModels = [];
+        }
         render(settings);
       } catch(e) {
         handleFetchError(document.getElementById('mainContent'), e);
@@ -451,6 +469,13 @@
                 <button class="copy-endpoint-btn" data-url="/api/exercise/ingest" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
               </div>
             </div>
+            <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px">
+              <span class="row-label" style="font-size:13px;color:var(--text-secondary)">エンドポイント（血圧）</span>
+              <div style="display:flex;align-items:center;gap:8px;width:100%">
+                <code style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all">${window.location.origin}/api/external/blood-pressure</code>
+                <button class="copy-endpoint-btn" data-url="/api/external/blood-pressure" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
+              </div>
+            </div>
             <div class="row note-tip" style="flex-direction:column;align-items:flex-start;gap:4px">
               <div style="font-weight:600;font-size:13px">📱 iPhoneショートカット設定</div>
               <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
@@ -464,13 +489,14 @@
                 <strong>【運動・消費カロリー（iOSアクティブエネルギー）】</strong><br>
                 <strong>ボディ:</strong> {"date": "YYYY-MM-DD", "calories_burned": &lt;kcal整数&gt;, "description": "iOSショートカット"}<br>
                 iOSヘルスケアの「アクティブエネルギー」をショートカットの「ヘルスケア」アクションで取得し、毎日自動送信できます。<br><br>
+                <strong>【血圧】</strong><br>
+                <strong>ボディ:</strong> {"recorded_at": "YYYY/MM/DD HH:MM", "systolic": &lt;最高血圧整数&gt;, "diastolic": &lt;最低血圧整数&gt;}<br>
+                recorded_at の時刻が 1日の開始時刻〜11:59 → 朝、12:00〜翌 1日の開始時刻前 → 夜 として自動分類します。同一日・同一時間帯の記録は上書きされます。<br><br>
                 ヘルスケアから前日のデータを取得し、毎朝自動実行するオートメーションに設定することで自動記録できます。
               </div>
             </div>
           </div>
         </details>
-
-        <button class="save-btn" onclick="saveSettings()">保存する</button>
 
         <!-- 食品デフォルト -->
         <div class="section" style="margin-top:28px">
