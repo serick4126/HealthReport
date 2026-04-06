@@ -435,10 +435,11 @@
       background: var(--text-primary); color: var(--bg);
       padding: 10px 20px; border-radius: 20px;
       font-size: 14px; opacity: 0; transition: opacity 0.3s;
-      pointer-events: none; white-space: nowrap; z-index: 300;
+      pointer-events: none; white-space: normal; text-align: center; max-width: 90vw; z-index: 300;
     }
     .toast.show { opacity: 1; }
     .toast.toast-error { background: var(--danger, #ff3b30); color: #fff; }
+    @media (max-width: 480px) { .toast { top: 12px; font-size: 13px; padding: 8px 16px; } }
 
     /* ── BMIウィジェット ── */
     .bmi-widget {
@@ -1251,16 +1252,24 @@ async function loadQuickPalette() {
     const data = await res.json();
     const chips = document.getElementById('qpChips');
     const palette = document.getElementById('quickPalette');
-    let html = '<button class="qp-chip action" onclick="openWeightModal()">⚖️ 体重</button>';
-    html += '<button class="qp-chip action" onclick="openStepsModal()">👟 歩数</button>';
+    let html = '<button class="qp-chip action" data-action="weight">⚖️ 体重</button>';
+    html += '<button class="qp-chip action" data-action="steps">👟 歩数</button>';
     ['朝食', '昼食', '夕食', '間食'].forEach(function(m) {
-      html += '<button class="qp-chip meal" onclick="sendQuick(this)" data-text="' + m + '">' + m + '</button>';
+      html += '<button class="qp-chip meal" data-action="quick" data-text="' + m + '">' + m + '</button>';
     });
     for (const f of (data.favorites || [])) {
       const attr = escHtml(f.keyword);
-      html += '<button class="qp-chip fav" onclick="sendQuick(this)" data-text="' + attr + '">★ ' + attr + '</button>';
+      html += '<button class="qp-chip fav" data-action="quick" data-text="' + attr + '">★ ' + attr + '</button>';
     }
     chips.innerHTML = html;
+    chips.addEventListener('click', function(e) {
+      const btn = e.target.closest('.qp-chip');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'weight') openWeightModal();
+      else if (action === 'steps') openStepsModal();
+      else if (action === 'quick') sendQuick(btn);
+    });
     palette.style.display = 'block';
   } catch (e) { console.error('クイックパレット読み込みエラー:', e); }
 }

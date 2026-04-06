@@ -115,9 +115,19 @@
     .bp-inputs { display: flex; gap: 8px; align-items: center; }
     .bp-inputs input { flex: 1; }
     .bp-sep { color: var(--text-secondary); font-size: 15px; flex-shrink: 0; }
+    /* トースト通知 */
+    .toast {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      background: var(--text-primary); color: var(--bg); padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      white-space: nowrap; z-index: 300; max-width: 90vw; white-space: normal; text-align: center;
+    }
+    .toast.show { opacity: 1; }
+    .toast.toast-error { background: var(--danger, #ff3b30); color: #fff; }
     @media (max-width: 480px) {
       .day-totals { font-size: 11px; word-break: keep-all; line-height: 1.4; }
       .day-meta { flex-wrap: wrap; gap: 4px; }
+      .toast { top: 12px; font-size: 13px; padding: 8px 16px; }
     }
   </style>
 </head>
@@ -323,10 +333,22 @@
     <div class="saving-box">保存中...</div>
   </div>
 
+  <!-- トースト通知 -->
+  <div class="toast" id="toast"></div>
+
   <!-- 画像アップロード用隠しinput -->
   <input type="file" id="imageFileInput" accept="image/*" style="display:none" />
 
   <script>
+    function showToast(msg, type) {
+      var t = document.getElementById('toast');
+      if (!t) return;
+      t.textContent = msg;
+      t.className = 'toast show' + (type === 'error' ? ' toast-error' : '');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(function() { t.classList.remove('show'); }, type === 'error' ? 5000 : 3000);
+    }
+
     const MEAL_TYPE_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食', late_night: '夜食' };
     const TIME_OF_DAY_JA = { morning: '朝', evening: '夜' };
     const PAGE_SIZE = 10;
