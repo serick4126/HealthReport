@@ -106,6 +106,15 @@ def init_db():
                 steps       INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS exercise_logs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_date        TEXT    NOT NULL,
+                calories_burned INTEGER NOT NULL,
+                description     TEXT    NOT NULL DEFAULT '',
+                source          TEXT    NOT NULL DEFAULT 'manual',
+                recorded_at     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS meal_skips (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -193,6 +202,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sleep_logs_date  ON sleep_logs(date);
             CREATE INDEX IF NOT EXISTS idx_vitals_logs_date ON vitals_logs(date);
             CREATE INDEX IF NOT EXISTS idx_vitals_logs_type ON vitals_logs(type);
+            CREATE INDEX IF NOT EXISTS idx_exercise_date     ON exercise_logs(log_date);
         """)
 
         # 既存DBへのカラム追加マイグレーション
@@ -633,6 +643,73 @@ def delete_steps_by_id(steps_id: int) -> bool:
     return cur.rowcount > 0
 
 
+# ── 運動ログ ───────────────────────────────────────────────────────────────────
+
+def save_exercise(
+    log_date: str,
+    calories_burned: int,
+    description: str = "",
+    source: str = "manual",
+) -> int:
+    """運動ログを1件追加。挿入した id を返す。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO exercise_logs (log_date, calories_burned, description, source) VALUES (?, ?, ?, ?)",
+            (log_date, calories_burned, description, source),
+        )
+    return cur.lastrowid
+
+
+def get_exercise_logs(start_date: str, end_date: str) -> list[dict]:
+    """期間内の全運動ログを log_date 昇順で返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, log_date, calories_burned, description, source, recorded_at "
+            "FROM exercise_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date ASC, id ASC",
+            (start_date, end_date),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_exercise_by_date(log_date: str) -> list[dict]:
+    """特定日の運動ログを id 昇順で返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, log_date, calories_burned, description, source, recorded_at "
+            "FROM exercise_logs WHERE log_date = ? ORDER BY id ASC",
+            (log_date,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_exercise_by_id(exercise_id: int, calories_burned: int, description: str) -> bool:
+    """id 指定で calories_burned・description を更新。成功なら True。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE exercise_logs SET calories_burned=?, description=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
+            (calories_burned, description, exercise_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_exercise_by_id(exercise_id: int) -> bool:
+    """id 指定で削除。成功なら True。"""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM exercise_logs WHERE id=?", (exercise_id,))
+    return cur.rowcount > 0
+
+
+def get_daily_exercise_totals(start_date: str, end_date: str) -> dict:
+    """log_date → 合計 calories_burned の dict を返す。記録なし日はキーなし。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT log_date, SUM(calories_burned) AS total "
+            "FROM exercise_logs WHERE log_date >= ? AND log_date <= ? GROUP BY log_date",
+            (start_date, end_date),
+        ).fetchall()
+    return {r["log_date"]: int(r["total"]) for r in rows}
+
+
 # ── 日次サマリー ───────────────────────────────────────────────────────────────
 
 # ── 食事画像 ───────────────────────────────────────────────────────────────────
@@ -860,10 +937,15 @@ def get_history(
             "WHERE meal_date >= ? AND meal_date <= ? ORDER BY meal_date",
             (since, until),
         ).fetchall()
+        exercise_rows = conn.execute(
+            "SELECT id, log_date, calories_burned, description, source, recorded_at "
+            "FROM exercise_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC, id ASC",
+            (since, until),
+        ).fetchall()
 
     from collections import defaultdict
     days_map: dict = defaultdict(
-        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": []}
+        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": [], "exercise": []}
     )
     for m in meals:
         days_map[m["meal_date"]]["meals"].append(dict(m))
@@ -874,6 +956,8 @@ def get_history(
         days_map[s["log_date"]]["steps_id"] = s["id"]
     for sk in skip_rows:
         days_map[sk["meal_date"]]["skipped_meal_types"].append(sk["meal_type"])
+    for ex in exercise_rows:
+        days_map[ex["log_date"]]["exercise"].append(dict(ex))
 
     result = []
     for date in sorted(days_map.keys(), reverse=True):
@@ -886,6 +970,7 @@ def get_history(
             "steps": d["steps"],
             "steps_id": d["steps_id"],
             "skipped_meal_types": d["skipped_meal_types"],
+            "exercise": d["exercise"],
             "totals": {
                 "calories": int(sum(m.get("calories") or 0 for m in ml)),
                 "protein": round(sum(m.get("protein") or 0 for m in ml), 1),
