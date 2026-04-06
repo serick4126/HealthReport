@@ -682,13 +682,21 @@ def get_exercise_by_date(log_date: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def update_exercise_by_id(exercise_id: int, calories_burned: int, description: str) -> bool:
-    """id 指定で calories_burned・description を更新。成功なら True。"""
+def update_exercise_by_id(
+    exercise_id: int, calories_burned: int, description: str, log_date: str = ""
+) -> bool:
+    """id 指定でフィールドを更新。log_date は省略時変更しない。成功なら True。"""
     with get_conn() as conn:
-        cur = conn.execute(
-            "UPDATE exercise_logs SET calories_burned=?, description=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
-            (calories_burned, description, exercise_id),
-        )
+        if log_date:
+            cur = conn.execute(
+                "UPDATE exercise_logs SET log_date=?, calories_burned=?, description=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
+                (log_date, calories_burned, description, exercise_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE exercise_logs SET calories_burned=?, description=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
+                (calories_burned, description, exercise_id),
+            )
     return cur.rowcount > 0
 
 

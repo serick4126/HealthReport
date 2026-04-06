@@ -556,6 +556,9 @@ async def delete_steps(request: Request, steps_id: int):
 
 # ── 運動ログ CRUD ──────────────────────────────────────────────────────────────
 
+_JST = timezone(timedelta(hours=9))
+
+
 class ExerciseRequest(BaseModel):
     log_date: str
     calories_burned: int
@@ -565,18 +568,26 @@ class ExerciseRequest(BaseModel):
 class ExerciseUpdateRequest(BaseModel):
     calories_burned: int
     description: str = ""
+    log_date: str = ""
 
 
-def _validate_exercise_body(log_date: str, calories_burned: int, description: str) -> None:
-    """運動ログ入力のバリデーション。違反時は HTTPException を送出。"""
-    try:
-        datetime.strptime(log_date, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=422, detail="log_date は YYYY-MM-DD 形式で指定してください")
+def _validate_calories_and_desc(calories_burned: int, description: str) -> None:
+    """calories_burned・description のバリデーション。違反時は HTTPException を送出。"""
     if not (0 <= calories_burned <= 9999):
         raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
     if len(description) > 500:
         raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
+
+
+def _validate_exercise_body(log_date: str, calories_burned: int, description: str) -> None:
+    """運動ログ入力のバリデーション（日付＋calories＋description）。違反時は HTTPException を送出。"""
+    try:
+        parsed = datetime.strptime(log_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="log_date は YYYY-MM-DD 形式で指定してください")
+    if parsed > datetime.now(_JST).date():
+        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+    _validate_calories_and_desc(calories_burned, description)
 
 
 @app.post("/api/exercise")
@@ -594,12 +605,13 @@ async def create_exercise(request: Request, body: ExerciseRequest):
 @app.put("/api/exercise/{exercise_id}")
 async def update_exercise(request: Request, exercise_id: int, body: ExerciseUpdateRequest):
     require_auth(request)
-    if not (0 <= body.calories_burned <= 9999):
-        raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
-    if len(body.description) > 500:
-        raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
+    _validate_calories_and_desc(body.calories_burned, body.description)
+    if body.log_date:
+        _validate_exercise_body(body.log_date, body.calories_burned, body.description)
     try:
-        ok = database.update_exercise_by_id(exercise_id, body.calories_burned, body.description)
+        ok = database.update_exercise_by_id(
+            exercise_id, body.calories_burned, body.description, body.log_date
+        )
     except Exception:
         logger.error("運動ログの更新に失敗しました id=%s", exercise_id, exc_info=True)
         raise HTTPException(status_code=500, detail="運動ログの更新に失敗しました")
@@ -622,8 +634,6 @@ async def delete_exercise(request: Request, exercise_id: int):
 
 
 # ── 歩数受付API（iPhoneショートカット連携） ────────────────────────────────────
-
-_JST = timezone(timedelta(hours=9))
 
 
 class StepsIngestRequest(BaseModel):

@@ -735,10 +735,14 @@ def _tool_get_bmi_info(inp: dict) -> dict:
 
 
 def _tool_record_exercise(inp: dict) -> dict:
+    cal = int(inp["calories_burned"])
+    if not (0 <= cal <= 9999):
+        return {"success": False, "error": "calories_burned は 0〜9999 の範囲で指定してください"}
+    desc = str(inp.get("description", ""))[:500]
     eid = database.save_exercise(
         inp["log_date"],
-        inp["calories_burned"],
-        inp.get("description", ""),
+        cal,
+        desc,
         source="chat",
     )
     return {
@@ -746,8 +750,8 @@ def _tool_record_exercise(inp: dict) -> dict:
         "tool": "record_exercise",
         "id": eid,
         "log_date": inp["log_date"],
-        "calories_burned": inp["calories_burned"],
-        "description": inp.get("description", ""),
+        "calories_burned": cal,
+        "description": desc,
     }
 
 
