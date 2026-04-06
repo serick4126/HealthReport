@@ -109,6 +109,12 @@
       background: var(--card-bg); border-radius: 12px; padding: 20px 32px;
       font-size: 15px;
     }
+    .vitals-modal-box { max-height: 82vh; overflow-y: auto; }
+    .vitals-del-btn { padding: 2px 8px; font-size: 11px; }
+    .vitals-del-btn:disabled { opacity: 0.35; cursor: default; }
+    .bp-inputs { display: flex; gap: 8px; align-items: center; }
+    .bp-inputs input { flex: 1; }
+    .bp-sep { color: var(--text-secondary); font-size: 15px; flex-shrink: 0; }
     @media (max-width: 480px) {
       .day-totals { font-size: 11px; word-break: keep-all; line-height: 1.4; }
       .day-meta { flex-wrap: wrap; gap: 4px; }
@@ -221,48 +227,67 @@
     </div>
   </div>
 
-  <!-- ── 体重編集モーダル ── -->
-  <div class="modal-overlay" id="weightModal" style="display:none">
-    <div class="modal-box">
-      <div class="modal-title">✏️ 体重を編集</div>
-      <input type="hidden" id="editWeightId" />
-      <div class="modal-row">
-        <label>日付</label>
-        <input type="text" id="editWeightDate" readonly />
-      </div>
-      <div class="modal-row">
-        <label>時間帯</label>
-        <input type="text" id="editWeightTimeLabel" readonly />
-      </div>
-      <div class="modal-row">
-        <label>体重 (kg) <span style="color:var(--danger)">*</span></label>
-        <input type="number" id="editWeightKg" min="20" max="200" step="0.1" placeholder="例: 65.3" />
-        <div class="field-error" id="err-weight-kg">20.0〜200.0 kg の数値を入力してください</div>
-      </div>
-      <div class="modal-actions">
-        <button onclick="closeWeightModal()">キャンセル</button>
-        <button class="primary" onclick="saveWeight()">保存</button>
-      </div>
-    </div>
-  </div>
+  <!-- ── 日次バイタル一括編集モーダル ── -->
+  <div class="modal-overlay" id="vitalsModal" style="display:none">
+    <div class="modal-box vitals-modal-box">
+      <div class="modal-title">✏️ <span id="vitalsModalDateLabel"></span> のデータ編集</div>
 
-  <!-- ── 歩数編集モーダル ── -->
-  <div class="modal-overlay" id="stepsModal" style="display:none">
-    <div class="modal-box">
-      <div class="modal-title">✏️ 歩数を編集</div>
-      <input type="hidden" id="editStepsId" />
       <div class="modal-row">
-        <label>日付</label>
-        <input type="text" id="editStepsDate" readonly />
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>体重 朝 (kg)</label>
+          <button class="action-btn danger vitals-del-btn" id="vitalsDelWeightMorning">削除</button>
+        </div>
+        <input type="number" id="vitalsWeightMorning" min="20" max="300" step="0.1" placeholder="未入力" />
+        <div class="field-error" id="err-vitals-wm">20〜300 kg の数値を入力してください</div>
       </div>
+
       <div class="modal-row">
-        <label>歩数 <span style="color:var(--danger)">*</span></label>
-        <input type="number" id="editStepsVal" min="0" max="99999" step="1" placeholder="例: 8000" />
-        <div class="field-error" id="err-steps-val">0〜99999の整数を入力してください</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>体重 夜 (kg)</label>
+          <button class="action-btn danger vitals-del-btn" id="vitalsDelWeightEvening">削除</button>
+        </div>
+        <input type="number" id="vitalsWeightEvening" min="20" max="300" step="0.1" placeholder="未入力" />
+        <div class="field-error" id="err-vitals-we">20〜300 kg の数値を入力してください</div>
       </div>
+
+      <div class="modal-row">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>歩数</label>
+          <button class="action-btn danger vitals-del-btn" id="vitalsDelSteps">削除</button>
+        </div>
+        <input type="number" id="vitalsSteps" min="0" max="999999" step="1" placeholder="未入力" />
+        <div class="field-error" id="err-vitals-steps">0〜999999 の整数を入力してください</div>
+      </div>
+
+      <div class="modal-row">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>血圧 朝 (最高/最低 mmHg)</label>
+          <button class="action-btn danger vitals-del-btn" id="vitalsDelBpMorning">削除</button>
+        </div>
+        <div class="bp-inputs">
+          <input type="number" id="vitalsBpMorningSys" min="50" max="300" step="1" placeholder="最高" />
+          <span class="bp-sep">/</span>
+          <input type="number" id="vitalsBpMorningDia" min="30" max="200" step="1" placeholder="最低" />
+        </div>
+        <div class="field-error" id="err-vitals-bpm">最高50〜300、最低30〜200 mmHg を入力してください</div>
+      </div>
+
+      <div class="modal-row">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>血圧 夜 (最高/最低 mmHg)</label>
+          <button class="action-btn danger vitals-del-btn" id="vitalsDelBpEvening">削除</button>
+        </div>
+        <div class="bp-inputs">
+          <input type="number" id="vitalsBpEveningSys" min="50" max="300" step="1" placeholder="最高" />
+          <span class="bp-sep">/</span>
+          <input type="number" id="vitalsBpEveningDia" min="30" max="200" step="1" placeholder="最低" />
+        </div>
+        <div class="field-error" id="err-vitals-bpe">最高50〜300、最低30〜200 mmHg を入力してください</div>
+      </div>
+
       <div class="modal-actions">
-        <button onclick="closeStepsModal()">キャンセル</button>
-        <button class="primary" onclick="saveSteps()">保存</button>
+        <button id="closeVitalsModalBtn">キャンセル</button>
+        <button class="primary" id="saveVitalsBtn">保存</button>
       </div>
     </div>
   </div>
@@ -310,6 +335,8 @@
       allDays: [],
       currentPage: 0,
       currentPeriod: { days: 7, start: null, end: null },
+      savedScrollY: 0,
+      vitalsData: null,
     };
 
     // ── データ取得 ─────────────────────────────────────────────────────────────
@@ -333,6 +360,7 @@
     }
 
     function reload() {
+      pageState.savedScrollY = window.scrollY;
       load(pageState.currentPeriod.days, pageState.currentPeriod.start, pageState.currentPeriod.end);
     }
 
@@ -353,6 +381,11 @@
           <button class="page-btn" onclick="changePage(1)" ${pageState.currentPage >= totalPages - 1 ? 'disabled' : ''}>次へ →</button>
         </div>` : '';
       content.innerHTML = paginationHtml + pageDays.map(d => renderDay(d)).join('') + paginationHtml;
+      if (pageState.savedScrollY > 0) {
+        const y = pageState.savedScrollY;
+        pageState.savedScrollY = 0;
+        requestAnimationFrame(() => window.scrollTo(0, y));
+      }
     }
 
     function changePage(delta) {
@@ -371,45 +404,37 @@
       const pct = pageState.calorieGoal > 0 ? Math.min((t.calories / pageState.calorieGoal) * 100, 100) : 0;
       const over = t.calories > pageState.calorieGoal;
 
-      // 体重メタ（朝・夜を常に表示）
+      // 体重メタ（表示のみ）
       let weightHtml = '';
       for (const tod of ['morning', 'evening']) {
         const label_ja = TIME_OF_DAY_JA[tod] || tod;
         const wdata = day.weight ? day.weight[tod] : null;
         if (wdata) {
-          const wid = wdata.id;
-          const wkg = wdata.weight_kg;
-          weightHtml += `
-            <span class="meta-item">
-              ⚖️ ${label_ja} ${wkg}kg
-              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(${wid},'${day.date}','${tod}',${wkg})" aria-label="体重を編集">✏️</button>
-              <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteWeight(${wid})" aria-label="体重を削除">🗑️</button>
-            </span>`;
-        } else {
-          weightHtml += `
-            <span class="meta-item" style="color:var(--text-secondary)">
-              ⚖️ ${label_ja} <span style="font-style:italic">未入力</span>
-              <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openWeightModal(null,'${day.date}','${tod}',null)" aria-label="体重を入力">✏️</button>
-            </span>`;
+          weightHtml += `<span class="meta-item">⚖️ ${label_ja} ${wdata.weight_kg}kg</span>`;
         }
       }
 
-      // 歩数メタ（未入力でも表示）
+      // 歩数メタ（表示のみ）
       let stepsHtml = '';
       if (day.steps != null) {
-        stepsHtml = `
-          <span class="meta-item">
-            👟 ${day.steps.toLocaleString()}歩
-            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(${day.steps_id},'${day.date}',${day.steps})" aria-label="歩数を編集">✏️</button>
-            <button class="action-btn danger" style="padding:2px 6px;font-size:11px" onclick="confirmDeleteSteps(${day.steps_id})" aria-label="歩数を削除">🗑️</button>
-          </span>`;
-      } else {
-        stepsHtml = `
-          <span class="meta-item" style="color:var(--text-secondary)">
-            👟 <span style="font-style:italic">未入力</span>
-            <button class="action-btn" style="padding:2px 6px;font-size:11px" onclick="openStepsModal(null,'${day.date}',null)" aria-label="歩数を入力">✏️</button>
-          </span>`;
+        stepsHtml = `<span class="meta-item">👟 ${day.steps.toLocaleString()}歩</span>`;
       }
+
+      // 血圧メタ（表示のみ）
+      let bpHtml = '';
+      const bpData = day.blood_pressure || {};
+      for (const tod of ['morning', 'evening']) {
+        const label_ja = TIME_OF_DAY_JA[tod] || tod;
+        const bp = bpData[tod];
+        if (bp) {
+          bpHtml += `<span class="meta-item">🩺 ${label_ja} ${bp.systolic}/${bp.diastolic}</span>`;
+        }
+      }
+
+      // バイタル一括編集ボタン（data-* 属性経由でデータ渡し）
+      const vitalsEditBtn = `<span class="meta-item">
+        <button class="vitals-edit-btn action-btn" data-date="${day.date}" style="padding:2px 8px;font-size:11px" aria-label="${day.date} のバイタルデータを編集">✏️ バイタル編集</button>
+      </span>`;
 
       // 運動ログメタ
       let exerciseHtml = '';
@@ -468,7 +493,7 @@
             <div class="calorie-bar-wrap" style="flex:1"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
             ${remainingText}
           </div>
-          <div class="day-meta">${weightHtml}${stepsHtml}${exerciseHtml}</div>
+          <div class="day-meta">${weightHtml}${stepsHtml}${bpHtml}${vitalsEditBtn}${exerciseHtml}</div>
           ${skipSectionHtml}
           ${mealsHtml}
         </div>`;
@@ -760,147 +785,178 @@
       }
     }
 
-    // ── 体重編集モーダル ───────────────────────────────────────────────────────
-    let _weightTod = null;  // time_of_day を保持（新規作成時に使用）
+    // ── 日次バイタル一括編集モーダル ──────────────────────────────────────────
 
-    function openWeightModal(weightId, date, tod, weightKg) {
-      document.getElementById('editWeightId').value = weightId ?? '';
-      document.getElementById('editWeightDate').value = date;
-      document.getElementById('editWeightTimeLabel').value = TIME_OF_DAY_JA[tod] || tod;
-      document.getElementById('editWeightKg').value = weightKg ?? '';
-      document.getElementById('err-weight-kg').classList.remove('show');
-      document.getElementById('weightModal').querySelector('.modal-title').textContent =
-        weightId ? '✏️ 体重を編集' : '➕ 体重を入力';
-      _weightTod = tod;
-      document.getElementById('weightModal').style.display = 'flex';
+    function openVitalsModal(date) {
+      const day = pageState.allDays.find(d => d.date === date);
+      if (!day) { showToast('データが見つかりません', 'error'); return; }
+
+      const dateObj = new Date(date + 'T00:00:00');
+      const weekdays = ['日','月','火','水','木','金','土'];
+      const label = dateObj.getFullYear() + '年' + (dateObj.getMonth()+1) + '月' + dateObj.getDate() + '日（' + weekdays[dateObj.getDay()] + '）';
+      document.getElementById('vitalsModalDateLabel').textContent = label;
+
+      const wm = (day.weight && day.weight.morning) ? day.weight.morning : null;
+      const we = (day.weight && day.weight.evening) ? day.weight.evening : null;
+      const stepsData = day.steps != null ? { id: day.steps_id, steps: day.steps } : null;
+      const bpm = (day.blood_pressure && day.blood_pressure.morning) ? day.blood_pressure.morning : null;
+      const bpe = (day.blood_pressure && day.blood_pressure.evening) ? day.blood_pressure.evening : null;
+
+      pageState.vitalsData = { date, weightMorning: wm, weightEvening: we, steps: stepsData, bpMorning: bpm, bpEvening: bpe };
+
+      document.getElementById('vitalsWeightMorning').value = wm ? wm.weight_kg : '';
+      document.getElementById('vitalsWeightEvening').value = we ? we.weight_kg : '';
+      document.getElementById('vitalsSteps').value = stepsData ? stepsData.steps : '';
+      document.getElementById('vitalsBpMorningSys').value = bpm ? bpm.systolic : '';
+      document.getElementById('vitalsBpMorningDia').value = bpm ? bpm.diastolic : '';
+      document.getElementById('vitalsBpEveningSys').value = bpe ? bpe.systolic : '';
+      document.getElementById('vitalsBpEveningDia').value = bpe ? bpe.diastolic : '';
+
+      document.getElementById('vitalsDelWeightMorning').disabled = !wm;
+      document.getElementById('vitalsDelWeightEvening').disabled = !we;
+      document.getElementById('vitalsDelSteps').disabled = !stepsData;
+      document.getElementById('vitalsDelBpMorning').disabled = !bpm;
+      document.getElementById('vitalsDelBpEvening').disabled = !bpe;
+
+      ['err-vitals-wm','err-vitals-we','err-vitals-steps','err-vitals-bpm','err-vitals-bpe'].forEach(id => {
+        document.getElementById(id).classList.remove('show');
+      });
+
+      document.getElementById('vitalsModal').style.display = 'flex';
     }
 
-    function closeWeightModal() {
-      document.getElementById('weightModal').style.display = 'none';
+    function closeVitalsModal() {
+      document.getElementById('vitalsModal').style.display = 'none';
+      pageState.vitalsData = null;
     }
 
-    async function saveWeight() {
-      const weightIdStr = document.getElementById('editWeightId').value;
-      const weightId = weightIdStr !== '' ? parseInt(weightIdStr) : null;
-      const date = document.getElementById('editWeightDate').value;
-      const kgStr = document.getElementById('editWeightKg').value;
-      const kg = parseFloat(kgStr);
-      if (kgStr === '' || isNaN(kg) || kg < 20 || kg > 200) {
-        document.getElementById('err-weight-kg').classList.add('show');
-        return;
+    async function saveVitals() {
+      const d = pageState.vitalsData;
+      if (!d) return;
+
+      const wmStr  = document.getElementById('vitalsWeightMorning').value;
+      const weStr  = document.getElementById('vitalsWeightEvening').value;
+      const stepsStr = document.getElementById('vitalsSteps').value;
+      const bpmSysStr = document.getElementById('vitalsBpMorningSys').value;
+      const bpmDiaStr = document.getElementById('vitalsBpMorningDia').value;
+      const bpeSysStr = document.getElementById('vitalsBpEveningSys').value;
+      const bpeDiaStr = document.getElementById('vitalsBpEveningDia').value;
+
+      let valid = true;
+      const wmVal = wmStr !== '' ? parseFloat(wmStr) : null;
+      if (wmStr !== '' && (isNaN(wmVal) || wmVal < 20 || wmVal > 300)) {
+        document.getElementById('err-vitals-wm').classList.add('show'); valid = false;
       }
-      closeWeightModal();
+      const weVal = weStr !== '' ? parseFloat(weStr) : null;
+      if (weStr !== '' && (isNaN(weVal) || weVal < 20 || weVal > 300)) {
+        document.getElementById('err-vitals-we').classList.add('show'); valid = false;
+      }
+      const stepsVal = stepsStr !== '' ? parseInt(stepsStr) : null;
+      if (stepsStr !== '' && (isNaN(stepsVal) || stepsVal < 0 || stepsVal > 999999)) {
+        document.getElementById('err-vitals-steps').classList.add('show'); valid = false;
+      }
+      const bpmSys = bpmSysStr !== '' ? parseInt(bpmSysStr) : null;
+      const bpmDia = bpmDiaStr !== '' ? parseInt(bpmDiaStr) : null;
+      const bpmHasValue = bpmSysStr !== '' || bpmDiaStr !== '';
+      if (bpmHasValue && (bpmSys == null || bpmDia == null || bpmSys < 50 || bpmSys > 300 || bpmDia < 30 || bpmDia > 200)) {
+        document.getElementById('err-vitals-bpm').classList.add('show'); valid = false;
+      }
+      const bpeSys = bpeSysStr !== '' ? parseInt(bpeSysStr) : null;
+      const bpeDia = bpeDiaStr !== '' ? parseInt(bpeDiaStr) : null;
+      const bpeHasValue = bpeSysStr !== '' || bpeDiaStr !== '';
+      if (bpeHasValue && (bpeSys == null || bpeDia == null || bpeSys < 50 || bpeSys > 300 || bpeDia < 30 || bpeDia > 200)) {
+        document.getElementById('err-vitals-bpe').classList.add('show'); valid = false;
+      }
+      if (!valid) return;
+
+      closeVitalsModal();
       showSaving();
       try {
-        let res;
-        if (weightId) {
-          res = await fetch(`/api/weight/${weightId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ weight_kg: kg }),
-          });
-        } else {
-          res = await fetch('/api/weight', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ log_date: date, time_of_day: _weightTod, weight_kg: kg }),
-          });
+        const requests = [];
+        const json = (body) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const put  = (url, body) => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+        if (wmVal !== null) {
+          requests.push(d.weightMorning
+            ? put(`/api/weight/${d.weightMorning.id}`, { weight_kg: wmVal })
+            : fetch('/api/weight', json({ log_date: d.date, time_of_day: 'morning', weight_kg: wmVal })));
         }
-        if (!res.ok) throw new Error();
-        reload();
-      } catch(e) {
-        alert('保存に失敗しました');
-      } finally {
-        hideSaving();
-      }
-    }
-
-    function confirmDeleteWeight(weightId) {
-      if (!confirm('この体重記録を削除しますか？\nこの操作は元に戻せません。')) return;
-      deleteWeight(weightId);
-    }
-
-    async function deleteWeight(weightId) {
-      showSaving();
-      try {
-        const res = await fetch(`/api/weight/${weightId}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
-        reload();
-      } catch(e) {
-        alert('削除に失敗しました');
-      } finally {
-        hideSaving();
-      }
-    }
-
-    // ── 歩数編集モーダル ───────────────────────────────────────────────────────
-    function openStepsModal(stepsId, date, steps) {
-      document.getElementById('editStepsId').value = stepsId ?? '';
-      document.getElementById('editStepsDate').value = date;
-      document.getElementById('editStepsVal').value = steps ?? '';
-      document.getElementById('err-steps-val').classList.remove('show');
-      document.getElementById('stepsModal').querySelector('.modal-title').textContent =
-        stepsId ? '✏️ 歩数を編集' : '➕ 歩数を入力';
-      document.getElementById('stepsModal').style.display = 'flex';
-    }
-
-    function closeStepsModal() {
-      document.getElementById('stepsModal').style.display = 'none';
-    }
-
-    async function saveSteps() {
-      const stepsIdStr = document.getElementById('editStepsId').value;
-      const stepsId = stepsIdStr !== '' ? parseInt(stepsIdStr) : null;
-      const date = document.getElementById('editStepsDate').value;
-      const valStr = document.getElementById('editStepsVal').value;
-      const steps = parseInt(valStr);
-      if (valStr === '' || isNaN(steps) || steps < 0 || steps > 99999 || String(steps) !== String(valStr.trim())) {
-        document.getElementById('err-steps-val').classList.add('show');
-        return;
-      }
-      closeStepsModal();
-      showSaving();
-      try {
-        let res;
-        if (stepsId) {
-          res = await fetch(`/api/steps/${stepsId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ steps }),
-          });
-        } else {
-          res = await fetch('/api/steps', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ log_date: date, steps }),
-          });
+        if (weVal !== null) {
+          requests.push(d.weightEvening
+            ? put(`/api/weight/${d.weightEvening.id}`, { weight_kg: weVal })
+            : fetch('/api/weight', json({ log_date: d.date, time_of_day: 'evening', weight_kg: weVal })));
         }
-        if (!res.ok) throw new Error();
+        if (stepsVal !== null) {
+          requests.push(d.steps
+            ? put(`/api/steps/${d.steps.id}`, { steps: stepsVal })
+            : fetch('/api/steps', json({ log_date: d.date, steps: stepsVal })));
+        }
+        if (bpmSys !== null && bpmDia !== null) {
+          requests.push(d.bpMorning
+            ? put(`/api/blood-pressure/${d.bpMorning.id}`, { systolic: bpmSys, diastolic: bpmDia })
+            : fetch('/api/blood-pressure', json({ log_date: d.date, time_of_day: 'morning', systolic: bpmSys, diastolic: bpmDia })));
+        }
+        if (bpeSys !== null && bpeDia !== null) {
+          requests.push(d.bpEvening
+            ? put(`/api/blood-pressure/${d.bpEvening.id}`, { systolic: bpeSys, diastolic: bpeDia })
+            : fetch('/api/blood-pressure', json({ log_date: d.date, time_of_day: 'evening', systolic: bpeSys, diastolic: bpeDia })));
+        }
+        if (requests.length > 0) {
+          const results = await Promise.all(requests);
+          if (results.some(r => !r.ok)) throw new Error();
+          showToast('保存しました');
+        }
         reload();
       } catch(e) {
-        alert('保存に失敗しました');
+        showToast('保存に失敗しました', 'error');
       } finally {
         hideSaving();
       }
     }
 
-    function confirmDeleteSteps(stepsId) {
-      if (!confirm('この歩数記録を削除しますか？\nこの操作は元に戻せません。')) return;
-      deleteSteps(stepsId);
-    }
-
-    async function deleteSteps(stepsId) {
+    // モーダル内の削除ボタン（即時削除・フィールドのみクリア）
+    async function _vitalsDelete(endpoint, stateKey, inputIds, delBtnId, label) {
+      const d = pageState.vitalsData;
+      if (!d || !d[stateKey]) return;
+      if (!confirm(label + 'を削除しますか？\nこの操作は元に戻せません。')) return;
       showSaving();
       try {
-        const res = await fetch(`/api/steps/${stepsId}`, { method: 'DELETE' });
+        const res = await fetch(endpoint, { method: 'DELETE' });
         if (!res.ok) throw new Error();
-        reload();
+        d[stateKey] = null;
+        inputIds.forEach(id => { document.getElementById(id).value = ''; });
+        document.getElementById(delBtnId).disabled = true;
+        showToast('削除しました');
       } catch(e) {
-        alert('削除に失敗しました');
+        showToast('削除に失敗しました', 'error');
       } finally {
         hideSaving();
       }
     }
+
+    document.getElementById('closeVitalsModalBtn').addEventListener('click', closeVitalsModal);
+    document.getElementById('saveVitalsBtn').addEventListener('click', saveVitals);
+
+    document.getElementById('vitalsDelWeightMorning').addEventListener('click', function() {
+      const d = pageState.vitalsData;
+      if (d && d.weightMorning) _vitalsDelete(`/api/weight/${d.weightMorning.id}`, 'weightMorning', ['vitalsWeightMorning'], 'vitalsDelWeightMorning', '体重（朝）');
+    });
+    document.getElementById('vitalsDelWeightEvening').addEventListener('click', function() {
+      const d = pageState.vitalsData;
+      if (d && d.weightEvening) _vitalsDelete(`/api/weight/${d.weightEvening.id}`, 'weightEvening', ['vitalsWeightEvening'], 'vitalsDelWeightEvening', '体重（夜）');
+    });
+    document.getElementById('vitalsDelSteps').addEventListener('click', function() {
+      const d = pageState.vitalsData;
+      if (d && d.steps) _vitalsDelete(`/api/steps/${d.steps.id}`, 'steps', ['vitalsSteps'], 'vitalsDelSteps', '歩数');
+    });
+    document.getElementById('vitalsDelBpMorning').addEventListener('click', function() {
+      const d = pageState.vitalsData;
+      if (d && d.bpMorning) _vitalsDelete(`/api/blood-pressure/${d.bpMorning.id}`, 'bpMorning', ['vitalsBpMorningSys','vitalsBpMorningDia'], 'vitalsDelBpMorning', '血圧（朝）');
+    });
+    document.getElementById('vitalsDelBpEvening').addEventListener('click', function() {
+      const d = pageState.vitalsData;
+      if (d && d.bpEvening) _vitalsDelete(`/api/blood-pressure/${d.bpEvening.id}`, 'bpEvening', ['vitalsBpEveningSys','vitalsBpEveningDia'], 'vitalsDelBpEvening', '血圧（夜）');
+    });
 
     // ── 運動ログ編集モーダル ───────────────────────────────────────────────────
     function openExerciseModal(exerciseId, date, calories, desc) {
@@ -1192,12 +1248,14 @@
       }
     }
 
-    // スキップボタンのイベント委譲（コンテンツ再描画後も有効）
+    // スキップ・バイタル編集ボタンのイベント委譲（コンテンツ再描画後も有効）
     document.getElementById('content').addEventListener('click', function(e) {
       var addBtn = e.target.closest('.history-skip-add-btn');
       if (addBtn) { historyAddSkip(addBtn.dataset.mealType, addBtn.dataset.mealDate, addBtn); return; }
       var undoBtn = e.target.closest('.history-skip-undo-btn');
-      if (undoBtn) { historyRemoveSkip(undoBtn.dataset.mealType, undoBtn.dataset.mealDate, undoBtn); }
+      if (undoBtn) { historyRemoveSkip(undoBtn.dataset.mealType, undoBtn.dataset.mealDate, undoBtn); return; }
+      var vitalsBtn = e.target.closest('.vitals-edit-btn');
+      if (vitalsBtn) { openVitalsModal(vitalsBtn.dataset.date); }
     });
 
     // 運動ログボタンのイベント委譲（data-* 属性経由でデータを受け取る）
