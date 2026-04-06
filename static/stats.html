@@ -63,6 +63,19 @@
     }
     .widget-toggle input:checked + .widget-toggle-slider { background: var(--accent); }
     .widget-toggle input:checked + .widget-toggle-slider::before { transform: translateX(20px); }
+    /* トースト通知 */
+    .toast {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      background: var(--text-primary); color: var(--bg); padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 200;
+    }
+    .toast.show { opacity: 1; }
+    .toast.toast-error { background: var(--danger); color: #fff; }
+    /* D-3: タッチターゲット最低44px確保 */
+    @media (hover: none) {
+      .widget-item { min-height: 44px; }
+      .widget-drag-handle { padding: 0 8px; font-size: 20px; }
+    }
     /* モバイル: サマリー3カラム → 1カラム横並び */
     @media (max-width: 480px) {
       .summary-row { grid-template-columns: 1fr; gap: 6px; }
@@ -109,6 +122,8 @@
     </div>
   </div>
 
+  <div class="toast" id="toast"></div>
+
   <!-- 表示設定モーダル -->
   <div class="modal-overlay" id="widgetModal" style="display:none" onclick="handleWidgetOverlayClick(event)">
     <div class="modal-box">
@@ -135,6 +150,7 @@
       widgetConfig: [],      // [{id, visible}, ...] 表示順（保存済み＋マージ済み）
       widgetRegistry: [],    // [{id, label, emoji, widget_type, canvas_id, wrap_style}, ...]
       modalWidgetConfig: [], // モーダル編集中の一時状態（完了/キャンセルで確定/破棄）
+      _dragSrcEl: null,      // DnD中のドラッグ元要素（pageState集約）
     };
 
     // ── ウィジェットヘルパー ──────────────────────────────────────────────────
@@ -540,6 +556,11 @@
                   '</div></div>';
         }
       });
+      // U-3: 全ウィジェット非表示時のプレースホルダー
+      if (!html) {
+        html = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">' +
+               '表示するウィジェットがありません。<br>⚙️ 表示設定 から表示項目を選択してください。</div>';
+      }
       document.getElementById('content').innerHTML = html;
 
       // ── チャート描画 ──────────────────────────────────────────────────────
@@ -820,6 +841,7 @@
 
     function closeWidgetSettings() {
       document.getElementById('widgetModal').style.display = 'none';
+      pageState.modalWidgetConfig = [];
     }
 
     function handleWidgetOverlayClick(event) {
@@ -860,12 +882,10 @@
       });
     }
 
-    var _dragSrcEl = null;
-
     function attachDragEvents(ul) {
       ul.querySelectorAll('.widget-item').forEach(function(item) {
         item.addEventListener('dragstart', function(e) {
-          _dragSrcEl = item;
+          pageState._dragSrcEl = item;
           e.dataTransfer.effectAllowed = 'move';
         });
         item.addEventListener('dragover', function(e) {
@@ -880,15 +900,15 @@
         item.addEventListener('drop', function(e) {
           e.preventDefault();
           item.classList.remove('drag-over');
-          if (_dragSrcEl && _dragSrcEl !== item) {
+          if (pageState._dragSrcEl && pageState._dragSrcEl !== item) {
             // DOM上で入れ替え
             var items = Array.from(ul.querySelectorAll('.widget-item'));
-            var srcIdx = items.indexOf(_dragSrcEl);
+            var srcIdx = items.indexOf(pageState._dragSrcEl);
             var tgtIdx = items.indexOf(item);
             if (srcIdx < tgtIdx) {
-              ul.insertBefore(_dragSrcEl, item.nextSibling);
+              ul.insertBefore(pageState._dragSrcEl, item.nextSibling);
             } else {
-              ul.insertBefore(_dragSrcEl, item);
+              ul.insertBefore(pageState._dragSrcEl, item);
             }
             syncModalConfigFromDom(ul);
             saveWidgetSettings();
@@ -896,7 +916,7 @@
         });
         item.addEventListener('dragend', function() {
           ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
-          _dragSrcEl = null;
+          pageState._dragSrcEl = null;
         });
       });
     }
@@ -915,24 +935,49 @@
       var config = pageState.modalWidgetConfig.map(function(w) {
         return { id: w.id, visible: w.visible };
       });
-      var json = JSON.stringify(config);
+      var jsonStr = JSON.stringify(config);
       fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: { stats_widgets: json } })
+        body: JSON.stringify({ settings: { stats_widgets: jsonStr } })
       }).then(function(res) {
         if (!res.ok) {
           console.error('表示設定の保存に失敗しました: HTTP ' + res.status);
-          return;
+          showToast('設定の保存に失敗しました', 'error');
+          return Promise.reject(res);
         }
-        // 保存成功 → widgetConfig更新して再描画
+        // 保存成功 → pageState に反映・統計データ再取得・再描画
         pageState.widgetConfig = pageState.modalWidgetConfig.map(function(w) {
           return { id: w.id, visible: w.visible };
         });
-        render();
+        destroyCharts();
+        document.getElementById('content').innerHTML = '<div class="loading-spinner">読み込み中...</div>';
+        var url = (pageState.dateRange.start && pageState.dateRange.end)
+          ? '/api/stats?start=' + pageState.dateRange.start + '&end=' + pageState.dateRange.end
+          : '/api/stats?days=' + (pageState.currentDays || 7);
+        return fetch(url);
+      }).then(function(dataRes) {
+        if (!dataRes) return;
+        if (!dataRes.ok) { return Promise.reject(dataRes); }
+        return dataRes.json();
+      }).then(function(data) {
+        if (!data) return;
+        render(data);
+        loadVitalCharts().catch(function(e) { console.error('バイタル再描画エラー:', e); });
       }).catch(function(e) {
-        console.error('表示設定の保存に失敗しました:', e);
+        if (e instanceof Response || e instanceof TypeError) {
+          console.error('表示設定の再描画に失敗しました:', e);
+          showToast('表示の更新に失敗しました', 'error');
+        }
       });
+    }
+
+    function showToast(msg, type) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (type === 'error' ? ' toast-error' : '');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(function() { t.classList.remove('show'); }, type === 'error' ? 5000 : 3000);
     }
 
     load(7, null, null);
