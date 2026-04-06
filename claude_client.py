@@ -310,6 +310,34 @@ TOOLS: list[anthropic.types.ToolParam] = [
             "required": [],
         },
     },
+    {
+        "name": "record_exercise",
+        "description": (
+            "ユーザーが運動した内容を記録する。運動内容から消費カロリーを推定し、DBに保存する。"
+            "ユーザーが消費カロリーを明示した場合はその値をそのまま使用する。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "log_date": {
+                    "type": "string",
+                    "description": "記録日（YYYY-MM-DD）。ユーザーが指定しない場合は今日の日付。",
+                },
+                "calories_burned": {
+                    "type": "integer",
+                    "description": (
+                        "推定消費カロリー（kcal）。"
+                        "運動の種類・強度・時間・体重から推定する。0〜9999 の整数。"
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": "運動内容の説明（例：「30分ジョギング 5km」「筋トレ45分」）。500文字以内。",
+                },
+            },
+            "required": ["log_date", "calories_burned", "description"],
+        },
+    },
 ]
 
 
@@ -399,7 +427,7 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
         )
     else:
         day_boundary_rule = ""
-    return f"""あなたは食事記録アシスタントです。ユーザー {user_name} の食事・体重・歩数を記録します。
+    return f"""あなたは食事記録アシスタントです。ユーザー {user_name} の食事・体重・歩数・運動（消費カロリー）を記録します。
 
 【ユーザー情報】
 - 身長: {height_cm}cm / 1日の目標カロリー: {calorie_goal}kcal{notes_line}
@@ -416,6 +444,10 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
 - 「朝食抜いた」「昼食べなかった」「夕食スキップ」などの報告時は record_meal_skip を呼ぶこと（間食・夜食は対象外）
 - スキップ記録の訂正時は delete_meal_skip を呼ぶこと
 - delete_meal_skip の結果で deleted=false の場合は「スキップ記録がありませんでした」と応答すること
+- 「ランニングした」「ジムに行った」「30分歩いた」「筋トレした」など運動の報告時は record_exercise を呼ぶこと
+- 消費カロリーは運動の種類・強度・時間・ユーザーの体重から推定する（体重が設定されている場合は参照）
+- ユーザーが「消費カロリーは〇〇kcal」と明示した場合はその値をそのまま calories_burned に使用すること
+- ユーザーに確認なく推定値で記録する（record_meal と同様の方針）
 {day_boundary_rule}- 食事・体重記録後に日の合計を表示する際は、必ず get_daily_summary ツールを呼んでDBから取得した当日分のみを表示すること。会話履歴から以前の日付の食事を推測してサマリーに含めることを厳禁とする
 
 【確認メッセージの形式】
@@ -702,6 +734,23 @@ def _tool_get_bmi_info(inp: dict) -> dict:
     }
 
 
+def _tool_record_exercise(inp: dict) -> dict:
+    eid = database.save_exercise(
+        inp["log_date"],
+        inp["calories_burned"],
+        inp.get("description", ""),
+        source="chat",
+    )
+    return {
+        "success": True,
+        "tool": "record_exercise",
+        "id": eid,
+        "log_date": inp["log_date"],
+        "calories_burned": inp["calories_burned"],
+        "description": inp.get("description", ""),
+    }
+
+
 _TOOL_DISPATCH: dict = {
     "record_meal":           _tool_record_meal,
     "record_weight":         _tool_record_weight,
@@ -718,6 +767,7 @@ _TOOL_DISPATCH: dict = {
     "record_vital":          _tool_record_vital,
     "get_vital_summary":     _tool_get_vital_summary,
     "get_bmi_info":          _tool_get_bmi_info,
+    "record_exercise":       _tool_record_exercise,
 }
 
 
