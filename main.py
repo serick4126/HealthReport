@@ -1,4 +1,5 @@
 import hmac
+import json
 import logging
 import os
 import re
@@ -268,9 +269,23 @@ async def today(request: Request):
     return JSONResponse(database.get_daily_summary())
 
 
+# ── 集計ページウィジェットレジストリ ──────────────────────────────────────────
+# 唯一の真実源。新ウィジェット追加時はここに1行追加し、stats.html の CHART_DRAW_FUNCTIONS に描画関数を1エントリ追加する。
+
+WIDGET_REGISTRY = [
+    {"id": "summary",    "label": "サマリー",     "emoji": "📋", "widget_type": "summary", "canvas_id": None,             "wrap_style": None},
+    {"id": "calories",   "label": "カロリー推移", "emoji": "🔥", "widget_type": "chart",   "canvas_id": "chartCalories",  "wrap_style": None},
+    {"id": "weight",     "label": "体重推移",     "emoji": "⚖️", "widget_type": "chart",   "canvas_id": "chartWeight",    "wrap_style": None},
+    {"id": "steps",      "label": "歩数推移",     "emoji": "👟", "widget_type": "chart",   "canvas_id": "chartSteps",     "wrap_style": None},
+    {"id": "pfc",        "label": "PFCバランス",  "emoji": "🥩", "widget_type": "chart",   "canvas_id": "chartPFC",       "wrap_style": None},
+    {"id": "sleep",      "label": "睡眠ログ",     "emoji": "🛏️", "widget_type": "chart",   "canvas_id": "chartSleep",     "wrap_style": "height:180px"},
+    {"id": "heart_rate", "label": "脈拍推移",     "emoji": "💓", "widget_type": "chart",   "canvas_id": "chartHeartRate", "wrap_style": None},
+    {"id": "spo2",       "label": "SpO2推移",    "emoji": "🫁", "widget_type": "chart",   "canvas_id": "chartSpo2",      "wrap_style": None},
+]
+
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -279,7 +294,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -304,6 +319,16 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
                 raise HTTPException(status_code=422, detail="day_start_hourは整数で指定してください")
             if not (0 <= hour <= 23):
                 raise HTTPException(status_code=422, detail="day_start_hourは0〜23の範囲で指定してください")
+        if key == "stats_widgets":
+            if len(value) > 10000:
+                raise HTTPException(status_code=400, detail="stats_widgetsが長すぎます")
+            try:
+                parsed = json.loads(value)
+                if not isinstance(parsed, list):
+                    raise ValueError("not a list")
+            except (ValueError, TypeError) as e:
+                logger.error(f"stats_widgets validation failed: {e}")
+                raise HTTPException(status_code=400, detail="stats_widgetsは有効なJSON配列で指定してください")
         if key == "user_gender":
             if value not in ("male", "female", ""):
                 raise HTTPException(status_code=400, detail="user_genderは 'male', 'female', '' のいずれかです")
@@ -320,6 +345,14 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
                 raise HTTPException(status_code=400, detail="誕生日から計算した年齢が不正です（1〜120歳の範囲で設定してください）")
         database.save_setting(key, value)
     return JSONResponse({"success": True})
+
+
+# ── 集計ページウィジェットレジストリ endpoint ──────────────────────────────────
+
+@app.get("/api/stats/widgets")
+async def get_widget_registry(request: Request):
+    require_auth(request)
+    return JSONResponse({"widgets": WIDGET_REGISTRY})
 
 
 # ── AIモデル一覧エンドポイント ─────────────────────────────────────────────────
