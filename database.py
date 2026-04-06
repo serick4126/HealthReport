@@ -839,7 +839,7 @@ def get_history(
         meals = conn.execute(
             """
             SELECT m.id, m.meal_date, m.meal_type, m.description,
-                   m.calories, m.protein, m.fat, m.carbs, m.sodium, m.notes,
+                   m.calories, m.protein, m.fat, m.carbs, m.sodium, m.notes, m.meal_time,
                    (SELECT COUNT(*) FROM meal_images WHERE meal_id = m.id) AS image_count
             FROM meals m
             WHERE m.meal_date >= ? AND m.meal_date <= ?
