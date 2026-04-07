@@ -36,6 +36,11 @@
     .summary-val-negative { color: var(--danger, #ff3b30); }
     .summary-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
     .summary-card-pfc .summary-val { font-size: 13px; line-height: 1.4; }
+    .summary-card-combined { text-align: left; padding: 10px 14px; }
+    .summary-card-combined .summary-label { text-align: center; margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px; }
+    .summary-combined-row { display: flex; justify-content: space-between; align-items: center; padding: 2px 0; }
+    .summary-combined-label { font-size: 12px; color: var(--text-secondary); }
+    .summary-combined-val { font-size: 15px; font-weight: 700; color: var(--accent); }
     /* モーダルサイズのみ上書き（stats固有: 小さめサイズ） */
     .modal-box { width: min(360px, 90vw); max-height: unset; }
     .modal-row { margin-bottom: 14px; }
@@ -94,6 +99,8 @@
       }
       .summary-val { font-size: 18px; }
       .summary-label { margin-top: 0; font-size: 12px; }
+      .summary-card-combined { display: block; text-align: left; }
+      .summary-card-combined .summary-label { margin-top: 6px; }
     }
   </style>
 </head>
@@ -224,6 +231,8 @@
       { id: 'avg_weight',            label: '平均体重',                           unit: 'kg',   emoji: '⚖️' },
       { id: 'weight_change',         label: '体重変動',                           unit: 'kg',   emoji: '📉' },
       { id: 'calorie_goal_rate',     label: '目標カロリー達成率',                 unit: '%',    emoji: '🎯' },
+      { id: 'calorie_summary',       label: 'カロリー情報まとめ',                 unit: '',     emoji: '🔥', combined: true },
+      { id: 'weight_summary',        label: '体重情報まとめ',                     unit: '',     emoji: '⚖️', combined: true },
     ];
 
     // ── サマリー計算ディスパッチテーブル ──────────────────────────────────────────
@@ -236,9 +245,14 @@
         return { value: avg.toLocaleString(), hasData: true };
       },
       latest_weight: function(data) {
-        var all = (data.weights_morning || []).concat(data.weights_evening || []).filter(function(v) { return v != null; });
-        if (!all.length) return { value: '—', hasData: false };
-        return { value: all[all.length - 1], hasData: true };
+        // 日付逆順で最初の非null値を返す（C-6修正: concat順序エッジケース回避）
+        for (var i = (data.dates || []).length - 1; i >= 0; i--) {
+          var we = data.weights_evening ? data.weights_evening[i] : null;
+          if (we != null) return { value: we, hasData: true };
+          var wm = data.weights_morning ? data.weights_morning[i] : null;
+          if (wm != null) return { value: wm, hasData: true };
+        }
+        return { value: '—', hasData: false };
       },
       avg_steps: function(data) {
         var valid = (data.steps || []).filter(function(v) { return v != null; });
@@ -326,6 +340,36 @@
         var rate = Math.round(met / valid.length * 100);
         return { value: rate, hasData: true };
       },
+      calorie_summary: function(data) {
+        var avgCal = SUMMARY_CALC_FUNCTIONS.avg_calories(data);
+        var avgExp = SUMMARY_CALC_FUNCTIONS.avg_total_expenditure(data);
+        var bal = SUMMARY_CALC_FUNCTIONS.avg_calorie_balance(data);
+        var goal = SUMMARY_CALC_FUNCTIONS.calorie_goal_rate(data);
+        if (!avgCal.hasData && !avgExp.hasData) return { value: '—', hasData: false };
+        return {
+          value: '', hasData: true,
+          rows: [
+            { label: '摂取平均', value: avgCal.hasData ? avgCal.value + ' kcal' : '—' },
+            { label: '消費平均', value: avgExp.hasData ? avgExp.value + ' kcal' : '—' },
+            { label: '収支平均', value: bal.hasData ? bal.value + ' kcal' : '—', negative: bal.hasData && bal.numValue < 0 },
+            { label: '目標達成率', value: goal.hasData ? goal.value + '%' : '—' },
+          ]
+        };
+      },
+      weight_summary: function(data) {
+        var latest = SUMMARY_CALC_FUNCTIONS.latest_weight(data);
+        var avg = SUMMARY_CALC_FUNCTIONS.avg_weight(data);
+        var change = SUMMARY_CALC_FUNCTIONS.weight_change(data);
+        if (!latest.hasData && !avg.hasData) return { value: '—', hasData: false };
+        return {
+          value: '', hasData: true,
+          rows: [
+            { label: '最新', value: latest.hasData ? latest.value + ' kg' : '—' },
+            { label: '平均', value: avg.hasData ? avg.value + ' kg' : '—' },
+            { label: '変動', value: change.hasData ? change.value + ' kg' : '—', negative: change.hasData && change.numValue > 0 },
+          ]
+        };
+      },
     };
 
     // ── サマリーHTML生成 ──────────────────────────────────────────────────────
@@ -340,6 +384,23 @@
         var calcFn = SUMMARY_CALC_FUNCTIONS[w.id];
         if (!calcFn) return;
         var result = calcFn(data);
+        // 複合カード（rows付き）
+        if (meta.combined && result.rows) {
+          var rowsHtml = '';
+          result.rows.forEach(function(r) {
+            var rValClass = r.negative ? 'summary-combined-val summary-val-negative' : 'summary-combined-val';
+            rowsHtml += '<div class="summary-combined-row">' +
+              '<span class="summary-combined-label">' + r.label + '</span>' +
+              '<span class="' + rValClass + '">' + r.value + '</span>' +
+              '</div>';
+          });
+          cards += '<div class="summary-card summary-card-combined">' +
+            rowsHtml +
+            '<div class="summary-label">' + meta.emoji + ' ' + meta.label + '</div>' +
+            '</div>';
+          return;
+        }
+        // 単一値カード
         var displayVal = result.hasData ? result.value : '—';
         var valClass = 'summary-val';
         // カロリー収支: 負なら赤色
