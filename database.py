@@ -736,6 +736,34 @@ def save_exercise(
     return cur.lastrowid
 
 
+def upsert_exercise(
+    log_date: str,
+    calories_burned: int,
+    description: str = "",
+    source: str = "api",
+) -> dict:
+    """API経由の運動ログUPSERT。同日同description同sourceが存在すれば上書き。
+    戻り値: {"id": int, "updated": bool}
+    """
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM exercise_logs WHERE log_date = ? AND description = ? AND source = ?",
+            (log_date, description, source),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE exercise_logs SET calories_burned = ?, recorded_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (calories_burned, existing["id"]),
+            )
+            return {"id": existing["id"], "updated": True}
+        else:
+            cur = conn.execute(
+                "INSERT INTO exercise_logs (log_date, calories_burned, description, source) VALUES (?, ?, ?, ?)",
+                (log_date, calories_burned, description, source),
+            )
+            return {"id": cur.lastrowid, "updated": False}
+
+
 def get_exercise_logs(start_date: str, end_date: str) -> list[dict]:
     """期間内の全運動ログを log_date 昇順で返す。"""
     with get_conn() as conn:

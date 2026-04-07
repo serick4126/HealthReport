@@ -826,15 +826,16 @@ async def exercise_ingest(request: Request, body: ExerciseIngestRequest):
 
     # 3. 保存
     try:
-        eid = database.save_exercise(body.date, body.calories_burned, body.description, source="api")
+        result = database.upsert_exercise(body.date, body.calories_burned, body.description, source="api")
     except Exception:
         logger.error("運動ログ(ingest)の保存に失敗しました", exc_info=True)
         raise HTTPException(status_code=500, detail="運動ログの保存に失敗しました")
     return JSONResponse({
         "success": True,
-        "id": eid,
+        "id": result["id"],
         "date": body.date,
         "calories_burned": body.calories_burned,
+        "updated": result["updated"],
     })
 
 
