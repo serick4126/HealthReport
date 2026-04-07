@@ -33,12 +33,14 @@
       border: 1px solid var(--border); padding: 12px; text-align: center;
     }
     .summary-val { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .summary-val-negative { color: var(--danger, #ff3b30); }
     .summary-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+    .summary-card-pfc .summary-val { font-size: 13px; line-height: 1.4; }
     /* モーダルサイズのみ上書き（stats固有: 小さめサイズ） */
     .modal-box { width: min(360px, 90vw); max-height: unset; }
     .modal-row { margin-bottom: 14px; }
     /* 表示設定モーダル */
-    #widgetModal .modal-box { width: min(340px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+    #widgetModal .modal-box, #summaryModal .modal-box { width: min(340px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
     .widget-modal-body { overflow-y: auto; flex: 1; padding: 4px 0; }
     .widget-list { list-style: none; margin: 0; padding: 0; }
     .widget-item {
@@ -105,6 +107,7 @@
     <button class="period-btn" onclick="setPeriod(30, this)">直近30日</button>
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
     <button class="period-btn" id="widgetSettingsBtn" onclick="openWidgetSettings()">⚙️ 表示設定</button>
+    <button class="period-btn" id="summarySettingsBtn" onclick="openSummarySettings()">📋 サマリー設定</button>
     <div style="display:flex;gap:6px;margin-left:auto">
       <button class="period-shift-btn" id="prevBtn" onclick="shiftPeriod(-1)" title="前の期間（最大1年前まで）">◀ 前</button>
       <button class="period-shift-btn" id="nextBtn" onclick="shiftPeriod(1)" disabled>次 ▶</button>
@@ -148,6 +151,19 @@
     </div>
   </div>
 
+  <!-- サマリー設定モーダル -->
+  <div class="modal-overlay" id="summaryModal" style="display:none" onclick="handleSummaryOverlayClick(event)">
+    <div class="modal-box">
+      <div class="modal-title">📋 サマリー設定</div>
+      <div class="widget-modal-body">
+        <ul class="widget-list" id="summaryList"></ul>
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeSummarySettings()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // datalabels プラグインを登録・デフォルト無効（必要なチャートのみ有効化）
     Chart.register(ChartDataLabels);
@@ -165,17 +181,21 @@
       widgetRegistry: [],    // [{id, label, emoji, widget_type, canvas_id, wrap_style}, ...]
       modalWidgetConfig: [], // モーダル編集中の一時状態（完了/キャンセルで確定/破棄）
       _dragSrcEl: null,      // DnD中のドラッグ元要素（pageState集約）
+      summaryConfig: [],       // [{id, visible}, ...] サマリーアイテム設定
+      modalSummaryConfig: [],  // サマリーモーダル編集中の一時状態
+      _lastStatsData: null,    // 最後のstatsレスポンス（サマリー再描画用）
     };
 
     // ── ウィジェットヘルパー ──────────────────────────────────────────────────
 
-    function mergeWidgetConfig(saved, registry) {
+    function mergeWidgetConfig(saved, registry, defaultVisible) {
+      if (defaultVisible === undefined) defaultVisible = true;
       var registryIds = registry.map(function(r) { return r.id; });
       var merged = saved.filter(function(w) { return registryIds.indexOf(w.id) !== -1; });
       var savedIds = merged.map(function(w) { return w.id; });
       registry.forEach(function(r) {
         if (savedIds.indexOf(r.id) === -1) {
-          merged.push({ id: r.id, visible: true });
+          merged.push({ id: r.id, visible: defaultVisible });
         }
       });
       return merged;
@@ -191,17 +211,154 @@
       return meta ? meta.canvas_id : null;
     }
 
-    // ── サマリーHTML生成 ──────────────────────────────────────────────────────
+    // ── サマリーアイテムレジストリ ──────────────────────────────────────────────
+    var SUMMARY_ITEM_REGISTRY = [
+      { id: 'avg_calories',          label: '平均摂取カロリー',                   unit: 'kcal', emoji: '🔥' },
+      { id: 'latest_weight',         label: '最新体重',                           unit: 'kg',   emoji: '⚖️' },
+      { id: 'avg_steps',             label: '平均歩数',                           unit: '歩',   emoji: '👟' },
+      { id: 'avg_bp',                label: '血圧（平均）',                       unit: 'mmHg', emoji: '💉' },
+      { id: 'avg_total_expenditure', label: '総消費カロリー平均',                 unit: 'kcal', emoji: '🔥' },
+      { id: 'avg_exercise_cal',      label: '消費カロリー平均（基礎代謝除く）',   unit: 'kcal', emoji: '🏃' },
+      { id: 'avg_calorie_balance',   label: 'カロリー収支平均',                   unit: 'kcal', emoji: '📊' },
+      { id: 'avg_pfc',               label: 'PFCバランス平均',                    unit: '',     emoji: '🥩' },
+      { id: 'avg_weight',            label: '平均体重',                           unit: 'kg',   emoji: '⚖️' },
+      { id: 'weight_change',         label: '体重変動',                           unit: 'kg',   emoji: '📉' },
+      { id: 'calorie_goal_rate',     label: '目標カロリー達成率',                 unit: '%',    emoji: '🎯' },
+    ];
 
-    function buildSummaryHtml(avgCal, latestWeight, avgSteps) {
-      return '<div class="summary-row">' +
-        '<div class="summary-card"><div class="summary-val">' + avgCal + '</div>' +
-        '<div class="summary-label">平均カロリー (kcal)</div></div>' +
-        '<div class="summary-card"><div class="summary-val">' + (latestWeight != null ? latestWeight : '—') + '</div>' +
-        '<div class="summary-label">最新体重 (kg)</div></div>' +
-        '<div class="summary-card"><div class="summary-val">' + (avgSteps > 0 ? avgSteps.toLocaleString() : '—') + '</div>' +
-        '<div class="summary-label">平均歩数</div></div>' +
-        '</div>';
+    // ── サマリー計算ディスパッチテーブル ──────────────────────────────────────────
+    // 各関数は { value: string, hasData: boolean } を返す
+    var SUMMARY_CALC_FUNCTIONS = {
+      avg_calories: function(data) {
+        var valid = data.calories.filter(function(v) { return v != null; });
+        if (!valid.length) return { value: '—', hasData: false };
+        var avg = Math.round(valid.reduce(function(a, b) { return a + b; }, 0) / valid.length);
+        return { value: avg.toLocaleString(), hasData: true };
+      },
+      latest_weight: function(data) {
+        var all = (data.weights_morning || []).concat(data.weights_evening || []).filter(function(v) { return v != null; });
+        if (!all.length) return { value: '—', hasData: false };
+        return { value: all[all.length - 1], hasData: true };
+      },
+      avg_steps: function(data) {
+        var valid = (data.steps || []).filter(function(v) { return v != null; });
+        if (!valid.length) return { value: '—', hasData: false };
+        var avg = Math.round(valid.reduce(function(a, b) { return a + b; }, 0) / valid.length);
+        return { value: avg.toLocaleString(), hasData: true };
+      },
+      avg_bp: function(data) {
+        var bp = data.blood_pressure || {};
+        var sysVals = (bp.morning_systolic || []).concat(bp.evening_systolic || []).filter(function(v) { return v != null; });
+        var diaVals = (bp.morning_diastolic || []).concat(bp.evening_diastolic || []).filter(function(v) { return v != null; });
+        if (!sysVals.length || !diaVals.length) return { value: '—', hasData: false };
+        var avgSys = Math.round(sysVals.reduce(function(a, b) { return a + b; }, 0) / sysVals.length);
+        var avgDia = Math.round(diaVals.reduce(function(a, b) { return a + b; }, 0) / diaVals.length);
+        return { value: avgSys + '/' + avgDia, hasData: true };
+      },
+      avg_total_expenditure: function(data) {
+        var valid = (data.total_expenditure || []).filter(function(v) { return v != null; });
+        if (!valid.length) return { value: '—', hasData: false };
+        var avg = Math.round(valid.reduce(function(a, b) { return a + b; }, 0) / valid.length);
+        return { value: avg.toLocaleString(), hasData: true };
+      },
+      avg_exercise_cal: function(data) {
+        var valid = (data.exercise_calories || []).filter(function(v) { return v != null; });
+        if (!valid.length) return { value: '—', hasData: false };
+        var avg = Math.round(valid.reduce(function(a, b) { return a + b; }, 0) / valid.length);
+        return { value: avg.toLocaleString(), hasData: true };
+      },
+      avg_calorie_balance: function(data) {
+        var exp = data.total_expenditure || [];
+        var cal = data.calories || [];
+        var diffs = [];
+        for (var i = 0; i < cal.length; i++) {
+          if (exp[i] != null && cal[i] != null) {
+            diffs.push(exp[i] - cal[i]);
+          }
+        }
+        if (!diffs.length) return { value: '—', hasData: false };
+        var avg = Math.round(diffs.reduce(function(a, b) { return a + b; }, 0) / diffs.length);
+        var sign = avg > 0 ? '+' : '';
+        return { value: sign + avg.toLocaleString(), hasData: true, numValue: avg };
+      },
+      avg_pfc: function(data) {
+        var pValid = (data.protein || []).filter(function(v) { return v != null; });
+        var fValid = (data.fat || []).filter(function(v) { return v != null; });
+        var cValid = (data.carbs || []).filter(function(v) { return v != null; });
+        if (!pValid.length && !fValid.length && !cValid.length) return { value: '—', hasData: false };
+        var avgP = pValid.length ? pValid.reduce(function(a, b) { return a + b; }, 0) / pValid.length : 0;
+        var avgF = fValid.length ? fValid.reduce(function(a, b) { return a + b; }, 0) / fValid.length : 0;
+        var avgC = cValid.length ? cValid.reduce(function(a, b) { return a + b; }, 0) / cValid.length : 0;
+        var total = avgP + avgF + avgC;
+        var pctP = total > 0 ? Math.round(avgP / total * 100) : 0;
+        var pctF = total > 0 ? Math.round(avgF / total * 100) : 0;
+        var pctC = total > 0 ? 100 - pctP - pctF : 0;
+        return {
+          value: 'P:' + Math.round(avgP) + 'g(' + pctP + '%) F:' + Math.round(avgF) + 'g(' + pctF + '%) C:' + Math.round(avgC) + 'g(' + pctC + '%)',
+          hasData: true
+        };
+      },
+      avg_weight: function(data) {
+        var all = (data.weights_morning || []).concat(data.weights_evening || []).filter(function(v) { return v != null; });
+        if (!all.length) return { value: '—', hasData: false };
+        var avg = all.reduce(function(a, b) { return a + b; }, 0) / all.length;
+        return { value: avg.toFixed(1), hasData: true };
+      },
+      weight_change: function(data) {
+        var all = [];
+        for (var i = 0; i < (data.dates || []).length; i++) {
+          var wm = data.weights_morning ? data.weights_morning[i] : null;
+          var we = data.weights_evening ? data.weights_evening[i] : null;
+          var w = we != null ? we : wm;
+          if (w != null) all.push(w);
+        }
+        if (all.length < 2) return { value: '—', hasData: false };
+        var diff = all[all.length - 1] - all[0];
+        var sign = diff > 0 ? '+' : '';
+        return { value: sign + diff.toFixed(1), hasData: true, numValue: diff };
+      },
+      calorie_goal_rate: function(data) {
+        var goal = data.calories_goal;
+        if (!goal) return { value: '—', hasData: false };
+        var valid = data.calories.filter(function(v) { return v != null; });
+        if (!valid.length) return { value: '—', hasData: false };
+        var met = valid.filter(function(v) { return v <= goal; }).length;
+        var rate = Math.round(met / valid.length * 100);
+        return { value: rate, hasData: true };
+      },
+    };
+
+    // ── サマリーHTML生成 ──────────────────────────────────────────────────────
+    function buildSummaryHtml(data) {
+      var visibleItems = pageState.summaryConfig.filter(function(w) { return w.visible; });
+      if (!visibleItems.length) return '';
+      var colCount = Math.min(visibleItems.length, 3);
+      var cards = '';
+      visibleItems.forEach(function(w) {
+        var meta = SUMMARY_ITEM_REGISTRY.find(function(r) { return r.id === w.id; });
+        if (!meta) return;
+        var calcFn = SUMMARY_CALC_FUNCTIONS[w.id];
+        if (!calcFn) return;
+        var result = calcFn(data);
+        var displayVal = result.hasData ? result.value : '—';
+        var valClass = 'summary-val';
+        // カロリー収支: 負なら赤色
+        if (w.id === 'avg_calorie_balance' && result.hasData && result.numValue < 0) {
+          valClass += ' summary-val-negative';
+        }
+        // 体重変動: 増加なら赤色
+        if (w.id === 'weight_change' && result.hasData && result.numValue > 0) {
+          valClass += ' summary-val-negative';
+        }
+        // PFCは特別なレイアウト（小さめフォント）
+        var extraClass = w.id === 'avg_pfc' ? ' summary-card-pfc' : '';
+        var unitStr = meta.unit ? ' (' + meta.unit + ')' : '';
+        cards += '<div class="summary-card' + extraClass + '">' +
+          '<div class="' + valClass + '">' + displayVal + '</div>' +
+          '<div class="summary-label">' + meta.label + unitStr + '</div>' +
+          '</div>';
+      });
+      return '<div class="summary-row" style="grid-template-columns:repeat(' + colCount + ',1fr)">' + cards + '</div>';
     }
 
     // ── チャート描画ディスパッチテーブル ──────────────────────────────────────
@@ -616,6 +773,17 @@
             savedConfig = [];
           }
           pageState.widgetConfig = mergeWidgetConfig(savedConfig, pageState.widgetRegistry);
+          // サマリーアイテム設定
+          var summaryRaw = sett.stats_summary_items || '[]';
+          var savedSummary = [];
+          try {
+            savedSummary = JSON.parse(summaryRaw);
+            if (!Array.isArray(savedSummary)) savedSummary = [];
+          } catch (e2) {
+            console.error('stats_summary_items parse error, using default:', e2);
+            savedSummary = [];
+          }
+          pageState.summaryConfig = mergeWidgetConfig(savedSummary, SUMMARY_ITEM_REGISTRY, false);
         } catch(e) {
           handleFetchError(document.getElementById('content'), e);
           return;
@@ -652,13 +820,7 @@
       const hasExpenditure = totalExp.some(function(v) { return v != null; });
       pageState.dates = data.dates;
 
-      // サマリー計算
-      const validCal = data.calories.filter(function(v) { return v != null; });
-      const avgCal = validCal.length ? Math.round(validCal.reduce(function(a,b) { return a+b; }, 0) / validCal.length) : 0;
-      const allWeights = (data.weights_morning || []).concat(data.weights_evening || []).filter(function(v) { return v != null; });
-      const latestWeight = allWeights.length ? allWeights[allWeights.length - 1] : null;
-      const validSteps = (data.steps || []).filter(function(v) { return v != null; });
-      const avgSteps = validSteps.length ? Math.round(validSteps.reduce(function(a,b) { return a+b; }, 0) / validSteps.length) : 0;
+      pageState._lastStatsData = data;
 
       // ── HTML生成 ─────────────────────────────────────────────────────────
       // ウィジェットIDのif-else分岐なし。widgetRegistryのmetaで完全制御。
@@ -668,7 +830,7 @@
         var meta = pageState.widgetRegistry.find(function(r) { return r.id === w.id; });
         if (!meta) return;
         if (meta.widget_type === 'summary') {
-          html += buildSummaryHtml(avgCal, latestWeight, avgSteps);
+          html += buildSummaryHtml(data);
         } else if (meta.widget_type === 'chart') {
           var wrapStyle = meta.wrap_style ? ' style="' + meta.wrap_style + '"' : '';
           html += '<div class="chart-card">' +
@@ -1152,6 +1314,8 @@
     window.addEventListener('beforeunload', function() {
       _touchCleanups.forEach(function(fn) { fn(); });
       _touchCleanups = [];
+      _summaryTouchCleanups.forEach(function(fn) { fn(); });
+      _summaryTouchCleanups = [];
     });
 
     function syncModalConfigFromDom(ul) {
@@ -1201,6 +1365,195 @@
         if (e instanceof Response || e instanceof TypeError) {
           console.error('表示設定の再描画に失敗しました:', e);
           showToast('表示の更新に失敗しました', 'error');
+        }
+      });
+    }
+
+    // ── サマリー設定モーダル ─────────────────────────────────────────────────
+    var _summaryTouchDragState = { srcEl: null };
+    var _summaryTouchCleanups = [];
+
+    function openSummarySettings() {
+      pageState.modalSummaryConfig = pageState.summaryConfig.map(function(w) {
+        return { id: w.id, visible: w.visible };
+      });
+      renderSummaryList();
+      document.getElementById('summaryModal').style.display = 'flex';
+    }
+
+    function closeSummarySettings() {
+      document.getElementById('summaryModal').style.display = 'none';
+      pageState.modalSummaryConfig = [];
+    }
+
+    function handleSummaryOverlayClick(event) {
+      if (event.target === document.getElementById('summaryModal')) {
+        closeSummarySettings();
+      }
+    }
+
+    function renderSummaryList() {
+      var ul = document.getElementById('summaryList');
+      ul.innerHTML = '';
+      pageState.modalSummaryConfig.forEach(function(w) {
+        var meta = SUMMARY_ITEM_REGISTRY.find(function(r) { return r.id === w.id; });
+        if (!meta) return;
+        var li = document.createElement('li');
+        li.className = 'widget-item';
+        li.draggable = true;
+        li.dataset.id = w.id;
+        var checkId = 'stoggle_' + w.id;
+        li.innerHTML =
+          '<span class="widget-drag-handle" aria-hidden="true">☰</span>' +
+          '<span class="widget-item-label">' + meta.emoji + ' ' + meta.label + '</span>' +
+          '<label class="widget-toggle" aria-label="' + meta.label + 'の表示切替">' +
+          '<input type="checkbox" id="' + checkId + '"' + (w.visible ? ' checked' : '') + ' data-id="' + w.id + '">' +
+          '<span class="widget-toggle-slider"></span>' +
+          '</label>';
+        ul.appendChild(li);
+      });
+      attachSummaryDragEvents(ul);
+      ul.querySelectorAll('.widget-toggle input').forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          var wid = chk.dataset.id;
+          var entry = pageState.modalSummaryConfig.find(function(w) { return w.id === wid; });
+          if (entry) { entry.visible = chk.checked; }
+          saveSummarySettings();
+        });
+      });
+    }
+
+    function attachSummaryDragEvents(ul) {
+      _summaryTouchCleanups.forEach(function(fn) { fn(); });
+      _summaryTouchCleanups = [];
+
+      ul.querySelectorAll('.widget-item').forEach(function(item) {
+        item.addEventListener('dragstart', function(e) {
+          pageState._dragSrcEl = item;
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        item.addEventListener('dragover', function(e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
+          item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', function() {
+          item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', function(e) {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          if (pageState._dragSrcEl && pageState._dragSrcEl !== item) {
+            var items = Array.from(ul.querySelectorAll('.widget-item'));
+            var srcIdx = items.indexOf(pageState._dragSrcEl);
+            var tgtIdx = items.indexOf(item);
+            if (srcIdx < tgtIdx) {
+              ul.insertBefore(pageState._dragSrcEl, item.nextSibling);
+            } else {
+              ul.insertBefore(pageState._dragSrcEl, item);
+            }
+            syncSummaryConfigFromDom(ul);
+            saveSummarySettings();
+          }
+        });
+        item.addEventListener('dragend', function() {
+          ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
+          pageState._dragSrcEl = null;
+        });
+
+        function onTouchStart(e) {
+          if (e.target.closest('.widget-toggle')) return;
+          e.preventDefault();
+          _summaryTouchDragState.srcEl = item;
+          item.classList.add('drag-over');
+        }
+        function onTouchMove(e) {
+          if (!_summaryTouchDragState.srcEl || _summaryTouchDragState.srcEl !== item) return;
+          e.preventDefault();
+          var touch = e.touches[0];
+          var saved = item.style.display;
+          item.style.display = 'none';
+          var el = document.elementFromPoint(touch.clientX, touch.clientY);
+          item.style.display = saved;
+          if (!el) return;
+          var target = el.closest('.widget-item');
+          if (!target || target === item) return;
+          var items = Array.from(ul.querySelectorAll('.widget-item'));
+          var srcIdx = items.indexOf(item);
+          var tgtIdx = items.indexOf(target);
+          if (srcIdx !== tgtIdx) {
+            if (srcIdx < tgtIdx) {
+              ul.insertBefore(item, target.nextSibling);
+            } else {
+              ul.insertBefore(item, target);
+            }
+          }
+        }
+        function onTouchEnd() {
+          if (!_summaryTouchDragState.srcEl) return;
+          item.classList.remove('drag-over');
+          _summaryTouchDragState.srcEl = null;
+          syncSummaryConfigFromDom(ul);
+          saveSummarySettings();
+        }
+        item.addEventListener('touchstart', onTouchStart, { passive: false });
+        item.addEventListener('touchmove', onTouchMove, { passive: false });
+        item.addEventListener('touchend', onTouchEnd);
+        _summaryTouchCleanups.push(function() {
+          item.removeEventListener('touchstart', onTouchStart);
+          item.removeEventListener('touchmove', onTouchMove);
+          item.removeEventListener('touchend', onTouchEnd);
+        });
+      });
+    }
+
+    function syncSummaryConfigFromDom(ul) {
+      var newOrder = [];
+      ul.querySelectorAll('.widget-item').forEach(function(li) {
+        var wid = li.dataset.id;
+        var entry = pageState.modalSummaryConfig.find(function(w) { return w.id === wid; });
+        if (entry) { newOrder.push({ id: entry.id, visible: entry.visible }); }
+      });
+      pageState.modalSummaryConfig = newOrder;
+    }
+
+    function saveSummarySettings() {
+      var config = pageState.modalSummaryConfig.map(function(w) {
+        return { id: w.id, visible: w.visible };
+      });
+      var jsonStr = JSON.stringify(config);
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { stats_summary_items: jsonStr } })
+      }).then(function(res) {
+        if (!res.ok) {
+          console.error('サマリー設定の保存に失敗しました: HTTP ' + res.status);
+          showToast('設定の保存に失敗しました', 'error');
+          return Promise.reject(res);
+        }
+        pageState.summaryConfig = pageState.modalSummaryConfig.map(function(w) {
+          return { id: w.id, visible: w.visible };
+        });
+        // サマリーのみ再描画（チャートは不変）
+        if (pageState._lastStatsData) {
+          var summaryWidget = document.querySelector('.summary-row');
+          var newHtml = buildSummaryHtml(pageState._lastStatsData);
+          if (summaryWidget) {
+            summaryWidget.outerHTML = newHtml || '<div class="summary-row" style="display:none"></div>';
+          } else {
+            // サマリーウィジェットが表示中なら先頭に挿入
+            var content = document.getElementById('content');
+            if (newHtml && content) {
+              content.insertAdjacentHTML('afterbegin', newHtml);
+            }
+          }
+        }
+      }).catch(function(e) {
+        if (e instanceof Response || e instanceof TypeError) {
+          console.error('サマリー設定の保存に失敗しました:', e);
+          showToast('設定の保存に失敗しました', 'error');
         }
       });
     }
