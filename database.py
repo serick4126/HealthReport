@@ -250,6 +250,7 @@ def init_db():
                 ("user_gender", ""),
                 ("user_birthdate", ""),
                 ("stats_widgets", '[{"id":"summary","visible":true},{"id":"calories","visible":true},{"id":"weight","visible":true},{"id":"steps","visible":true},{"id":"pfc","visible":true},{"id":"sleep","visible":true},{"id":"heart_rate","visible":true},{"id":"spo2","visible":true},{"id":"blood_pressure","visible":true}]'),
+                ("stats_summary_items", '[{"id":"avg_calories","visible":true},{"id":"latest_weight","visible":true},{"id":"avg_steps","visible":true}]'),
                 ("available_models", "[]"),
             ],
         )
