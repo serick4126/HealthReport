@@ -465,43 +465,109 @@
       },
 
       blood_pressure: function(data, labels, defaults, extras) {
-        var bpData = data.blood_pressure || { systolic: [], diastolic: [] };
-        var sysList = bpData.systolic || [];
-        var diasList = bpData.diastolic || [];
-        var hasData = sysList.some(function(v) { return v != null; }) ||
-                      diasList.some(function(v) { return v != null; });
+        var bpData = data.blood_pressure || {};
+        var mSys  = bpData.morning_systolic  || [];
+        var mDias = bpData.morning_diastolic || [];
+        var eSys  = bpData.evening_systolic  || [];
+        var eDias = bpData.evening_diastolic || [];
+        var hasData = [mSys, mDias, eSys, eDias].some(function(arr) {
+          return arr.some(function(v) { return v != null; });
+        });
         var canvas = document.getElementById(_canvasId('blood_pressure'));
         if (!hasData) {
+          if (charts.bloodPressure) { charts.bloodPressure.destroy(); delete charts.bloodPressure; }
           canvas.parentElement.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:24px">血圧データがありません。</p>';
           return;
         }
         if (charts.bloodPressure) charts.bloodPressure.destroy();
-        charts.bloodPressure = new Chart(canvas, {
-          type: 'line',
-          data: {
+
+        var chartData, chartOptions;
+        var c = { text: extras.chartTextColor, grid: extras.chartGridColor };
+
+        if (extras.isLong) {
+          chartData = {
             labels: labels,
             datasets: [
+              { label: '朝 最高血圧', data: mSys,
+                borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.1)',
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: '#ff3b30' },
+              { label: '朝 最低血圧', data: mDias,
+                borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: '#007aff' },
+              { label: '夜 最高血圧', data: eSys,
+                borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.05)',
+                borderDash: [4, 3],
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: 'rgba(255,59,48,0.5)' },
+              { label: '夜 最低血圧', data: eDias,
+                borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.05)',
+                borderDash: [4, 3],
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: 'rgba(0,122,255,0.5)' },
+            ]
+          };
+          chartOptions = {
+            ...defaults,
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxTicksLimit: extras.xMaxTicks, maxRotation: 45, color: c.text }, grid: { color: c.grid } },
+              y: { ticks: { font: { size: 11 }, color: c.text }, grid: { color: c.grid }, beginAtZero: false }
+            }
+          };
+        } else {
+          var bpLabels = [], sysData = [], diasData = [], sysPtColors = [], diasPtColors = [];
+          for (var i = 0; i < data.dates.length; i++) {
+            var d = shortDate(data.dates[i]);
+            var ms = mSys[i]  != null ? mSys[i]  : null;
+            var md = mDias[i] != null ? mDias[i] : null;
+            var es = eSys[i]  != null ? eSys[i]  : null;
+            var ed = eDias[i] != null ? eDias[i] : null;
+            bpLabels.push(d + '朝'); sysData.push(ms); diasData.push(md);
+            sysPtColors.push('#ff3b30'); diasPtColors.push('#007aff');
+            bpLabels.push(d + '夜'); sysData.push(es); diasData.push(ed);
+            sysPtColors.push('rgba(255,59,48,0.5)'); diasPtColors.push('rgba(0,122,255,0.5)');
+          }
+          chartData = {
+            labels: bpLabels,
+            datasets: [
               {
-                label: '最高血圧 (mmHg)',
-                data: sysList,
+                label: '最高血圧 (mmHg)', data: sysData,
                 borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.1)',
                 tension: 0.3, fill: false, spanGaps: true,
-                pointRadius: 4, pointBackgroundColor: '#ff3b30',
+                pointRadius: 4, pointBackgroundColor: sysPtColors, pointBorderColor: sysPtColors,
               },
               {
-                label: '最低血圧 (mmHg)',
-                data: diasList,
+                label: '最低血圧 (mmHg)', data: diasData,
                 borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
                 tension: 0.3, fill: false, spanGaps: true,
-                pointRadius: 4, pointBackgroundColor: '#007aff',
+                pointRadius: 4, pointBackgroundColor: diasPtColors, pointBorderColor: diasPtColors,
               },
             ]
-          },
-          options: {
+          };
+          chartOptions = {
             ...defaults,
-            scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: false } }
-          }
-        });
+            plugins: {
+              ...defaults.plugins,
+              legend: {
+                ...defaults.plugins.legend,
+                labels: {
+                  ...defaults.plugins.legend.labels,
+                  generateLabels: function() {
+                    return [
+                      { text: '朝 最高', fillStyle: '#ff3b30',             strokeStyle: '#ff3b30',             lineWidth: 2, fontColor: c.text },
+                      { text: '夜 最高', fillStyle: 'rgba(255,59,48,0.5)', strokeStyle: 'rgba(255,59,48,0.5)', lineWidth: 2, fontColor: c.text },
+                      { text: '朝 最低', fillStyle: '#007aff',             strokeStyle: '#007aff',             lineWidth: 2, fontColor: c.text },
+                      { text: '夜 最低', fillStyle: 'rgba(0,122,255,0.5)', strokeStyle: 'rgba(0,122,255,0.5)', lineWidth: 2, fontColor: c.text },
+                    ];
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { font: { size: 10 }, maxRotation: 45, color: c.text }, grid: { color: c.grid } },
+              y: { ticks: { font: { size: 11 }, color: c.text }, grid: { color: c.grid }, beginAtZero: false }
+            }
+          };
+        }
+
+        charts.bloodPressure = new Chart(canvas, { type: 'line', data: chartData, options: chartOptions });
       },
 
     };

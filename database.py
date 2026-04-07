@@ -1121,7 +1121,7 @@ def get_stats(
             (since, until),
         ).fetchall()
         bp_stat_rows = conn.execute(
-            "SELECT log_date, systolic, diastolic FROM blood_pressure_logs "
+            "SELECT log_date, time_of_day, systolic, diastolic FROM blood_pressure_logs "
             "WHERE log_date >= ? AND log_date <= ?",
             (since, until),
         ).fetchall()
@@ -1136,7 +1136,7 @@ def get_stats(
         skip_map.setdefault(r["meal_date"], []).append(r["meal_type"])
     bp_stat_map: dict = {}
     for r in bp_stat_rows:
-        bp_stat_map.setdefault(r["log_date"], []).append((r["systolic"], r["diastolic"]))
+        bp_stat_map.setdefault(r["log_date"], {})[r["time_of_day"]] = (r["systolic"], r["diastolic"])
 
     calories, protein, fat, carbs = [], [], [], []
     # 運動消費カロリー集計
@@ -1149,8 +1149,10 @@ def get_stats(
     wm, we, steps = [], [], []
     exercise_calories: list = []
     total_expenditure: list = []
-    bp_systolic: list = []
-    bp_diastolic: list = []
+    bp_morning_systolic: list = []
+    bp_morning_diastolic: list = []
+    bp_evening_systolic: list = []
+    bp_evening_diastolic: list = []
     for d in dates:
         c = cal_map.get(d)
         calories.append(int(c["cal"]) if c and c["cal"] is not None else None)
@@ -1167,13 +1169,13 @@ def get_stats(
             total_expenditure.append(bmr_kcal + (ex or 0))
         else:
             total_expenditure.append(None)
-        bp_entries = bp_stat_map.get(d, [])
-        if bp_entries:
-            bp_systolic.append(round(sum(e[0] for e in bp_entries) / len(bp_entries), 1))
-            bp_diastolic.append(round(sum(e[1] for e in bp_entries) / len(bp_entries), 1))
-        else:
-            bp_systolic.append(None)
-            bp_diastolic.append(None)
+        bp_day = bp_stat_map.get(d, {})
+        morning = bp_day.get("morning")
+        evening = bp_day.get("evening")
+        bp_morning_systolic.append(morning[0] if morning else None)
+        bp_morning_diastolic.append(morning[1] if morning else None)
+        bp_evening_systolic.append(evening[0] if evening else None)
+        bp_evening_diastolic.append(evening[1] if evening else None)
 
     return {
         "period": total,
@@ -1190,7 +1192,12 @@ def get_stats(
         "exercise_calories": exercise_calories,
         "bmr_kcal": bmr_kcal,
         "total_expenditure": total_expenditure,
-        "blood_pressure": {"systolic": bp_systolic, "diastolic": bp_diastolic},
+        "blood_pressure": {
+            "morning_systolic":  bp_morning_systolic,
+            "morning_diastolic": bp_morning_diastolic,
+            "evening_systolic":  bp_evening_systolic,
+            "evening_diastolic": bp_evening_diastolic,
+        },
     }
 
 
