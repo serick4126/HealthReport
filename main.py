@@ -934,10 +934,14 @@ async def weight_ingest(request: Request, body: WeightIngestRequest):
 
 # ── 血圧受付API（iPhoneショートカット連携） ────────────────────────────────────
 
-class BloodPressureIngestRequest(BaseModel):
+class BloodPressureRecord(BaseModel):
     recorded_at: str  # "YYYY/MM/DD HH:MM"
     systolic: int
     diastolic: int
+
+
+class BloodPressureIngestRequest(BaseModel):
+    records: list[BloodPressureRecord]
 
 
 @app.post("/api/external/blood-pressure")
@@ -945,7 +949,7 @@ async def blood_pressure_ingest(request: Request, body: BloodPressureIngestReque
     """iPhoneショートカット等から血圧を受け付けるAPI。
     セッション認証不要。external_api_key（歩数・体重と共用）による Bearer トークン認証。
     ヘッダー: Authorization: Bearer {external_api_key}
-    ボディ: {"recorded_at":"YYYY/MM/DD HH:MM","systolic":120,"diastolic":80}
+    ボディ: {"records": [{"recorded_at": "YYYY/MM/DD HH:MM", "systolic": 120, "diastolic": 80}]}
     """
     # 1. APIキー認証
     stored_key = database.get_setting("external_api_key") or ""
@@ -960,43 +964,48 @@ async def blood_pressure_ingest(request: Request, body: BloodPressureIngestReque
         raise HTTPException(status_code=401, detail="APIキーが正しくありません")
 
     # 2. バリデーション
-    try:
-        datetime.strptime(body.recorded_at, "%Y/%m/%d %H:%M")
-    except ValueError:
-        raise HTTPException(
-            status_code=422,
-            detail="recorded_atはYYYY/MM/DD HH:MM形式で指定してください",
-        )
-    _validate_blood_pressure(body.systolic, body.diastolic)
+    if not body.records:
+        raise HTTPException(status_code=422, detail="recordsが空です")
+    if len(body.records) > 100:
+        raise HTTPException(status_code=422, detail="一度に送信できるレコードは100件以内です")
+    for rec in body.records:
+        try:
+            datetime.strptime(rec.recorded_at, "%Y/%m/%d %H:%M")
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"recorded_at の形式が不正です: {rec.recorded_at}（YYYY/MM/DD HH:MM形式で指定）",
+            )
+        _validate_blood_pressure(rec.systolic, rec.diastolic)
 
-    # 3. 日付・時間帯分類
+    # 3. 分類・保存（後着優先 upsert）
     raw_hour = database.get_setting("day_start_hour") or "4"
     try:
         day_start = int(raw_hour)
     except ValueError:
         day_start = 4
-    log_date_str, time_of_day = _classify_weight_record(body.recorded_at, day_start)
-    log_date = date.fromisoformat(log_date_str)
     today = datetime.now(_JST).date()
-    if log_date > today:
-        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
-
-    # 4. 保存（同日同時間帯は上書き）
+    saved = []
     try:
-        result = database.upsert_blood_pressure(log_date_str, time_of_day, body.systolic, body.diastolic)
+        for rec in body.records:
+            log_date_str, time_of_day = _classify_weight_record(rec.recorded_at, day_start)
+            log_date = date.fromisoformat(log_date_str)
+            if log_date > today:
+                logger.warning("未来の日付をスキップ: %s", log_date_str)
+                continue
+            result = database.upsert_blood_pressure(log_date_str, time_of_day, rec.systolic, rec.diastolic)
+            saved.append({
+                "log_date": log_date_str,
+                "time_of_day": time_of_day,
+                "systolic": rec.systolic,
+                "diastolic": rec.diastolic,
+                "updated": result["updated"],
+            })
     except Exception:
         logger.error("血圧データの保存中にエラーが発生しました", exc_info=True)
         raise HTTPException(status_code=500, detail="血圧データの保存に失敗しました")
 
-    return JSONResponse({
-        "success": True,
-        "id": result["id"],
-        "log_date": log_date_str,
-        "time_of_day": time_of_day,
-        "systolic": body.systolic,
-        "diastolic": body.diastolic,
-        "updated": result["updated"],
-    })
+    return JSONResponse({"success": True, "saved": saved})
 
 
 # ── 食事スキップ CRUD ──────────────────────────────────────────────────────────

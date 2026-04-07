@@ -492,8 +492,8 @@
                 <strong>ボディ:</strong> {"date": "YYYY-MM-DD", "calories_burned": &lt;kcal整数&gt;, "description": "iOSショートカット"}<br>
                 iOSヘルスケアの「アクティブエネルギー」をショートカットの「ヘルスケア」アクションで取得し、毎日自動送信できます。<br><br>
                 <strong>【血圧】</strong><br>
-                <strong>ボディ:</strong> {"recorded_at": "YYYY/MM/DD HH:MM", "systolic": &lt;最高血圧整数&gt;, "diastolic": &lt;最低血圧整数&gt;}<br>
-                recorded_at の時刻が 1日の開始時刻〜11:59 → 朝、12:00〜翌 1日の開始時刻前 → 夜 として自動分類します。同一日・同一時間帯の記録は上書きされます。<br><br>
+                <strong>ボディ:</strong> {"records": [{"recorded_at": "YYYY/MM/DD HH:MM", "systolic": &lt;最高血圧整数&gt;, "diastolic": &lt;最低血圧整数&gt;}, ...]}<br>
+                朝・夜など複数件を配列で一括送信できます（最大100件）。recorded_at の時刻が 1日の開始時刻〜11:59 → 朝、12:00〜翌 1日の開始時刻前 → 夜 として自動分類します。同一日・同一時間帯の記録は後着で上書きされます。<br><br>
                 ヘルスケアから前日のデータを取得し、毎朝自動実行するオートメーションに設定することで自動記録できます。
               </div>
             </div>
