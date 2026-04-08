@@ -1293,6 +1293,7 @@
         // PC: HTML5 Drag and Drop — ハンドルからのみドラッグ開始
         var handle = item.querySelector('.widget-drag-handle');
         handle.addEventListener('mousedown', function() { item.draggable = true; });
+        handle.addEventListener('mouseup', function() { item.draggable = false; });
         item.addEventListener('dragstart', function(e) {
           pageState._dragSrcEl = item;
           e.dataTransfer.effectAllowed = 'move';
@@ -1495,6 +1496,7 @@
         // PC: HTML5 Drag and Drop — ハンドルからのみドラッグ開始
         var handle = item.querySelector('.widget-drag-handle');
         handle.addEventListener('mousedown', function() { item.draggable = true; });
+        handle.addEventListener('mouseup', function() { item.draggable = false; });
         item.addEventListener('dragstart', function(e) {
           pageState._dragSrcEl = item;
           e.dataTransfer.effectAllowed = 'move';
