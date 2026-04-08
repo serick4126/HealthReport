@@ -51,11 +51,11 @@
     .widget-item {
       display: flex; align-items: center; gap: 10px;
       padding: 10px 12px; border-bottom: 1px solid var(--border);
-      cursor: grab; user-select: none;
+      user-select: none;
     }
     .widget-item:last-child { border-bottom: none; }
     .widget-item.drag-over { background: var(--accent-light, rgba(0,122,255,0.1)); }
-    .widget-drag-handle { color: var(--text-secondary); font-size: 16px; flex-shrink: 0; }
+    .widget-drag-handle { color: var(--text-secondary); font-size: 16px; flex-shrink: 0; cursor: grab; }
     .widget-item-label { flex: 1; font-size: 14px; }
     .widget-toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
     .widget-toggle input { opacity: 0; width: 0; height: 0; }
@@ -1260,7 +1260,7 @@
         if (!meta) return;
         var li = document.createElement('li');
         li.className = 'widget-item';
-        li.draggable = true;
+        li.draggable = false;
         li.dataset.id = w.id;
         var checkId = 'wtoggle_' + w.id;
         li.innerHTML =
@@ -1290,7 +1290,9 @@
       _touchCleanups = [];
 
       ul.querySelectorAll('.widget-item').forEach(function(item) {
-        // PC: HTML5 Drag and Drop
+        // PC: HTML5 Drag and Drop — ハンドルからのみドラッグ開始
+        var handle = item.querySelector('.widget-drag-handle');
+        handle.addEventListener('mousedown', function() { item.draggable = true; });
         item.addEventListener('dragstart', function(e) {
           pageState._dragSrcEl = item;
           e.dataTransfer.effectAllowed = 'move';
@@ -1323,11 +1325,12 @@
         item.addEventListener('dragend', function() {
           ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
           pageState._dragSrcEl = null;
+          item.draggable = false;
         });
 
-        // スマホ: Touch Events
+        // スマホ: Touch Events — ハンドルからのみドラッグ開始
         function onTouchStart(e) {
-          if (e.target.closest('.widget-toggle')) return;
+          if (!e.target.closest('.widget-drag-handle')) return;
           e.preventDefault();
           _touchDragState.srcEl = item;
           item.classList.add('drag-over');
@@ -1461,7 +1464,7 @@
         if (!meta) return;
         var li = document.createElement('li');
         li.className = 'widget-item';
-        li.draggable = true;
+        li.draggable = false;
         li.dataset.id = w.id;
         var checkId = 'stoggle_' + w.id;
         li.innerHTML =
@@ -1489,6 +1492,9 @@
       _summaryTouchCleanups = [];
 
       ul.querySelectorAll('.widget-item').forEach(function(item) {
+        // PC: HTML5 Drag and Drop — ハンドルからのみドラッグ開始
+        var handle = item.querySelector('.widget-drag-handle');
+        handle.addEventListener('mousedown', function() { item.draggable = true; });
         item.addEventListener('dragstart', function(e) {
           pageState._dragSrcEl = item;
           e.dataTransfer.effectAllowed = 'move';
@@ -1521,10 +1527,12 @@
         item.addEventListener('dragend', function() {
           ul.querySelectorAll('.widget-item').forEach(function(el) { el.classList.remove('drag-over'); });
           pageState._dragSrcEl = null;
+          item.draggable = false;
         });
 
+        // スマホ: Touch Events — ハンドルからのみドラッグ開始
         function onTouchStart(e) {
-          if (e.target.closest('.widget-toggle')) return;
+          if (!e.target.closest('.widget-drag-handle')) return;
           e.preventDefault();
           _summaryTouchDragState.srcEl = item;
           item.classList.add('drag-over');
