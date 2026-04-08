@@ -380,7 +380,13 @@
       flex-wrap: wrap;
       gap: 5px;
       max-height: 144px; /* 4行分 (約31px × 4 + gap × 3) */
-      overflow: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .qp-chips::-webkit-scrollbar { width: 4px; }
+    .qp-chips::-webkit-scrollbar-thumb {
+      background: var(--text-secondary);
+      border-radius: 2px;
     }
     .qp-chip {
       padding: 5px 12px;
