@@ -1262,14 +1262,6 @@ async function loadQuickPalette() {
       html += '<button class="qp-chip fav" data-action="quick" data-text="' + attr + '">★ ' + attr + '</button>';
     }
     chips.innerHTML = html;
-    chips.addEventListener('click', function(e) {
-      const btn = e.target.closest('.qp-chip');
-      if (!btn) return;
-      const action = btn.dataset.action;
-      if (action === 'weight') openWeightModal();
-      else if (action === 'steps') openStepsModal();
-      else if (action === 'quick') sendQuick(btn);
-    });
     palette.style.display = 'block';
   } catch (e) { console.error('クイックパレット読み込みエラー:', e); }
 }
@@ -1325,6 +1317,16 @@ function submitQuickSteps() {
 // ── パスワード入力でEnter ────────────────────────────────────────────────────
 document.getElementById('passwordInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
+});
+
+// ── クイックパレット クリック委譲（1回だけ登録）──────────────────────────────
+document.getElementById('qpChips').addEventListener('click', function(e) {
+  const btn = e.target.closest('.qp-chip');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action === 'weight') openWeightModal();
+  else if (action === 'steps') openStepsModal();
+  else if (action === 'quick') sendQuick(btn);
 });
 
 // ── 初期化 ────────────────────────────────────────────────────────────────────
