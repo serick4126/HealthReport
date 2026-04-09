@@ -271,6 +271,15 @@
 
       <div class="modal-row">
         <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>体脂肪率 (%)</label>
+          <button class="action-btn danger vitals-del-btn" id="vitalsDelBodyFat" disabled>削除</button>
+        </div>
+        <input type="number" id="vitalsBodyFat" min="1" max="80" step="0.1" placeholder="未入力" />
+        <div class="field-error" id="err-vitals-bf">1〜80 % の数値を入力してください</div>
+      </div>
+
+      <div class="modal-row">
+        <div style="display:flex;justify-content:space-between;align-items:center">
           <label>血圧 朝 (最高/最低 mmHg)</label>
           <button class="action-btn danger vitals-del-btn" id="vitalsDelBpMorning">削除</button>
         </div>
@@ -442,6 +451,12 @@
         stepsHtml = `<span class="meta-item">👟 ${day.steps.toLocaleString()}歩</span>`;
       }
 
+      // 体脂肪率メタ（表示のみ）
+      let bodyFatHtml = '';
+      if (day.body_fat != null) {
+        bodyFatHtml = `<span class="meta-item">📊 体脂肪率 ${day.body_fat}%</span>`;
+      }
+
       // 血圧メタ（表示のみ）
       let bpHtml = '';
       const bpData = day.blood_pressure || {};
@@ -515,7 +530,7 @@
             <div class="calorie-bar-wrap" style="flex:1"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
             ${remainingText}
           </div>
-          <div class="day-meta">${weightHtml}${stepsHtml}${bpHtml}${vitalsEditBtn}${exerciseHtml}</div>
+          <div class="day-meta">${weightHtml}${stepsHtml}${bodyFatHtml}${bpHtml}${vitalsEditBtn}${exerciseHtml}</div>
           ${skipSectionHtml}
           ${mealsHtml}
         </div>`;
@@ -821,14 +836,16 @@
       const wm = (day.weight && day.weight.morning) ? day.weight.morning : null;
       const we = (day.weight && day.weight.evening) ? day.weight.evening : null;
       const stepsData = day.steps != null ? { id: day.steps_id, steps: day.steps } : null;
+      const bfData = day.body_fat != null ? { id: day.body_fat_id, body_fat_pct: day.body_fat } : null;
       const bpm = (day.blood_pressure && day.blood_pressure.morning) ? day.blood_pressure.morning : null;
       const bpe = (day.blood_pressure && day.blood_pressure.evening) ? day.blood_pressure.evening : null;
 
-      pageState.vitalsData = { date, weightMorning: wm, weightEvening: we, steps: stepsData, bpMorning: bpm, bpEvening: bpe };
+      pageState.vitalsData = { date, weightMorning: wm, weightEvening: we, steps: stepsData, bodyFat: bfData, bpMorning: bpm, bpEvening: bpe };
 
       document.getElementById('vitalsWeightMorning').value = wm ? wm.weight_kg : '';
       document.getElementById('vitalsWeightEvening').value = we ? we.weight_kg : '';
       document.getElementById('vitalsSteps').value = stepsData ? stepsData.steps : '';
+      document.getElementById('vitalsBodyFat').value = bfData ? bfData.body_fat_pct : '';
       document.getElementById('vitalsBpMorningSys').value = bpm ? bpm.systolic : '';
       document.getElementById('vitalsBpMorningDia').value = bpm ? bpm.diastolic : '';
       document.getElementById('vitalsBpEveningSys').value = bpe ? bpe.systolic : '';
@@ -837,10 +854,11 @@
       document.getElementById('vitalsDelWeightMorning').disabled = !wm;
       document.getElementById('vitalsDelWeightEvening').disabled = !we;
       document.getElementById('vitalsDelSteps').disabled = !stepsData;
+      document.getElementById('vitalsDelBodyFat').disabled = !bfData;
       document.getElementById('vitalsDelBpMorning').disabled = !bpm;
       document.getElementById('vitalsDelBpEvening').disabled = !bpe;
 
-      ['err-vitals-wm','err-vitals-we','err-vitals-steps','err-vitals-bpm','err-vitals-bpe'].forEach(id => {
+      ['err-vitals-wm','err-vitals-we','err-vitals-steps','err-vitals-bf','err-vitals-bpm','err-vitals-bpe'].forEach(id => {
         document.getElementById(id).classList.remove('show');
       });
 
@@ -859,6 +877,7 @@
       const wmStr  = document.getElementById('vitalsWeightMorning').value;
       const weStr  = document.getElementById('vitalsWeightEvening').value;
       const stepsStr = document.getElementById('vitalsSteps').value;
+      const bfStr = document.getElementById('vitalsBodyFat').value;
       const bpmSysStr = document.getElementById('vitalsBpMorningSys').value;
       const bpmDiaStr = document.getElementById('vitalsBpMorningDia').value;
       const bpeSysStr = document.getElementById('vitalsBpEveningSys').value;
@@ -876,6 +895,10 @@
       const stepsVal = stepsStr !== '' ? parseInt(stepsStr) : null;
       if (stepsStr !== '' && (isNaN(stepsVal) || stepsVal < 0 || stepsVal > 999999)) {
         document.getElementById('err-vitals-steps').classList.add('show'); valid = false;
+      }
+      const bfVal = bfStr !== '' ? parseFloat(bfStr) : null;
+      if (bfStr !== '' && (isNaN(bfVal) || bfVal < 1 || bfVal > 80)) {
+        document.getElementById('err-vitals-bf').classList.add('show'); valid = false;
       }
       const bpmSys = bpmSysStr !== '' ? parseInt(bpmSysStr) : null;
       const bpmDia = bpmDiaStr !== '' ? parseInt(bpmDiaStr) : null;
@@ -912,6 +935,11 @@
           requests.push(d.steps
             ? put(`/api/steps/${d.steps.id}`, { steps: stepsVal })
             : fetch('/api/steps', json({ log_date: d.date, steps: stepsVal })));
+        }
+        if (bfVal !== null) {
+          requests.push(d.bodyFat
+            ? put(`/api/body-fat/${d.bodyFat.id}`, { body_fat_pct: bfVal })
+            : fetch('/api/body-fat', json({ log_date: d.date, body_fat_pct: bfVal })));
         }
         if (bpmSys !== null && bpmDia !== null) {
           requests.push(d.bpMorning
@@ -970,6 +998,10 @@
     document.getElementById('vitalsDelSteps').addEventListener('click', function() {
       const d = pageState.vitalsData;
       if (d && d.steps) _vitalsDelete(`/api/steps/${d.steps.id}`, 'steps', ['vitalsSteps'], 'vitalsDelSteps', '歩数');
+    });
+    document.getElementById('vitalsDelBodyFat').addEventListener('click', function() {
+      const d = pageState.vitalsData;
+      if (d && d.bodyFat) _vitalsDelete(`/api/body-fat/${d.bodyFat.id}`, 'bodyFat', ['vitalsBodyFat'], 'vitalsDelBodyFat', '体脂肪率');
     });
     document.getElementById('vitalsDelBpMorning').addEventListener('click', function() {
       const d = pageState.vitalsData;
