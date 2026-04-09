@@ -383,7 +383,13 @@
         pageState.allDays = await histRes.json();
         const stats = await statsRes.json();
         pageState.calorieGoal = stats.calories_goal || 1500;
-        pageState.currentPage = 0;
+        var totalPages = Math.ceil(pageState.allDays.length / PAGE_SIZE);
+        if (pageState.savedPage != null) {
+          pageState.currentPage = Math.min(pageState.savedPage, Math.max(0, totalPages - 1));
+          pageState.savedPage = null;
+        } else {
+          pageState.currentPage = 0;
+        }
         renderPage();
       } catch(e) {
         handleFetchError(document.getElementById('content'), e);
@@ -392,6 +398,7 @@
 
     function reload() {
       pageState.savedScrollY = window.scrollY;
+      pageState.savedPage = pageState.currentPage;
       load(pageState.currentPeriod.days, pageState.currentPeriod.start, pageState.currentPeriod.end);
     }
 
@@ -1166,7 +1173,7 @@
         var s = new Date(cp.start + 'T00:00:00');
         var e = new Date(cp.end + 'T00:00:00');
         shiftDays = Math.round((e - s) / 86400000) + 1;
-        var ms = shiftDays * 86400000 * direction;
+        var ms = 86400000 * direction;
         newStart = new Date(s.getTime() + ms);
         newEnd = new Date(e.getTime() + ms);
       } else {
@@ -1178,7 +1185,7 @@
         if (cp._shiftedEnd) {
           baseEnd = new Date(cp._shiftedEnd + 'T00:00:00');
         }
-        newEnd = new Date(baseEnd.getTime() + shiftDays * 86400000 * direction);
+        newEnd = new Date(baseEnd.getTime() + 86400000 * direction);
         newStart = new Date(newEnd.getTime() - (shiftDays - 1) * 86400000);
       }
 
