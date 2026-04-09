@@ -184,6 +184,13 @@ def init_db():
                 diastolic   INTEGER NOT NULL,
                 recorded_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
             );
+
+            CREATE TABLE IF NOT EXISTS body_fat_logs (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                recorded_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                log_date     DATE NOT NULL UNIQUE,
+                body_fat_pct REAL NOT NULL
+            );
         """)
 
         conn.executescript("""
@@ -213,6 +220,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_vitals_logs_type ON vitals_logs(type);
             CREATE INDEX IF NOT EXISTS idx_exercise_date     ON exercise_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_bp_date           ON blood_pressure_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_body_fat_date     ON body_fat_logs(log_date);
         """)
 
         # 既存DBへのカラム追加マイグレーション
@@ -249,8 +257,8 @@ def init_db():
                 ("password_disabled", "false"),
                 ("user_gender", ""),
                 ("user_birthdate", ""),
-                ("stats_widgets", '[{"id":"summary","visible":true},{"id":"calories","visible":true},{"id":"weight","visible":true},{"id":"steps","visible":true},{"id":"pfc","visible":true},{"id":"sleep","visible":true},{"id":"heart_rate","visible":true},{"id":"spo2","visible":true},{"id":"blood_pressure","visible":true}]'),
-                ("stats_summary_items", '[{"id":"avg_calories","visible":true},{"id":"latest_weight","visible":true},{"id":"avg_steps","visible":true}]'),
+                ("stats_widgets", '[{"id":"summary","visible":true},{"id":"calories","visible":true},{"id":"weight","visible":true},{"id":"steps","visible":true},{"id":"pfc","visible":true},{"id":"sleep","visible":true},{"id":"heart_rate","visible":true},{"id":"spo2","visible":true},{"id":"blood_pressure","visible":true},{"id":"body_fat","visible":true}]'),
+                ("stats_summary_items", '[{"id":"avg_calories","visible":true},{"id":"latest_weight","visible":true},{"id":"avg_steps","visible":true},{"id":"latest_body_fat","visible":true},{"id":"avg_body_fat","visible":true}]'),
                 ("available_models", "[]"),
             ],
         )
@@ -653,6 +661,42 @@ def update_steps_by_id(steps_id: int, steps: int) -> bool:
 def delete_steps_by_id(steps_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM steps_logs WHERE id=?", (steps_id,))
+    return cur.rowcount > 0
+
+
+# ── 体脂肪率記録 ──────────────────────────────────────────────────────────────
+
+def save_body_fat(log_date: str, body_fat_pct: float) -> dict:
+    """保存（同日レコードがあれば上書き）。結果を返す。"""
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id, body_fat_pct FROM body_fat_logs WHERE log_date = ?", (log_date,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE body_fat_logs SET body_fat_pct = ?, recorded_at = CURRENT_TIMESTAMP WHERE log_date = ?",
+                (body_fat_pct, log_date),
+            )
+            return {"id": existing["id"], "updated": True, "previous_body_fat_pct": existing["body_fat_pct"]}
+        else:
+            cur = conn.execute(
+                "INSERT INTO body_fat_logs (log_date, body_fat_pct) VALUES (?, ?)", (log_date, body_fat_pct)
+            )
+            return {"id": cur.lastrowid, "updated": False}
+
+
+def update_body_fat_by_id(bf_id: int, body_fat_pct: float) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE body_fat_logs SET body_fat_pct=?, recorded_at=CURRENT_TIMESTAMP WHERE id=?",
+            (body_fat_pct, bf_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_body_fat_by_id(bf_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM body_fat_logs WHERE id=?", (bf_id,))
     return cur.rowcount > 0
 
 
@@ -1060,10 +1104,14 @@ def get_history(
             "FROM blood_pressure_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
             (since, until),
         ).fetchall()
+        bf_rows = conn.execute(
+            "SELECT id, log_date, body_fat_pct FROM body_fat_logs WHERE log_date >= ? AND log_date <= ? ORDER BY log_date DESC",
+            (since, until),
+        ).fetchall()
 
     from collections import defaultdict
     days_map: dict = defaultdict(
-        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": [], "exercise": [], "blood_pressure": {}}
+        lambda: {"meals": [], "weight": {}, "steps": None, "steps_id": None, "skipped_meal_types": [], "exercise": [], "blood_pressure": {}, "body_fat": None, "body_fat_id": None}
     )
     for m in meals:
         days_map[m["meal_date"]]["meals"].append(dict(m))
@@ -1080,6 +1128,9 @@ def get_history(
         days_map[bp["log_date"]]["blood_pressure"][bp["time_of_day"]] = {
             "id": bp["id"], "systolic": bp["systolic"], "diastolic": bp["diastolic"],
         }
+    for bf in bf_rows:
+        days_map[bf["log_date"]]["body_fat"] = bf["body_fat_pct"]
+        days_map[bf["log_date"]]["body_fat_id"] = bf["id"]
 
     result = []
     for date in sorted(days_map.keys(), reverse=True):
@@ -1094,6 +1145,8 @@ def get_history(
             "skipped_meal_types": d["skipped_meal_types"],
             "exercise": d["exercise"],
             "blood_pressure": d["blood_pressure"],
+            "body_fat": d["body_fat"],
+            "body_fat_id": d["body_fat_id"],
             "totals": {
                 "calories": int(sum(m.get("calories") or 0 for m in ml)),
                 "protein": round(sum(m.get("protein") or 0 for m in ml), 1),
@@ -1154,6 +1207,10 @@ def get_stats(
             "WHERE log_date >= ? AND log_date <= ?",
             (since, until),
         ).fetchall()
+        bf_stat_rows = conn.execute(
+            "SELECT log_date, body_fat_pct FROM body_fat_logs WHERE log_date >= ? AND log_date <= ?",
+            (since, until),
+        ).fetchall()
 
     cal_map = {r["meal_date"]: r for r in cal_rows}
     w_map: dict = {}
@@ -1166,6 +1223,7 @@ def get_stats(
     bp_stat_map: dict = {}
     for r in bp_stat_rows:
         bp_stat_map.setdefault(r["log_date"], {})[r["time_of_day"]] = (r["systolic"], r["diastolic"])
+    bf_stat_map = {r["log_date"]: r["body_fat_pct"] for r in bf_stat_rows}
 
     calories, protein, fat, carbs = [], [], [], []
     # 運動消費カロリー集計
@@ -1176,6 +1234,7 @@ def get_stats(
     bmr_kcal = bmi_info["bmr_kcal"] if bmi_info else None
 
     wm, we, steps = [], [], []
+    body_fat: list = []
     exercise_calories: list = []
     total_expenditure: list = []
     bp_morning_systolic: list = []
@@ -1192,6 +1251,7 @@ def get_stats(
         wm.append(w.get("morning"))
         we.append(w.get("evening"))
         steps.append(s_map.get(d))
+        body_fat.append(bf_stat_map.get(d))
         ex = ex_totals.get(d)  # None = 運動記録なし
         exercise_calories.append(ex)
         if bmr_kcal is not None:
@@ -1227,6 +1287,7 @@ def get_stats(
             "evening_systolic":  bp_evening_systolic,
             "evening_diastolic": bp_evening_diastolic,
         },
+        "body_fat": body_fat,
     }
 
 
@@ -1411,6 +1472,9 @@ def get_daily_summary(target_date: Optional[str] = None) -> dict:
         steps_row = conn.execute(
             "SELECT steps FROM steps_logs WHERE log_date = ?", (target_date,)
         ).fetchone()
+        bf_row = conn.execute(
+            "SELECT body_fat_pct FROM body_fat_logs WHERE log_date = ?", (target_date,)
+        ).fetchone()
         skip_rows = conn.execute(
             "SELECT meal_type FROM meal_skips WHERE meal_date = ?",
             (target_date,),
@@ -1427,6 +1491,7 @@ def get_daily_summary(target_date: Optional[str] = None) -> dict:
         "meals": [dict(m) for m in meals],
         "weight": {r["time_of_day"]: r["weight_kg"] for r in weights},
         "steps": steps_row["steps"] if steps_row else None,
+        "body_fat": bf_row["body_fat_pct"] if bf_row else None,
         "skipped_meal_types": [r["meal_type"] for r in skip_rows],
         "totals": {
             "calories": total_cal,
