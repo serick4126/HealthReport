@@ -282,6 +282,7 @@ WIDGET_REGISTRY = [
     {"id": "heart_rate", "label": "脈拍推移",     "emoji": "💓", "widget_type": "chart",   "canvas_id": "chartHeartRate", "wrap_style": None},
     {"id": "spo2",       "label": "SpO2推移",    "emoji": "🫁", "widget_type": "chart",   "canvas_id": "chartSpo2",      "wrap_style": None},
     {"id": "blood_pressure", "label": "血圧推移", "emoji": "💉", "widget_type": "chart",   "canvas_id": "chartBloodPressure", "wrap_style": None},
+    {"id": "body_fat",       "label": "体脂肪率推移", "emoji": "📊", "widget_type": "chart", "canvas_id": "chartBodyFat",       "wrap_style": None},
 ]
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
@@ -593,6 +594,42 @@ async def delete_steps(request: Request, steps_id: int):
     return JSONResponse({"success": True})
 
 
+# ── 体脂肪率記録 CRUD ─────────────────────────────────────────────────────────
+
+class BodyFatCreateRequest(BaseModel):
+    log_date: str
+    body_fat_pct: float
+
+
+class BodyFatUpdateRequest(BaseModel):
+    body_fat_pct: float
+
+
+@app.post("/api/body-fat")
+async def create_body_fat(request: Request, body: BodyFatCreateRequest):
+    require_auth(request)
+    result = database.save_body_fat(body.log_date, body.body_fat_pct)
+    return JSONResponse({"success": True, "id": result["id"]})
+
+
+@app.put("/api/body-fat/{bf_id}")
+async def update_body_fat(request: Request, bf_id: int, body: BodyFatUpdateRequest):
+    require_auth(request)
+    ok = database.update_body_fat_by_id(bf_id, body.body_fat_pct)
+    if not ok:
+        raise HTTPException(status_code=404, detail="体脂肪率記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/body-fat/{bf_id}")
+async def delete_body_fat(request: Request, bf_id: int):
+    require_auth(request)
+    ok = database.delete_body_fat_by_id(bf_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="体脂肪率記録が見つかりません")
+    return JSONResponse({"success": True})
+
+
 # ── 血圧記録 CRUD ──────────────────────────────────────────────────────────────
 
 def _validate_blood_pressure(systolic: int, diastolic: int) -> None:
@@ -732,6 +769,11 @@ class StepsIngestRequest(BaseModel):
     date: str  # "YYYY-MM-DD"
 
 
+class BodyFatIngestRequest(BaseModel):
+    body_fat: float
+    date: str  # "YYYY-MM-DD"
+
+
 class WeightRecord(BaseModel):
     recorded_at: str  # "YYYY/MM/DD HH:MM"
     weight: float
@@ -784,6 +826,45 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
         "success": True,
         "date": body.date,
         "steps": body.steps,
+        "updated": result["updated"],
+    })
+
+
+@app.post("/api/body-fat/ingest")
+async def body_fat_ingest(request: Request, body: BodyFatIngestRequest):
+    """iPhoneショートカット等の外部クライアントから体脂肪率を受け付けるAPI。
+    セッション認証不要。external_api_key によるBearerトークン認証を使用する。"""
+    # 1. APIキー取得
+    stored_key = database.get_setting("external_api_key") or ""
+    if not stored_key:
+        raise HTTPException(status_code=503, detail="外部APIキーが設定されていません")
+
+    # 2. 認証（タイミング攻撃対策）
+    auth_header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not auth_header.startswith(prefix):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    provided_key = auth_header[len(prefix):]
+    if not hmac.compare_digest(provided_key.encode(), stored_key.encode()):
+        raise HTTPException(status_code=401, detail="APIキーが正しくありません")
+
+    # 3. バリデーション
+    if not (1.0 <= body.body_fat <= 80.0):
+        raise HTTPException(status_code=422, detail="body_fatは1.0〜80.0の範囲で指定してください")
+    try:
+        log_date = datetime.strptime(body.date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="dateはYYYY-MM-DD形式で指定してください")
+    today = datetime.now(_JST).date()
+    if log_date > today:
+        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+
+    # 4. 保存（同日レコードがあれば上書き）
+    result = database.save_body_fat(body.date, body.body_fat)
+    return JSONResponse({
+        "success": True,
+        "date": body.date,
+        "body_fat": body.body_fat,
         "updated": result["updated"],
     })
 
