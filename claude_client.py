@@ -108,8 +108,20 @@ TOOLS: list[anthropic.types.ToolParam] = [
         },
     },
     {
+        "name": "record_body_fat",
+        "description": "体脂肪率をデータベースに保存します。同日の再記録は自動的に上書きされます。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "log_date": {"type": "string", "description": "記録日 (YYYY-MM-DD形式)"},
+                "body_fat_pct": {"type": "number", "description": "体脂肪率 (%)"},
+            },
+            "required": ["log_date", "body_fat_pct"],
+        },
+    },
+    {
         "name": "get_daily_summary",
-        "description": "指定日の食事・体重・歩数の記録サマリーを取得します。食事提案や残りカロリー計算に使用してください。",
+        "description": "指定日の食事・体重・歩数・体脂肪率の記録サマリーを取得します。食事提案や残りカロリー計算に使用してください。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -626,6 +638,18 @@ def _tool_record_steps(inp: dict) -> dict:
     }
 
 
+def _tool_record_body_fat(inp: dict) -> dict:
+    result = database.save_body_fat(inp["log_date"], inp["body_fat_pct"])
+    return {
+        "success": True,
+        "tool": "record_body_fat",
+        "id": result["id"],
+        "body_fat_pct": inp["body_fat_pct"],
+        "updated": result["updated"],
+        "previous_body_fat_pct": result.get("previous_body_fat_pct"),
+    }
+
+
 def _tool_get_daily_summary(inp: dict) -> dict:
     summary = database.get_daily_summary(inp.get("target_date"))
     return {"success": True, "tool": "get_daily_summary", "summary": summary}
@@ -809,6 +833,7 @@ _TOOL_DISPATCH: dict = {
     "record_meal":           _tool_record_meal,
     "record_weight":         _tool_record_weight,
     "record_steps":          _tool_record_steps,
+    "record_body_fat":       _tool_record_body_fat,
     "get_daily_summary":     _tool_get_daily_summary,
     "update_meal":           _tool_update_meal,
     "search_food_nutrition": _tool_search_food_nutrition,
@@ -1043,6 +1068,14 @@ async def _execute_tool_and_format(
             "content": json.dumps(result, ensure_ascii=False),
         }
         sse_events.append({"type": "record_done", "record_type": "steps", "record_id": result["id"]})
+
+    elif tc["name"] == "record_body_fat" and result.get("success"):
+        api_result = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": json.dumps(result, ensure_ascii=False),
+        }
+        sse_events.append({"type": "record_done", "record_type": "body_fat", "record_id": result["id"]})
 
     elif tc["name"] == "record_meal_skip" and result.get("success"):
         api_result = {
