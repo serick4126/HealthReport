@@ -233,6 +233,8 @@
       { id: 'calorie_goal_rate',     label: '目標カロリー達成率',                 unit: '%',    emoji: '🎯' },
       { id: 'calorie_summary',       label: 'カロリー情報まとめ',                 unit: '',     emoji: '🔥', combined: true },
       { id: 'weight_summary',        label: '体重情報まとめ',                     unit: '',     emoji: '⚖️', combined: true },
+      { id: 'latest_body_fat',       label: '最新体脂肪率',                       unit: '%',    emoji: '📊' },
+      { id: 'avg_body_fat',          label: '平均体脂肪率',                       unit: '%',    emoji: '📊' },
     ];
 
     // ── サマリー計算ディスパッチテーブル ──────────────────────────────────────────
@@ -369,6 +371,19 @@
             { label: '変動', value: change.hasData ? change.value + ' kg' : '—', negative: change.hasData && change.numValue > 0 },
           ]
         };
+      },
+      latest_body_fat: function(data) {
+        var bf = data.body_fat || [];
+        for (var i = bf.length - 1; i >= 0; i--) {
+          if (bf[i] != null) return { value: bf[i], hasData: true };
+        }
+        return { value: '—', hasData: false };
+      },
+      avg_body_fat: function(data) {
+        var valid = (data.body_fat || []).filter(function(v) { return v != null; });
+        if (!valid.length) return { value: '—', hasData: false };
+        var avg = valid.reduce(function(a, b) { return a + b; }, 0) / valid.length;
+        return { value: avg.toFixed(1), hasData: true };
       },
     };
 
@@ -616,6 +631,49 @@
               }
             },
             scales: { ...defaults.scales, y: { ...defaults.scales.y, beginAtZero: true } }
+          }
+        });
+      },
+
+      body_fat: function(data, labels, defaults, extras) {
+        var bfData = data.body_fat || [];
+        var valid = bfData.filter(function(v) { return v != null; });
+        if (!valid.length) {
+          var canvas = document.getElementById(_canvasId('body_fat'));
+          if (canvas) canvas.parentElement.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:24px">体脂肪率データがありません。</p>';
+          return;
+        }
+        var bfMin = Math.floor(Math.min.apply(null, valid) - 2);
+        var bfMax = Math.ceil(Math.max.apply(null, valid) + 2);
+        charts.bodyFat = new Chart(document.getElementById(_canvasId('body_fat')), {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '体脂肪率',
+              data: bfData,
+              borderColor: '#ff6b6b',
+              backgroundColor: 'rgba(255,107,107,0.1)',
+              tension: 0.3, fill: true, spanGaps: true,
+              pointRadius: 4, pointBackgroundColor: '#ff6b6b',
+            }]
+          },
+          options: {
+            ...defaults,
+            scales: {
+              x: defaults.scales.x,
+              y: { ...defaults.scales.y, min: bfMin, max: bfMax,
+                ticks: { ...defaults.scales.y.ticks, callback: function(v) { return v + '%'; } } }
+            },
+            plugins: {
+              ...defaults.plugins,
+              tooltip: {
+                ...defaults.plugins.tooltip,
+                callbacks: {
+                  label: function(ctx) { return ctx.parsed.y != null ? '体脂肪率: ' + ctx.parsed.y + '%' : ''; }
+                }
+              }
+            }
           }
         });
       },
