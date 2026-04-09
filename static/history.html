@@ -454,7 +454,7 @@
       // 体脂肪率メタ（表示のみ）
       let bodyFatHtml = '';
       if (day.body_fat != null) {
-        bodyFatHtml = `<span class="meta-item">📊 体脂肪率 ${day.body_fat}%</span>`;
+        bodyFatHtml = `<span class="meta-item">📊 体脂肪率 ${parseFloat(day.body_fat.toFixed(1))}%</span>`;
       }
 
       // 血圧メタ（表示のみ）
