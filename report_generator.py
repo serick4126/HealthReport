@@ -506,6 +506,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     font-size: 7pt;
     line-height: 1.4;
     overflow: hidden;
+    column-count: 2;
+    column-gap: 3mm;
   }}
   .box-title {{
     font-weight: 700; font-size: 8.5pt; margin-bottom: 1.5mm;
@@ -538,8 +540,10 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       print-color-adjust: exact;
     }}
     .comment-section {{
-      max-height: 55mm;
+      max-height: 65mm;
       overflow: hidden;
+      column-count: 2;
+      column-gap: 3mm;
     }}
   }}
 </style>
@@ -905,7 +909,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     valid_w_val = [morning_w[i] for i in valid_w_idx]
     trend = calculate_trend(x, morning_w)
 
-    fig_w, ax_w = plt.subplots(figsize=(7, 1.6))
+    fig_w, ax_w = plt.subplots(figsize=(7, 2.5))
     if valid_w_idx:
         ax_w.plot(valid_w_idx, valid_w_val, color="#34c759", linewidth=1.5, zorder=2)
         ax_w.scatter(valid_w_idx, valid_w_val, color="#34c759", s=15, zorder=3)
@@ -929,7 +933,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     cal_vals = [d["calories"] if d["calories"] is not None else 0 for d in days]
     bar_colors = ["#f87171" if v > goal_kcal else "#60a5fa" for v in cal_vals]
 
-    fig_c, ax_c = plt.subplots(figsize=(7, 1.6))
+    fig_c, ax_c = plt.subplots(figsize=(3.5, 2.5))
     ax_c.bar(x, cal_vals, color=bar_colors, alpha=0.85)
     ax_c.axhline(goal_kcal, color="#ff3b30", linestyle="--", linewidth=1,
                  label=f"目標 {goal_kcal}kcal")
@@ -947,7 +951,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     steps_vals = [d["steps"] if d["steps"] is not None else 0 for d in days]
     step_colors = ["#34c759" if v >= steps_goal else "#8e8e93" for v in steps_vals]
 
-    fig_s, ax_s = plt.subplots(figsize=(7, 1.6))
+    fig_s, ax_s = plt.subplots(figsize=(3.5, 2.5))
     ax_s.bar(x, steps_vals, color=step_colors, alpha=0.85)
     if steps_goal and steps_goal > 0:
         ax_s.axhline(steps_goal, color="#ff3b30", linestyle="--", linewidth=1,
@@ -970,7 +974,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     c_vals = [v or 0 for v in pfc_data["carb_kcal"]]
     pf_bottom = [p + f for p, f in zip(p_vals, f_vals)]
 
-    fig_p, ax_p = plt.subplots(figsize=(7, 1.6))
+    fig_p, ax_p = plt.subplots(figsize=(7, 2.5))
     ax_p.bar(x, p_vals, label="P", color="#60a5fa", alpha=0.85)
     ax_p.bar(x, f_vals, bottom=p_vals, label="F", color="#fbbf24", alpha=0.85)
     ax_p.bar(x, c_vals, bottom=pf_bottom, label="C", color="#34d399", alpha=0.85)
@@ -1041,11 +1045,11 @@ def generate_monthly_report_html(data: dict, charts: dict, comment: str) -> str:
     max-width: 190mm; margin: 52px auto 12px; background: #fff;
     padding: 8mm 10mm; box-shadow: 0 2px 12px rgba(0,0,0,0.12);
   }}
-  h1 {{ font-size: 12pt; margin: 0 0 2mm; }}
-  .sub {{ font-size: 8pt; color: #555; margin-bottom: 3mm; }}
+  h1 {{ font-size: 12pt; margin: 0 0 1mm; }}
+  .sub {{ font-size: 8pt; color: #555; margin-bottom: 2mm; }}
   .summary-grid {{
     display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 2mm; margin-bottom: 3mm;
+    gap: 1.5mm; margin-bottom: 2mm;
   }}
   .summary-card {{
     border: 0.5pt solid #aaa; border-radius: 2mm;
@@ -1053,9 +1057,9 @@ def generate_monthly_report_html(data: dict, charts: dict, comment: str) -> str:
   }}
   .summary-card .value {{ font-size: 11pt; font-weight: 700; }}
   .summary-card .label {{ font-size: 7pt; color: #666; }}
-  .chart-wrap {{ margin-bottom: 2mm; }}
+  .chart-wrap {{ margin-bottom: 1mm; }}
   .chart-wrap img {{ width: 100%; display: block; }}
-  .chart-row {{ display: flex; gap: 2mm; margin-bottom: 2mm; }}
+  .chart-row {{ display: flex; gap: 2mm; margin-bottom: 1mm; }}
   .chart-row img {{ flex: 1; width: 0; min-width: 0; }}
   .comment-section {{
     border: 0.5pt solid #aaa; padding: 2mm 3mm;
