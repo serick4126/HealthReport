@@ -1459,7 +1459,11 @@ async def report_preview(request: Request, start: str):
     prev_week = database.get_report_data_previous_week(start)
     # フォーカス設定を取得
     focus_raw = database.get_setting("report_focus_items") or "[]"
-    focus_items = json.loads(focus_raw)
+    try:
+        focus_items = json.loads(focus_raw)
+    except (ValueError, TypeError):
+        logger.warning("report_focus_items のパースに失敗しました。デフォルトにフォールバックします: %s", focus_raw)
+        focus_items = []
     charts = report_generator.generate_charts_base64(data)
     comment = await report_generator.generate_claude_comment(
         data, prev_week=prev_week, focus_items=focus_items
@@ -1479,9 +1483,16 @@ async def report_monthly_preview(request: Request, month: str):
     require_auth(request)
     if not re.match(r"^\d{4}-\d{2}$", month):
         raise HTTPException(status_code=422, detail="monthはYYYY-MM形式で指定してください")
+    month_num = int(month[5:])
+    if not (1 <= month_num <= 12):
+        raise HTTPException(status_code=422, detail="monthの月部分は01〜12で指定してください")
     data = database.get_monthly_report_data(month)
     focus_raw = database.get_setting("report_focus_items") or "[]"
-    focus_items = json.loads(focus_raw)
+    try:
+        focus_items = json.loads(focus_raw)
+    except (ValueError, TypeError):
+        logger.warning("report_focus_items のパースに失敗しました。デフォルトにフォールバックします: %s", focus_raw)
+        focus_items = []
     charts = report_generator.generate_monthly_charts_base64(data)
     comment = await report_generator.generate_claude_comment(
         data, focus_items=focus_items, is_monthly=True
