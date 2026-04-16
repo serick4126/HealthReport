@@ -127,6 +127,14 @@
       white-space: nowrap;
     }
     .save-btn-fixed:active { opacity: 0.8; }
+    .focus-group-header {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding: 8px 14px 4px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
     /* モバイル: food_defaultsテーブルをカード形式に変換 */
     @media (max-width: 600px) {
       .food-table thead { display: none; }
@@ -221,6 +229,14 @@
           availableModels = [];
         }
         render(settings);
+        // report_focus_items のパース＋レンダリング
+        var focusRaw = settings.report_focus_items || '[]';
+        try {
+          var focusItems = JSON.parse(focusRaw);
+          renderFocusItems(focusItems);
+        } catch(e) {
+          console.error('report_focus_items パースエラー:', e);
+        }
       } catch(e) {
         handleFetchError(document.getElementById('mainContent'), e);
       }
@@ -510,6 +526,18 @@
           </div>
         </details>
 
+        <!-- レポート注釈設定 -->
+        <details class="collapsible-section" open>
+          <summary>レポート注釈設定</summary>
+          <p style="font-size:12px; color:var(--text-secondary); margin:0 4px 8px;">
+            AIがレポート注釈で重点的に分析する項目を選択します。<br/>
+            すべてOFFの場合はデフォルトの分析項目が使用されます。
+          </p>
+          <div class="card" id="focusItemsCard">
+            <!-- JSで動的生成 -->
+          </div>
+        </details>
+
         <!-- 食品デフォルト -->
         <div class="section" style="margin-top:28px">
           <div class="section-title">食品デフォルト設定</div>
@@ -641,6 +669,76 @@
       }
     }
 
+    // ── レポート注釈フォーカス設定 ───────────────────────────────────────────
+    var FOCUS_GROUP_LABELS = {
+      common:  '共通項目',
+      medical: '医療機関向け',
+      trainer: 'トレーナー向け'
+    };
+    var FOCUS_GROUP_ORDER = ['common', 'medical', 'trainer'];
+
+    function renderFocusItems(items) {
+      var card = document.getElementById('focusItemsCard');
+      if (!card) return;
+      card.innerHTML = '';
+
+      // グループ別に分類
+      var groups = {};
+      items.forEach(function(item) {
+        var g = item.group || 'common';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(item);
+      });
+
+      FOCUS_GROUP_ORDER.forEach(function(groupId) {
+        var groupItems = groups[groupId];
+        if (!groupItems || !groupItems.length) return;
+
+        // グループヘッダー
+        var header = document.createElement('div');
+        header.className = 'focus-group-header';
+        header.textContent = FOCUS_GROUP_LABELS[groupId] || groupId;
+        card.appendChild(header);
+
+        // 各項目のトグル行
+        groupItems.forEach(function(item) {
+          var row = document.createElement('div');
+          row.className = 'row';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.setAttribute('data-focus-id', item.id);
+          cb.setAttribute('data-focus-group', item.group || 'common');
+          cb.setAttribute('data-focus-label', item.label);
+          if (item.enabled) cb.checked = true;
+          var label = document.createElement('label');
+          label.className = 'toggle';
+          var slider = document.createElement('span');
+          slider.className = 'toggle-slider';
+          label.appendChild(cb);
+          label.appendChild(slider);
+          var span = document.createElement('span');
+          span.className = 'row-label';
+          span.textContent = item.label;
+          row.appendChild(span);
+          row.appendChild(label);
+          card.appendChild(row);
+        });
+      });
+    }
+
+    function collectFocusItems() {
+      var items = [];
+      document.querySelectorAll('[data-focus-id]').forEach(function(cb) {
+        items.push({
+          id:      cb.getAttribute('data-focus-id'),
+          label:   cb.getAttribute('data-focus-label'),
+          group:   cb.getAttribute('data-focus-group') || 'common',
+          enabled: cb.checked
+        });
+      });
+      return JSON.stringify(items);
+    }
+
     async function saveSettings() {
       const settings = {
         theme:              document.getElementById('theme').value,
@@ -660,6 +758,7 @@
         auto_save_food_defaults: document.getElementById('auto_save_food_defaults').checked ? 'true' : 'false',
         split_multiple_items:    document.getElementById('split_multiple_items').checked ? 'true' : 'false',
       };
+      settings.report_focus_items = collectFocusItems();
       if (!settings.user_name) { showToast('ユーザー名を入力してください', 'error'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
       if (settings.daily_steps_goal && isNaN(settings.daily_steps_goal)) { showToast('歩数目標に正しい数値を入力してください', 'error'); return; }
