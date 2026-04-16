@@ -47,13 +47,31 @@
 
   <div class="content">
     <div class="card">
+      <div class="section-label">レポート種別</div>
+      <select id="reportType">
+        <option value="weekly">週次レポート（A4横）</option>
+        <option value="monthly">月次レポート（A4縦）</option>
+      </select>
+    </div>
+
+    <div class="card" id="weekCard">
       <div class="section-label">出力する週を選択</div>
-      <select id="weekSelect" onchange="onWeekChange()">
+      <select id="weekSelect">
         <option value="">-- 週を選択してください --</option>
       </select>
+    </div>
+
+    <div class="card" id="monthCard" style="display:none">
+      <div class="section-label">出力する月を選択</div>
+      <select id="monthSelect">
+        <option value="">-- 月を選択してください --</option>
+      </select>
+    </div>
+
+    <div class="card">
       <div class="btn-row">
-        <button class="btn btn-preview" id="previewBtn" onclick="loadPreview()" disabled>👁 プレビュー</button>
-        <button class="btn btn-pdf" id="printBtn" onclick="openPrint()" disabled>🖨 印刷 / PDF保存</button>
+        <button class="btn btn-preview" id="previewBtn" disabled>👁 プレビュー</button>
+        <button class="btn btn-pdf" id="printBtn" disabled>🖨 印刷 / PDF保存</button>
       </div>
     </div>
 
@@ -62,6 +80,16 @@
 
   <script>
     let selectedStart = '';
+    let selectedMonth = '';
+
+    function onReportTypeChange() {
+      const type = document.getElementById('reportType').value;
+      document.getElementById('weekCard').style.display = type === 'weekly' ? '' : 'none';
+      document.getElementById('monthCard').style.display = type === 'monthly' ? '' : 'none';
+      document.getElementById('previewArea').innerHTML = '';
+      document.getElementById('previewBtn').disabled = true;
+      document.getElementById('printBtn').disabled = true;
+    }
 
     async function init() {
       const res = await fetch('/api/report/weeks');
@@ -70,13 +98,31 @@
       const sel = document.getElementById('weekSelect');
       if (!weeks.length) {
         sel.innerHTML = '<option value="">記録がありません</option>';
+      } else {
+        weeks.forEach(w => {
+          const label = formatWeekLabel(w.start, w.end);
+          const opt = document.createElement('option');
+          opt.value = w.start;
+          opt.textContent = label;
+          sel.appendChild(opt);
+        });
+      }
+      await initMonths();
+    }
+
+    async function initMonths() {
+      const res = await fetch('/api/report/months');
+      if (!res.ok) return;
+      const months = await res.json();
+      const sel = document.getElementById('monthSelect');
+      if (!months.length) {
+        sel.innerHTML = '<option value="">記録がありません</option>';
         return;
       }
-      weeks.forEach(w => {
-        const label = formatWeekLabel(w.start, w.end);
+      months.forEach(m => {
         const opt = document.createElement('option');
-        opt.value = w.start;
-        opt.textContent = label;
+        opt.value = m.month;
+        opt.textContent = m.label;
         sel.appendChild(opt);
       });
     }
@@ -91,26 +137,46 @@
 
     function onWeekChange() {
       selectedStart = document.getElementById('weekSelect').value;
-      const hasWeek = !!selectedStart;
-      document.getElementById('previewBtn').disabled = !hasWeek;
-      document.getElementById('printBtn').disabled = !hasWeek;
+      const has = !!selectedStart;
+      document.getElementById('previewBtn').disabled = !has;
+      document.getElementById('printBtn').disabled = !has;
+      document.getElementById('previewArea').innerHTML = '';
+    }
+
+    function onMonthChange() {
+      selectedMonth = document.getElementById('monthSelect').value;
+      const has = !!selectedMonth;
+      document.getElementById('previewBtn').disabled = !has;
+      document.getElementById('printBtn').disabled = !has;
       document.getElementById('previewArea').innerHTML = '';
     }
 
     async function loadPreview() {
-      if (!selectedStart) return;
+      const type = document.getElementById('reportType').value;
+      let url;
+      if (type === 'weekly') {
+        if (!selectedStart) return;
+        url = '/api/report/preview?start=' + selectedStart;
+      } else {
+        if (!selectedMonth) return;
+        url = '/api/report/monthly-preview?month=' + selectedMonth;
+      }
+      const previewLabel = type === 'weekly' ? 'A4横' : 'A4縦';
       const area = document.getElementById('previewArea');
       area.innerHTML = '<div class="loading-msg"><span class="spinner"></span>プレビューを生成中...</div>';
       setButtons(true);
       try {
-        const res = await fetch(`/api/report/preview?start=${selectedStart}`);
+        const res = await fetch(url);
         if (!res.ok) throw res;
         const html = await res.text();
-        area.innerHTML = `
-          <div class="preview-card">
-            <div class="preview-title">プレビュー（A4横）<button class="expand-btn" id="expandBtn" onclick="toggleFullPreview()">⤢ 拡大</button></div>
-            <iframe id="previewFrame" srcdoc="" style="height:520px"></iframe>
-          </div>`;
+        area.innerHTML =
+          '<div class="preview-card">' +
+            '<div class="preview-title">プレビュー（' + previewLabel + '）' +
+              '<button class="expand-btn" id="expandBtn">⤢ 拡大</button>' +
+            '</div>' +
+            '<iframe id="previewFrame" srcdoc="" style="height:520px"></iframe>' +
+          '</div>';
+        document.getElementById('expandBtn').addEventListener('click', toggleFullPreview);
         document.getElementById('previewFrame').srcdoc = html;
       } catch(e) {
         handleFetchError(area, e);
@@ -120,8 +186,8 @@
     }
 
     function toggleFullPreview() {
-      var iframe = document.getElementById('previewFrame');
-      var btn = document.getElementById('expandBtn');
+      const iframe = document.getElementById('previewFrame');
+      const btn = document.getElementById('expandBtn');
       if (!iframe) return;
       if (iframe.style.height !== '520px') {
         iframe.style.height = '520px';
@@ -133,14 +199,26 @@
     }
 
     function openPrint() {
-      if (!selectedStart) return;
-      window.open(`/api/report/preview?start=${selectedStart}`, '_blank');
+      const type = document.getElementById('reportType').value;
+      if (type === 'weekly') {
+        if (!selectedStart) return;
+        window.open('/api/report/preview?start=' + selectedStart, '_blank');
+      } else {
+        if (!selectedMonth) return;
+        window.open('/api/report/monthly-preview?month=' + selectedMonth, '_blank');
+      }
     }
 
     function setButtons(loading) {
       document.getElementById('previewBtn').disabled = loading;
       document.getElementById('printBtn').disabled = loading;
     }
+
+    document.getElementById('reportType').addEventListener('change', onReportTypeChange);
+    document.getElementById('weekSelect').addEventListener('change', onWeekChange);
+    document.getElementById('monthSelect').addEventListener('change', onMonthChange);
+    document.getElementById('previewBtn').addEventListener('click', loadPreview);
+    document.getElementById('printBtn').addEventListener('click', openPrint);
 
     init();
   </script>
