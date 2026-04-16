@@ -21,3 +21,4 @@ uploads/
 run.bat
 .claude/
 *.bak
+.vscode/extensions.json
