@@ -276,6 +276,27 @@ def init_db():
                 (old_row["value"],),
             )
 
+        # 不正な日付形式（ゼロパディング欠落）をISO形式に正規化
+        for table, col in [
+            ("meals", "meal_date"),
+            ("weight_logs", "log_date"),
+            ("steps_logs", "log_date"),
+            ("exercise_logs", "log_date"),
+            ("blood_pressure_logs", "log_date"),
+            ("body_fat_logs", "log_date"),
+        ]:
+            rows = conn.execute(
+                f"SELECT id, {col} FROM {table} WHERE length({col}) != 10"
+            ).fetchall()
+            for row in rows:
+                parts = row[col].split("-")
+                if len(parts) == 3:
+                    fixed = f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+                    conn.execute(
+                        f"UPDATE {table} SET {col} = ? WHERE id = ?", (fixed, row["id"])
+                    )
+                    logger.info("init_db: 日付正規化 %s.%s id=%s: %s → %s", table, col, row["id"], row[col], fixed)
+
 
 # ── 設定 ──────────────────────────────────────────────────────────────────────
 
@@ -1305,7 +1326,11 @@ def get_report_weeks() -> list[dict]:
         return []
     weeks: set[tuple[str, str]] = set()
     for d in dates:
-        dt = _date.fromisoformat(d)
+        try:
+            dt = _date.fromisoformat(d)
+        except ValueError:
+            logger.warning("get_report_weeks: 不正な日付をスキップ: %s", d)
+            continue
         days_since_sunday = (dt.weekday() + 1) % 7
         sunday = dt - timedelta(days=days_since_sunday)
         saturday = sunday + timedelta(days=6)
