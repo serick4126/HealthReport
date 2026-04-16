@@ -287,7 +287,7 @@ WIDGET_REGISTRY = [
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -296,7 +296,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -334,7 +334,7 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
                 raise HTTPException(status_code=422, detail="day_start_hourは整数で指定してください")
             if not (0 <= hour <= 23):
                 raise HTTPException(status_code=422, detail="day_start_hourは0〜23の範囲で指定してください")
-        if key in ("stats_widgets", "stats_summary_items"):
+        if key in ("stats_widgets", "stats_summary_items", "report_focus_items"):
             _validate_json_array_setting(key, value)
         if key == "user_gender":
             if value not in ("male", "female", ""):

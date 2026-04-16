@@ -260,6 +260,7 @@ def init_db():
                 ("stats_widgets", '[{"id":"summary","visible":true},{"id":"calories","visible":true},{"id":"weight","visible":true},{"id":"steps","visible":true},{"id":"pfc","visible":true},{"id":"sleep","visible":true},{"id":"heart_rate","visible":true},{"id":"spo2","visible":true},{"id":"blood_pressure","visible":true},{"id":"body_fat","visible":true}]'),
                 ("stats_summary_items", '[{"id":"avg_calories","visible":true},{"id":"latest_weight","visible":true},{"id":"avg_steps","visible":true},{"id":"latest_body_fat","visible":true},{"id":"avg_body_fat","visible":true}]'),
                 ("available_models", "[]"),
+                ("report_focus_items", '[{"id":"meal_content","label":"食事内容","group":"common","enabled":true},{"id":"calories","label":"カロリー","group":"common","enabled":true},{"id":"pfc","label":"PFC","group":"common","enabled":true},{"id":"weight","label":"体重","group":"common","enabled":true},{"id":"sodium","label":"塩分","group":"medical","enabled":true},{"id":"blood_pressure","label":"血圧","group":"medical","enabled":true},{"id":"body_fat","label":"体脂肪率","group":"medical","enabled":true},{"id":"expenditure","label":"消費カロリー","group":"trainer","enabled":true},{"id":"exercise","label":"運動","group":"trainer","enabled":true},{"id":"steps","label":"歩数","group":"trainer","enabled":true}]'),
             ],
         )
 
