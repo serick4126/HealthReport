@@ -111,20 +111,27 @@
     }
 
     async function initMonths() {
-      const res = await fetch('/api/report/months');
-      if (!res.ok) return;
-      const months = await res.json();
       const sel = document.getElementById('monthSelect');
-      if (!months.length) {
-        sel.innerHTML = '<option value="">記録がありません</option>';
-        return;
+      try {
+        const res = await fetch('/api/report/months');
+        if (!res.ok) {
+          sel.innerHTML = '<option value="">月リストの取得に失敗しました</option>';
+          return;
+        }
+        const months = await res.json();
+        if (!months.length) {
+          sel.innerHTML = '<option value="">記録がありません</option>';
+          return;
+        }
+        months.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.month;
+          opt.textContent = m.label;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        sel.innerHTML = '<option value="">月リストの取得に失敗しました</option>';
       }
-      months.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.month;
-        opt.textContent = m.label;
-        sel.appendChild(opt);
-      });
     }
 
     function formatWeekLabel(start, end) {
