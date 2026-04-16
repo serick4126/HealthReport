@@ -866,6 +866,130 @@ def get_body_fat_range(start_date: str, end_date: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_report_months() -> list[dict]:
+    """記録が存在する月のリストを降順で返す。戻り値: [{"month": "2026-04", "label": "2026年4月"}, ...]"""
+    with get_conn() as conn:
+        months: set[str] = set()
+        for table, col in [("meals", "meal_date"), ("weight_logs", "log_date"), ("steps_logs", "log_date")]:
+            for row in conn.execute(
+                f"SELECT DISTINCT substr({col}, 1, 7) as m FROM {table}"
+            ).fetchall():
+                months.add(row["m"])
+    return sorted(
+        [{"month": m, "label": f"{m[:4]}年{int(m[5:])}月"} for m in months],
+        key=lambda x: x["month"],
+        reverse=True,
+    )
+
+
+def get_monthly_report_data(year_month: str) -> dict:
+    """月次レポート用の集計データを返す。year_month: 'YYYY-MM' 形式"""
+    year, month = int(year_month[:4]), int(year_month[5:])
+    start = _date(year, month, 1)
+    if month == 12:
+        end = _date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end = _date(year, month + 1, 1) - timedelta(days=1)
+
+    start_str = start.isoformat()
+    end_str = end.isoformat()
+
+    with get_conn() as conn:
+        cal_rows = conn.execute("""
+            SELECT meal_date,
+                   SUM(calories) as cal, SUM(protein) as p,
+                   SUM(fat) as f, SUM(carbs) as c, SUM(sodium) as sod
+            FROM meals WHERE meal_date BETWEEN ? AND ?
+            GROUP BY meal_date ORDER BY meal_date
+        """, (start_str, end_str)).fetchall()
+
+        weight_rows = conn.execute(
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs "
+            "WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_str, end_str),
+        ).fetchall()
+
+        steps_rows = conn.execute(
+            "SELECT log_date, steps FROM steps_logs WHERE log_date BETWEEN ? AND ?",
+            (start_str, end_str),
+        ).fetchall()
+
+        bp_rows = conn.execute(
+            "SELECT log_date, time_of_day, systolic, diastolic "
+            "FROM blood_pressure_logs WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_str, end_str),
+        ).fetchall()
+
+        bf_rows = conn.execute(
+            "SELECT log_date, body_fat_pct FROM body_fat_logs "
+            "WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_str, end_str),
+        ).fetchall()
+
+        ex_rows = conn.execute(
+            "SELECT log_date, SUM(calories_burned) as total, GROUP_CONCAT(description, ', ') as descs "
+            "FROM exercise_logs WHERE log_date BETWEEN ? AND ? "
+            "GROUP BY log_date ORDER BY log_date",
+            (start_str, end_str),
+        ).fetchall()
+
+        skip_rows = conn.execute(
+            "SELECT meal_date, meal_type FROM meal_skips WHERE meal_date BETWEEN ? AND ?",
+            (start_str, end_str),
+        ).fetchall()
+
+    cal_map = {r["meal_date"]: dict(r) for r in cal_rows}
+    w_map: dict = {}
+    for w in weight_rows:
+        w_map.setdefault(w["log_date"], {})[w["time_of_day"]] = w["weight_kg"]
+    s_map = {r["log_date"]: r["steps"] for r in steps_rows}
+    bp_map: dict = {}
+    for r in bp_rows:
+        bp_map.setdefault(r["log_date"], {})[r["time_of_day"]] = {
+            "systolic": r["systolic"], "diastolic": r["diastolic"]
+        }
+    bf_map = {r["log_date"]: r["body_fat_pct"] for r in bf_rows}
+    ex_map = {r["log_date"]: {"total": r["total"], "descs": r["descs"]} for r in ex_rows}
+
+    days = []
+    current = start
+    while current <= end:
+        d = current.isoformat()
+        c = cal_map.get(d)
+        w = w_map.get(d, {})
+        days.append({
+            "date": d,
+            "calories": int(c["cal"]) if c and c["cal"] is not None else None,
+            "protein": round(c["p"], 1) if c and c["p"] is not None else None,
+            "fat": round(c["f"], 1) if c and c["f"] is not None else None,
+            "carbs": round(c["c"], 1) if c and c["c"] is not None else None,
+            "sodium": round(c["sod"], 2) if c and c["sod"] is not None else None,
+            "weight_morning": w.get("morning"),
+            "weight_evening": w.get("evening"),
+            "steps": s_map.get(d),
+            "blood_pressure": bp_map.get(d, {}),
+            "body_fat": bf_map.get(d),
+            "exercise": ex_map.get(d),
+        })
+        current += timedelta(days=1)
+
+    bmi_info = get_latest_bmi_info()
+    bmr_kcal = bmi_info["bmr_kcal"] if bmi_info else None
+
+    return {
+        "year_month": year_month,
+        "start": start_str,
+        "end": end_str,
+        "total_days": (end - start).days + 1,
+        "days": days,
+        "bmr_kcal": bmr_kcal,
+        "user_name": get_setting("user_name") or "—",
+        "height_cm": get_setting("user_height_cm") or "—",
+        "calorie_goal": int(get_setting("daily_calorie_goal") or 1500),
+        "steps_goal": int(get_setting("daily_steps_goal") or 8000),
+    }
+
+
 def get_exercise_by_date(log_date: str) -> list[dict]:
     """特定日の運動ログを id 昇順で返す。"""
     with get_conn() as conn:

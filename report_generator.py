@@ -873,3 +873,258 @@ async def generate_claude_comment(
     except Exception as e:
         logger.error("Claude comment generation failed: %s", e)
         return ""
+
+
+def generate_monthly_charts_base64(data: dict) -> dict:
+    """月次レポート用グラフ（体重・カロリー・歩数・PFC）を生成"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    _setup_matplotlib_font()
+
+    days = data["days"]
+    n = len(days)
+
+    # x軸ラベル: 月初・月末・5日ごとのみ表示
+    labels = []
+    for d in days:
+        dt = _date.fromisoformat(d["date"])
+        if dt.day == 1 or dt.day == n or dt.day % 5 == 0:
+            labels.append(f"{dt.month}/{dt.day}")
+        else:
+            labels.append("")
+
+    x = list(range(n))
+    goal_kcal = data.get("calorie_goal", 1500)
+    steps_goal = data.get("steps_goal", 8000)
+
+    # ── 体重推移（朝の折れ線 + トレンドライン）
+    morning_w = [d["weight_morning"] for d in days]
+    valid_w_idx = [i for i, v in enumerate(morning_w) if v is not None]
+    valid_w_val = [morning_w[i] for i in valid_w_idx]
+    trend = calculate_trend(x, morning_w)
+
+    fig_w, ax_w = plt.subplots(figsize=(7, 1.6))
+    if valid_w_idx:
+        ax_w.plot(valid_w_idx, valid_w_val, color="#34c759", linewidth=1.5, zorder=2)
+        ax_w.scatter(valid_w_idx, valid_w_val, color="#34c759", s=15, zorder=3)
+        if trend is not None:
+            s, ic = trend
+            tx = [valid_w_idx[0], valid_w_idx[-1]]
+            ty = [s * xi + ic for xi in tx]
+            ax_w.plot(tx, ty, color="#ff3b30", linewidth=1, linestyle="--", zorder=1)
+        margin = max(0.3, (max(valid_w_val) - min(valid_w_val)) * 0.15) if len(valid_w_val) > 1 else 0.3
+        ax_w.set_ylim(min(valid_w_val) - margin, max(valid_w_val) + margin)
+    ax_w.set_xticks(x)
+    ax_w.set_xticklabels(labels, fontsize=5.5, rotation=45, ha="right")
+    ax_w.set_ylabel("kg", fontsize=6)
+    ax_w.tick_params(axis="y", labelsize=6)
+    ax_w.set_title("体重推移（朝）", fontsize=8)
+    fig_w.tight_layout(pad=0.3)
+    weight_b64 = _fig_to_b64(fig_w)
+    plt.close(fig_w)
+
+    # ── カロリー推移（日別棒グラフ + 目標ライン）
+    cal_vals = [d["calories"] if d["calories"] is not None else 0 for d in days]
+    bar_colors = ["#f87171" if v > goal_kcal else "#60a5fa" for v in cal_vals]
+
+    fig_c, ax_c = plt.subplots(figsize=(7, 1.6))
+    ax_c.bar(x, cal_vals, color=bar_colors, alpha=0.85)
+    ax_c.axhline(goal_kcal, color="#ff3b30", linestyle="--", linewidth=1,
+                 label=f"目標 {goal_kcal}kcal")
+    ax_c.set_xticks(x)
+    ax_c.set_xticklabels(labels, fontsize=5.5, rotation=45, ha="right")
+    ax_c.set_ylabel("kcal", fontsize=6)
+    ax_c.tick_params(axis="y", labelsize=6)
+    ax_c.set_title("カロリー推移", fontsize=8)
+    ax_c.legend(fontsize=6)
+    fig_c.tight_layout(pad=0.3)
+    cal_b64 = _fig_to_b64(fig_c)
+    plt.close(fig_c)
+
+    # ── 歩数推移（日別棒グラフ + 目標ライン）
+    steps_vals = [d["steps"] if d["steps"] is not None else 0 for d in days]
+    step_colors = ["#34c759" if v >= steps_goal else "#8e8e93" for v in steps_vals]
+
+    fig_s, ax_s = plt.subplots(figsize=(7, 1.6))
+    ax_s.bar(x, steps_vals, color=step_colors, alpha=0.85)
+    if steps_goal and steps_goal > 0:
+        ax_s.axhline(steps_goal, color="#ff3b30", linestyle="--", linewidth=1,
+                     label=f"目標 {steps_goal:,}歩")
+        ax_s.legend(fontsize=6)
+    ax_s.set_xticks(x)
+    ax_s.set_xticklabels(labels, fontsize=5.5, rotation=45, ha="right")
+    ax_s.set_ylabel("歩", fontsize=6)
+    ax_s.tick_params(axis="y", labelsize=6)
+    ax_s.set_title("歩数推移", fontsize=8)
+    ax_s.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{int(v):,}"))
+    fig_s.tight_layout(pad=0.3)
+    steps_b64 = _fig_to_b64(fig_s)
+    plt.close(fig_s)
+
+    # ── PFC積み上げ棒グラフ
+    pfc_data = build_pfc_chart_data(days, skip_dates=set())
+    p_vals = [v or 0 for v in pfc_data["protein_kcal"]]
+    f_vals = [v or 0 for v in pfc_data["fat_kcal"]]
+    c_vals = [v or 0 for v in pfc_data["carb_kcal"]]
+    pf_bottom = [p + f for p, f in zip(p_vals, f_vals)]
+
+    fig_p, ax_p = plt.subplots(figsize=(7, 1.6))
+    ax_p.bar(x, p_vals, label="P", color="#60a5fa", alpha=0.85)
+    ax_p.bar(x, f_vals, bottom=p_vals, label="F", color="#fbbf24", alpha=0.85)
+    ax_p.bar(x, c_vals, bottom=pf_bottom, label="C", color="#34d399", alpha=0.85)
+    ax_p.axhline(goal_kcal, color="#ff3b30", linestyle="--", linewidth=1,
+                 label=f"目標 {goal_kcal}kcal")
+    ax_p.set_xticks(x)
+    ax_p.set_xticklabels(labels, fontsize=5.5, rotation=45, ha="right")
+    ax_p.set_ylabel("kcal", fontsize=6)
+    ax_p.tick_params(axis="y", labelsize=6)
+    ax_p.set_title("PFC推移", fontsize=8)
+    ax_p.legend(fontsize=6)
+    fig_p.tight_layout(pad=0.3)
+    pfc_b64 = _fig_to_b64(fig_p)
+    plt.close(fig_p)
+
+    return {"weight": weight_b64, "calories": cal_b64, "steps": steps_b64, "pfc": pfc_b64}
+
+
+def generate_monthly_report_html(data: dict, charts: dict, comment: str) -> str:
+    """月次レポートHTML — A4縦1枚"""
+    year_month = data["year_month"]
+    year, month = int(year_month[:4]), int(year_month[5:])
+    days = data["days"]
+
+    valid_cals = [d["calories"] for d in days if d["calories"] is not None]
+    avg_cal = round(sum(valid_cals) / len(valid_cals)) if valid_cals else None
+
+    morning_weights = [d["weight_morning"] for d in days if d["weight_morning"] is not None]
+    weight_change = None
+    if len(morning_weights) >= 2:
+        weight_change = round(morning_weights[-1] - morning_weights[0], 1)
+
+    valid_steps = [d["steps"] for d in days if d["steps"] is not None]
+    avg_steps = round(sum(valid_steps) / len(valid_steps)) if valid_steps else None
+
+    if comment:
+        comment_html = _format_structured_comment(comment)
+    else:
+        comment_html = "<p>特記事項なし</p>"
+
+    avg_cal_str = f"{avg_cal}kcal" if avg_cal is not None else "—"
+    weight_change_str = f"{weight_change:+.1f}kg" if weight_change is not None else "—"
+    avg_steps_str = f"{avg_steps:,}" if avg_steps else "—"
+
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>月次健康レポート {year}年{month}月</title>
+<style>
+  body {{
+    font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", "Noto Sans CJK JP", sans-serif;
+    font-size: 8pt; margin: 0; background: #f0f0f5; color: #1c1c1e;
+  }}
+  .print-toolbar {{
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid #e5e5ea;
+    padding: 8px 16px; display: flex; align-items: center; gap: 12px;
+  }}
+  .print-toolbar h2 {{ font-size: 13px; font-weight: 700; flex: 1; margin: 0; }}
+  .print-btn {{
+    padding: 7px 18px; background: #007aff; color: #fff;
+    border: none; border-radius: 8px; font-size: 13px;
+    font-weight: 600; cursor: pointer;
+  }}
+  .page {{
+    max-width: 190mm; margin: 52px auto 12px; background: #fff;
+    padding: 8mm 10mm; box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  }}
+  h1 {{ font-size: 12pt; margin: 0 0 2mm; }}
+  .sub {{ font-size: 8pt; color: #555; margin-bottom: 3mm; }}
+  .summary-grid {{
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 2mm; margin-bottom: 3mm;
+  }}
+  .summary-card {{
+    border: 0.5pt solid #aaa; border-radius: 2mm;
+    padding: 2mm 3mm; text-align: center;
+  }}
+  .summary-card .value {{ font-size: 11pt; font-weight: 700; }}
+  .summary-card .label {{ font-size: 7pt; color: #666; }}
+  .chart-wrap {{ margin-bottom: 2mm; }}
+  .chart-wrap img {{ width: 100%; display: block; }}
+  .chart-row {{ display: flex; gap: 2mm; margin-bottom: 2mm; }}
+  .chart-row img {{ flex: 1; width: 0; min-width: 0; }}
+  .comment-section {{
+    border: 0.5pt solid #aaa; padding: 2mm 3mm;
+    border-radius: 2mm; margin-top: 2mm;
+    font-size: 7pt; line-height: 1.4; overflow: hidden;
+  }}
+  .box-title {{
+    font-weight: 700; font-size: 8pt; margin-bottom: 1mm;
+    border-bottom: 0.5pt solid #ddd; padding-bottom: 1mm;
+  }}
+  ul {{ margin: 0; padding-left: 4mm; }}
+  li {{ margin-bottom: 0.5mm; line-height: 1.4; }}
+  @media print {{
+    @page {{ size: A4 portrait; margin: 8mm 10mm; }}
+    body {{ background: #fff; }}
+    .print-toolbar {{ display: none; }}
+    .page {{ max-width: 100%; margin: 0; padding: 0; box-shadow: none; }}
+    .comment-section {{ max-height: 60mm; overflow: hidden; }}
+  }}
+</style>
+</head>
+<body>
+<div class="print-toolbar">
+  <h2>月次健康レポート — {year}年{month}月</h2>
+  <button class="print-btn" onclick="window.print()">印刷 / PDF保存</button>
+</div>
+<div class="page">
+  <h1>月次健康レポート　{year}年{month}月</h1>
+  <div class="sub">
+    氏名：{data["user_name"]}
+    身長：{data["height_cm"]}cm
+    目標カロリー：{data["calorie_goal"]}kcal/日
+    記録日数：{len(valid_cals)}日
+  </div>
+
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="value">{avg_cal_str}</div>
+      <div class="label">平均摂取カロリー</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">{weight_change_str}</div>
+      <div class="label">体重変化</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">{avg_steps_str}</div>
+      <div class="label">平均歩数</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">{data["total_days"]}日</div>
+      <div class="label">対象期間</div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <img src="data:image/png;base64,{charts['weight']}" alt="体重推移"/>
+  </div>
+  <div class="chart-row">
+    <img src="data:image/png;base64,{charts['calories']}" alt="カロリー推移"/>
+    <img src="data:image/png;base64,{charts['steps']}" alt="歩数推移"/>
+  </div>
+  <div class="chart-wrap">
+    <img src="data:image/png;base64,{charts['pfc']}" alt="PFC推移"/>
+  </div>
+
+  <div class="comment-section">
+    <div class="box-title">AI注釈：</div>
+    {comment_html}
+  </div>
+</div>
+</body>
+</html>"""

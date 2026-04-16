@@ -1468,6 +1468,27 @@ async def report_preview(request: Request, start: str):
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
+@app.get("/api/report/months")
+async def report_months(request: Request):
+    require_auth(request)
+    return JSONResponse(database.get_report_months())
+
+
+@app.get("/api/report/monthly-preview")
+async def report_monthly_preview(request: Request, month: str):
+    require_auth(request)
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=422, detail="monthはYYYY-MM形式で指定してください")
+    data = database.get_monthly_report_data(month)
+    focus_raw = database.get_setting("report_focus_items") or "[]"
+    focus_items = json.loads(focus_raw)
+    charts = report_generator.generate_monthly_charts_base64(data)
+    comment = await report_generator.generate_claude_comment(
+        data, focus_items=focus_items, is_monthly=True
+    )
+    html = report_generator.generate_monthly_report_html(data, charts, comment)
+    return Response(content=html, media_type="text/html; charset=utf-8")
+
 
 @app.get("/report")
 async def report_page():
