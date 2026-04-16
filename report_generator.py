@@ -735,20 +735,133 @@ _COMMENT_PROMPT = """\
 """
 
 
-async def generate_claude_comment(data: dict, prev_week: dict | None = None) -> str:
+def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> str:
+    """フォーカス設定に基づいてAIコメントプロンプトを動的生成。
+    全項目OFFの場合は既存の _COMMENT_PROMPT（固定プロンプト）をそのまま返す。
+    """
+    enabled = {item["id"] for item in focus_items if item.get("enabled")}
+
+    # 全項目OFFの場合: 既存の固定プロンプトを使用（後方互換）
+    if not enabled:
+        return _COMMENT_PROMPT
+
+    period_label = "1ヶ月" if is_monthly else "1週間"
+    report_type = "月次" if is_monthly else "週次"
+
+    sections = []
+    sections.append("■ 前回比較（前回データがある場合のみ）")
+    if "weight" in enabled:
+        sections.append("  - 体重の前回比変化・トレンド")
+    if "calories" in enabled:
+        sections.append("  - カロリー摂取の前回比変化")
+    if "pfc" in enabled:
+        sections.append("  - PFCバランスの前回比変化")
+    if "steps" in enabled:
+        sections.append("  - 歩数の前回比変化")
+    if "expenditure" in enabled:
+        sections.append("  - 消費カロリー（特に運動消費）の前回比変化")
+
+    sections.append("■ パターン分析")
+    if "meal_content" in enabled:
+        sections.append("  - 食事内容の傾向（偏り・欠食パターン）")
+    if "calories" in enabled:
+        sections.append("  - 目標カロリーとの乖離度")
+    if "pfc" in enabled:
+        sections.append("  - PFCバランスの偏り傾向")
+    if "sodium" in enabled:
+        sections.append("  - 塩分摂取傾向")
+    if "exercise" in enabled:
+        sections.append("  - 運動内容・頻度の分析")
+    if "expenditure" in enabled:
+        sections.append("  - 基礎代謝外の消費カロリー分析（運動消費に重点）")
+
+    sections.append("■ 臨床的所見")
+    if "weight" in enabled:
+        sections.append("  - 体重トレンド（増加/減少/横ばい）・BMI推移")
+    if "blood_pressure" in enabled:
+        sections.append("  - 血圧推移（朝/夜、正常範囲との比較）")
+    if "body_fat" in enabled:
+        sections.append("  - 体脂肪率推移")
+    if "steps" in enabled:
+        sections.append("  - 活動量（歩数）の評価")
+
+    analysis_sections = "\n".join(sections)
+
+    return f"""\
+以下の{period_label}分の健康データを分析し、{report_type}レポートに添付する補足コメントを生成してください。
+
+【出力形式】
+セクションごとに見出しをつけ、各セクション1〜3項目の箇条書き（「・」始め）。
+不要なセクションは省略可。
+
+{analysis_sections}
+
+【ルール】
+- 医師・トレーナーが読むことを前提とした簡潔な日本語で記載
+- 患者への励まし・アドバイス・提案は不要（データ分析のみ）
+- 特記事項がない場合は空文字のみを返す
+- 客観的なデータに基づくコメントのみ
+- 全体で400文字以内に収めること（印刷レイアウト制約）
+"""
+
+
+async def generate_claude_comment(
+    data: dict,
+    prev_week: dict | None = None,
+    focus_items: list[dict] | None = None,
+    is_monthly: bool = False,
+) -> str:
     """Claude Haiku で構造化補足コメントを生成（失敗時は空文字）"""
     try:
         api_key = os.getenv("ANTHROPIC_API_KEY") or database.get_setting("anthropic_api_key")
         if not api_key:
             return ""
 
+        # フォーカス設定が未指定の場合は全項目有効
+        if focus_items is None:
+            focus_items = [{"id": k, "enabled": True} for k in
+                           ["meal_content", "calories", "pfc", "sodium", "expenditure",
+                            "exercise", "weight", "steps", "blood_pressure", "body_fat"]]
+
+        enabled = {item["id"] for item in focus_items if item.get("enabled")}
+
         summary = _build_comment_summary(data)
+
+        # フォーカス項目に応じて追加データをサマリーに含める
+        if "blood_pressure" in enabled:
+            bp_data = database.get_blood_pressure_range(data["start"], data["end"])
+            if bp_data:
+                summary["血圧データ"] = [
+                    {"日付": r["log_date"], "時間帯": r["time_of_day"],
+                     "収縮期": r["systolic"], "拡張期": r["diastolic"]}
+                    for r in bp_data
+                ]
+
+        if "body_fat" in enabled:
+            bf_data = database.get_body_fat_range(data["start"], data["end"])
+            if bf_data:
+                summary["体脂肪率データ"] = [
+                    {"日付": r["log_date"], "体脂肪率": r["body_fat_pct"]}
+                    for r in bf_data
+                ]
+
+        if "exercise" in enabled or "expenditure" in enabled:
+            ex_data = database.get_exercise_logs(data["start"], data["end"])
+            if ex_data:
+                summary["運動データ"] = [
+                    {"日付": r["log_date"], "消費kcal": r["calories_burned"],
+                     "内容": r["description"]}
+                    for r in ex_data
+                ]
+
+        # プロンプト生成を動的関数に切り替え
+        comment_prompt = _build_comment_prompt(focus_items, is_monthly=is_monthly)
 
         data_section = f"【今週データ】\n{json.dumps(summary, ensure_ascii=False, indent=2)}"
         if prev_week:
             data_section += f"\n\n【前週サマリー】\n{json.dumps(prev_week, ensure_ascii=False, indent=2)}"
 
-        prompt = f"{_COMMENT_PROMPT}\n{data_section}"
+        prompt = f"{comment_prompt}\n{data_section}"
 
         client = anthropic.AsyncAnthropic(api_key=api_key)
         msg = await client.messages.create(

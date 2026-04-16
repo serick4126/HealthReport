@@ -842,6 +842,30 @@ def get_exercise_logs(start_date: str, end_date: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_blood_pressure_range(start_date: str, end_date: str) -> list[dict]:
+    """期間内の血圧データを日付昇順で返す"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT log_date, time_of_day, systolic, diastolic "
+            "FROM blood_pressure_logs WHERE log_date BETWEEN ? AND ? "
+            "ORDER BY log_date ASC",
+            (start_date, end_date),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_body_fat_range(start_date: str, end_date: str) -> list[dict]:
+    """期間内の体脂肪率データを日付昇順で返す"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT log_date, body_fat_pct "
+            "FROM body_fat_logs WHERE log_date BETWEEN ? AND ? "
+            "ORDER BY log_date ASC",
+            (start_date, end_date),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_exercise_by_date(log_date: str) -> list[dict]:
     """特定日の運動ログを id 昇順で返す。"""
     with get_conn() as conn:

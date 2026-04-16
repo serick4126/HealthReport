@@ -1457,8 +1457,13 @@ async def report_preview(request: Request, start: str):
     end = (_date.fromisoformat(start) + timedelta(days=6)).isoformat()
     data = database.get_report_data(start, end)
     prev_week = database.get_report_data_previous_week(start)
+    # フォーカス設定を取得
+    focus_raw = database.get_setting("report_focus_items") or "[]"
+    focus_items = json.loads(focus_raw)
     charts = report_generator.generate_charts_base64(data)
-    comment = await report_generator.generate_claude_comment(data, prev_week=prev_week)
+    comment = await report_generator.generate_claude_comment(
+        data, prev_week=prev_week, focus_items=focus_items
+    )
     html = report_generator.generate_report_html(data, charts, comment)
     return Response(content=html, media_type="text/html; charset=utf-8")
 
