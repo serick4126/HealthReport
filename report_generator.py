@@ -498,15 +498,14 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     margin-bottom: 2mm; border-bottom: 0.5pt solid #ddd; padding-bottom: 1mm;
   }}
 
-  .bottom {{
-    display: flex; gap: 3mm; margin-top: 3mm;
-  }}
-  .bottom > div {{
-    flex: 1;
+  .comment-section {{
     border: 0.5pt solid #aaa;
     padding: 2mm 3mm;
-    min-height: 18mm;
     border-radius: 2mm;
+    margin-top: 2mm;
+    font-size: 7pt;
+    line-height: 1.4;
+    overflow: hidden;
   }}
   .box-title {{
     font-weight: 700; font-size: 8.5pt; margin-bottom: 1.5mm;
@@ -537,6 +536,10 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       background: #e8e8e8 !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+    }}
+    .comment-section {{
+      max-height: 55mm;
+      overflow: hidden;
     }}
   }}
 </style>
@@ -602,14 +605,9 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     <img src="data:image/png;base64,{charts['steps']}"    alt="歩数推移"/>
   </div>
 
-  <div class="bottom">
-    <div style="flex:2">
-      <div class="box-title">メモ欄：</div>
-    </div>
-    <div style="flex:3">
-      <div class="box-title">Claude補足：</div>
-      {comment_html}
-    </div>
+  <div class="comment-section">
+    <div class="box-title">AI注釈：</div>
+    {comment_html}
   </div>
 </div>
 
@@ -733,6 +731,7 @@ _COMMENT_PROMPT = """\
 - 患者への励まし・アドバイス・提案は不要（医師向けデータ分析のみ）
 - 特記事項がない場合は空文字のみを返す
 - 客観的なデータに基づくコメントのみ
+- 全体で400文字以内に収めること（印刷レイアウト制約）
 """
 
 
@@ -754,7 +753,7 @@ async def generate_claude_comment(data: dict, prev_week: dict | None = None) -> 
         client = anthropic.AsyncAnthropic(api_key=api_key)
         msg = await client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            max_tokens=800,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text.strip()
