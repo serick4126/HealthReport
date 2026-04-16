@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import sqlite3
 from datetime import datetime, timezone, timedelta, date as _date
 from pathlib import Path
@@ -875,8 +876,21 @@ def get_report_months() -> list[dict]:
                 f"SELECT DISTINCT substr({col}, 1, 7) as m FROM {table}"
             ).fetchall():
                 months.add(row["m"])
+
+    valid_months = []
+    for m in months:
+        # 形式チェック: "YYYY-MM" (7文字)
+        if not m or len(m) != 7 or not re.match(r"^\d{4}-\d{2}$", m):
+            logger.warning("get_report_months: 不正な月値をスキップ: %s", m)
+            continue
+        month_num = int(m[5:])
+        if not (1 <= month_num <= 12):
+            logger.warning("get_report_months: 範囲外の月をスキップ: %s", m)
+            continue
+        valid_months.append(m)
+
     return sorted(
-        [{"month": m, "label": f"{m[:4]}年{int(m[5:])}月"} for m in months],
+        [{"month": m, "label": f"{m[:4]}年{int(m[5:])}月"} for m in valid_months],
         key=lambda x: x["month"],
         reverse=True,
     )
