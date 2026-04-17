@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import re
 from datetime import date as _date
 
 logger = logging.getLogger(__name__)
@@ -633,15 +634,21 @@ def _format_structured_comment(comment: str) -> str:
     html_parts = []
     in_list = False
     for line in lines:
-        if line.startswith("■"):
+        if line.startswith("■") or line.startswith("#"):
             if in_list:
                 html_parts.append("</ul>")
                 in_list = False
-            html_parts.append(
-                f'<div style="font-weight:700;font-size:7.5pt;margin-top:2mm;'
-                f'break-after:avoid;break-inside:avoid;'
-                f'-webkit-column-break-after:avoid;-webkit-column-break-inside:avoid">{line}</div>'
-            )
+            if line.startswith("#"):
+                stripped = re.sub(r"^#+\s*", "", line)
+                display_line = f"■ {stripped}" if stripped else ""
+            else:
+                display_line = line
+            if display_line:
+                html_parts.append(
+                    f'<div style="font-weight:700;font-size:7.5pt;margin-top:2mm;'
+                    f'break-after:avoid;break-inside:avoid;'
+                    f'-webkit-column-break-after:avoid;-webkit-column-break-inside:avoid">{display_line}</div>'
+                )
         elif line.startswith("・") or line.startswith("- ") or line.startswith("• "):
             if not in_list:
                 html_parts.append('<ul style="break-inside:avoid;-webkit-column-break-inside:avoid">')
@@ -810,7 +817,8 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
     if is_monthly:
         rule_no_special = (
             "- 該当データが取得できないセクションのみ省略可。月次レポートでは最低1セクション以上の所見を必ず出力する\n"
-            "- 記録日数が1ヶ月分に満たない場合（月途中の集計など）も、利用可能な日数のデータから所見を出力すること"
+            "- 記録日数が1ヶ月分に満たない場合（月途中の集計など）も、利用可能な日数のデータから所見を出力すること\n"
+            "- セクション見出しは必ず「■」で始めること。Markdown記法（`#`・`##`等）、タイトル行、装飾記号は一切使用しない"
         )
     else:
         rule_no_special = "- 特記事項がない場合は空文字のみを返す"
@@ -820,6 +828,7 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
 
 【出力形式】
 セクションごとに見出しをつけ、各セクション1〜3項目の箇条書き（「・」始め）。
+セクション見出しは必ず「■」で始めること（例: 「■ パターン分析」）。
 不要なセクションは省略可。
 
 {analysis_sections}
@@ -829,7 +838,7 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
 - 患者への励まし・アドバイス・提案は不要（データ分析のみ）
 {rule_no_special}
 - 客観的なデータに基づくコメントのみ
-- 全体で400文字以内に収めること（印刷レイアウト制約）
+- 全体で300文字以内に収めること（印刷レイアウト制約）
 """
 
 
@@ -935,7 +944,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     valid_w_val = [morning_w[i] for i in valid_w_idx]
     trend = calculate_trend(x, morning_w)
 
-    fig_w, ax_w = plt.subplots(figsize=(7, 2.5))
+    fig_w, ax_w = plt.subplots(figsize=(7, 2.0))
     if valid_w_idx:
         ax_w.plot(valid_w_idx, valid_w_val, color="#34c759", linewidth=1.5, zorder=2)
         ax_w.scatter(valid_w_idx, valid_w_val, color="#34c759", s=15, zorder=3)
@@ -959,7 +968,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     cal_vals = [d["calories"] if d["calories"] is not None else 0 for d in days]
     bar_colors = ["#f87171" if v > goal_kcal else "#60a5fa" for v in cal_vals]
 
-    fig_c, ax_c = plt.subplots(figsize=(3.5, 2.5))
+    fig_c, ax_c = plt.subplots(figsize=(3.5, 2.0))
     ax_c.bar(x, cal_vals, color=bar_colors, alpha=0.85)
     ax_c.axhline(goal_kcal, color="#ff3b30", linestyle="--", linewidth=1,
                  label=f"目標 {goal_kcal}kcal")
@@ -977,7 +986,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     steps_vals = [d["steps"] if d["steps"] is not None else 0 for d in days]
     step_colors = ["#34c759" if v >= steps_goal else "#8e8e93" for v in steps_vals]
 
-    fig_s, ax_s = plt.subplots(figsize=(3.5, 2.5))
+    fig_s, ax_s = plt.subplots(figsize=(3.5, 2.0))
     ax_s.bar(x, steps_vals, color=step_colors, alpha=0.85)
     if steps_goal and steps_goal > 0:
         ax_s.axhline(steps_goal, color="#ff3b30", linestyle="--", linewidth=1,
@@ -1000,7 +1009,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
     c_vals = [v or 0 for v in pfc_data["carb_kcal"]]
     pf_bottom = [p + f for p, f in zip(p_vals, f_vals)]
 
-    fig_p, ax_p = plt.subplots(figsize=(7, 2.5))
+    fig_p, ax_p = plt.subplots(figsize=(7, 2.0))
     ax_p.bar(x, p_vals, label="P", color="#60a5fa", alpha=0.85)
     ax_p.bar(x, f_vals, bottom=p_vals, label="F", color="#fbbf24", alpha=0.85)
     ax_p.bar(x, c_vals, bottom=pf_bottom, label="C", color="#34d399", alpha=0.85)
@@ -1105,7 +1114,7 @@ def generate_monthly_report_html(data: dict, charts: dict, comment: str) -> str:
     body {{ background: #fff; }}
     .print-toolbar {{ display: none; }}
     .page {{ max-width: 100%; margin: 0; padding: 0; box-shadow: none; }}
-    .comment-section {{ max-height: 60mm; overflow: hidden; }}
+    .comment-section {{ max-height: 90mm; overflow: hidden; }}
   }}
 </style>
 </head>
