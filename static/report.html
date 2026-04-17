@@ -186,7 +186,15 @@
         document.getElementById('expandBtn').addEventListener('click', toggleFullPreview);
         document.getElementById('previewFrame').srcdoc = html;
       } catch(e) {
-        handleFetchError(area, e);
+        if (e instanceof Response) {
+          const status = e.status;
+          const msg = type === 'monthly'
+            ? `該当月のレポートが取得できませんでした（コード: ${status}）`
+            : `該当週のレポートが取得できませんでした（コード: ${status}）`;
+          area.innerHTML = `<div class="empty">${msg}</div>`;
+        } else {
+          handleFetchError(area, e);
+        }
       } finally {
         setButtons(false);
       }
