@@ -518,6 +518,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   .box-title {{
     font-weight: 700; font-size: 8.5pt; margin-bottom: 1.5mm;
     border-bottom: 0.5pt solid #ddd; padding-bottom: 1mm;
+    -webkit-column-span: all;
+    column-span: all;
   }}
   ul {{ margin: 0; padding-left: 4mm; }}
   li {{ margin-bottom: 1mm; line-height: 1.5; }}
@@ -635,10 +637,14 @@ def _format_structured_comment(comment: str) -> str:
             if in_list:
                 html_parts.append("</ul>")
                 in_list = False
-            html_parts.append(f'<div style="font-weight:700;font-size:7.5pt;margin-top:2mm">{line}</div>')
+            html_parts.append(
+                f'<div style="font-weight:700;font-size:7.5pt;margin-top:2mm;'
+                f'break-after:avoid;break-inside:avoid;'
+                f'-webkit-column-break-after:avoid;-webkit-column-break-inside:avoid">{line}</div>'
+            )
         elif line.startswith("・") or line.startswith("- ") or line.startswith("• "):
             if not in_list:
-                html_parts.append("<ul>")
+                html_parts.append('<ul style="break-inside:avoid;-webkit-column-break-inside:avoid">')
                 in_list = True
             text = line.lstrip("・•-").strip()
             html_parts.append(f"<li>{text}</li>")
