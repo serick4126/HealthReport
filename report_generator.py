@@ -374,7 +374,13 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     if comment:
         comment_html = _format_structured_comment(comment)
     else:
-        comment_html = "<p>特記事項なし</p>"
+        weekly_cals = [d["calories"] for d in days if d["calories"] is not None]
+        weekly_weights = [d["weight_morning"] for d in days if d["weight_morning"] is not None]
+        weekly_steps = [d["steps"] for d in days if d["steps"] is not None]
+        if not weekly_cals and not weekly_weights and not weekly_steps:
+            comment_html = "<p>該当週の記録がありません</p>"
+        else:
+            comment_html = "<p>AI注釈の生成に失敗しました（データ不足または APIエラー）</p>"
 
     period_str = (
         f"{start.year}年{start.month}月{start.day}日"
@@ -791,6 +797,11 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
 
     analysis_sections = "\n".join(sections)
 
+    if is_monthly:
+        rule_no_special = "- 該当データが取得できないセクションのみ省略可。月次レポートでは最低1セクション以上の所見を必ず出力する"
+    else:
+        rule_no_special = "- 特記事項がない場合は空文字のみを返す"
+
     return f"""\
 以下の{period_label}分の健康データを分析し、{report_type}レポートに添付する補足コメントを生成してください。
 
@@ -803,7 +814,7 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
 【ルール】
 - 医師・トレーナーが読むことを前提とした簡潔な日本語で記載
 - 患者への励まし・アドバイス・提案は不要（データ分析のみ）
-- 特記事項がない場合は空文字のみを返す
+{rule_no_special}
 - 客観的なデータに基づくコメントのみ
 - 全体で400文字以内に収めること（印刷レイアウト制約）
 """
@@ -861,9 +872,11 @@ async def generate_claude_comment(
         # プロンプト生成を動的関数に切り替え
         comment_prompt = _build_comment_prompt(focus_items, is_monthly=is_monthly)
 
-        data_section = f"【今週データ】\n{json.dumps(summary, ensure_ascii=False, indent=2)}"
+        period_label_data = "【今月データ】" if is_monthly else "【今週データ】"
+        data_section = f"{period_label_data}\n{json.dumps(summary, ensure_ascii=False, indent=2)}"
         if prev_week:
-            data_section += f"\n\n【前週サマリー】\n{json.dumps(prev_week, ensure_ascii=False, indent=2)}"
+            prev_label = "【前月サマリー】" if is_monthly else "【前週サマリー】"
+            data_section += f"\n\n{prev_label}\n{json.dumps(prev_week, ensure_ascii=False, indent=2)}"
 
         prompt = f"{comment_prompt}\n{data_section}"
 
@@ -1012,8 +1025,10 @@ def generate_monthly_report_html(data: dict, charts: dict, comment: str) -> str:
 
     if comment:
         comment_html = _format_structured_comment(comment)
+    elif not valid_cals and not morning_weights and not valid_steps:
+        comment_html = "<p>該当月の記録がありません</p>"
     else:
-        comment_html = "<p>特記事項なし</p>"
+        comment_html = "<p>AI注釈の生成に失敗しました（データ不足または APIエラー）</p>"
 
     avg_cal_str = f"{avg_cal}kcal" if avg_cal is not None else "—"
     weight_change_str = f"{weight_change:+.1f}kg" if weight_change is not None else "—"
