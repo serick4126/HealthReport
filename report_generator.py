@@ -669,7 +669,7 @@ def _build_comment_summary(data: dict) -> dict:
     for d in days:
         skipped = [
             mt for mt in ["breakfast", "lunch", "dinner"]
-            if d.get("skipped", {}).get(mt) and not d["meals"].get(mt)
+            if d.get("skipped", {}).get(mt) and not d.get("meals", {}).get(mt)
         ]
         if skipped:
             skip_counts[d["date"]] = [_skip_ja.get(mt, mt) for mt in skipped]
@@ -699,7 +699,7 @@ def _build_comment_summary(data: dict) -> dict:
 
         meal_times = {}
         for mt in ["breakfast", "lunch", "dinner"]:
-            times = [m.get("meal_time") for m in d["meals"].get(mt, []) if m.get("meal_time")]
+            times = [m.get("meal_time") for m in d.get("meals", {}).get(mt, []) if m.get("meal_time")]
             if times:
                 meal_times[mt] = times[0][:2] + "時"
 
@@ -753,15 +753,19 @@ _COMMENT_PROMPT = """\
 
 def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> str:
     """フォーカス設定に基づいてAIコメントプロンプトを動的生成。
-    全項目OFFの場合は既存の _COMMENT_PROMPT（固定プロンプト）をそのまま返す。
+    週次で全項目OFFの場合のみ既存の _COMMENT_PROMPT（固定プロンプト）にフォールバック。
+    月次で全項目OFFの場合は全項目ON相当のデフォルトで構築（月次専用プロンプトを必ず生成）。
     """
     enabled = {item["id"] for item in focus_items if item.get("enabled")}
 
-    # 全項目OFFの場合: 既存の固定プロンプトを使用（後方互換）
     if not enabled:
-        return _COMMENT_PROMPT
+        if is_monthly:
+            enabled = {"meal_content", "calories", "pfc", "sodium", "expenditure",
+                       "exercise", "weight", "steps", "blood_pressure", "body_fat"}
+        else:
+            return _COMMENT_PROMPT
 
-    period_label = "1ヶ月" if is_monthly else "1週間"
+    period_label = "1ヶ月（途中経過を含む）" if is_monthly else "1週間"
     report_type = "月次" if is_monthly else "週次"
 
     sections = []
@@ -804,7 +808,10 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
     analysis_sections = "\n".join(sections)
 
     if is_monthly:
-        rule_no_special = "- 該当データが取得できないセクションのみ省略可。月次レポートでは最低1セクション以上の所見を必ず出力する"
+        rule_no_special = (
+            "- 該当データが取得できないセクションのみ省略可。月次レポートでは最低1セクション以上の所見を必ず出力する\n"
+            "- 記録日数が1ヶ月分に満たない場合（月途中の集計など）も、利用可能な日数のデータから所見を出力すること"
+        )
     else:
         rule_no_special = "- 特記事項がない場合は空文字のみを返す"
 
