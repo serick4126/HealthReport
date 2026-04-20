@@ -9,59 +9,38 @@ const NAV_ITEMS = [
   { id: 'settings', icon: '⚙️', label: '設定',     href: '/settings' },
 ];
 
-async function initNav(currentPage) {
-  if (document.getElementById('sidebar')) return;
-
-  // DBからピン状態を取得
-  var pinned = false;
-  var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-  var isPC = viewportWidth > 768;
-  try {
-    var r = await fetch('/api/settings');
-    if (r.ok) {
-      var s = await r.json();
-      pinned = isPC && s.sidebar_pinned === 'true';
-    }
-  } catch (_) {}
-
-  // ハンバーガーボタン生成（ピン中は非表示）
-  var hamburger;
+// ハンバーガーボタンを生成してheaderに挿入し、buttonを返す
+function _buildHamburger(pinned) {
   var header = document.querySelector('.header');
-  if (header) {
-    hamburger = document.createElement('button');
-    hamburger.id = 'hamburger';
-    hamburger.setAttribute('aria-label', 'メニューを開く');
-    hamburger.innerHTML = '<span></span><span></span><span></span>';
-    hamburger.addEventListener('click', function() {
-      if (document.body.classList.contains('sidebar-open')) {
-        closeSidebar();
-      } else {
-        openSidebar();
-      }
-    });
-    if (pinned) hamburger.style.display = 'none';
-    header.insertBefore(hamburger, header.firstChild);
-  }
+  if (!header) return null;
+  var hamburger = document.createElement('button');
+  hamburger.id = 'hamburger';
+  hamburger.setAttribute('aria-label', 'メニューを開く');
+  hamburger.setAttribute('aria-expanded', pinned ? 'true' : 'false');
+  hamburger.innerHTML = '<span></span><span></span><span></span>';
+  hamburger.addEventListener('click', function() {
+    if (document.body.classList.contains('sidebar-open')) {
+      closeSidebar();
+    } else {
+      openSidebar();
+    }
+  });
+  if (pinned) hamburger.style.display = 'none';
+  header.insertBefore(hamburger, header.firstChild);
+  return hamburger;
+}
 
-  // ピン状態に応じてbody.sidebar-openを設定
-  if (pinned) {
-    document.body.classList.add('sidebar-open');
-  } else {
-    document.body.classList.remove('sidebar-open');
-  }
-
-  // サイドバー生成
+// サイドバーDOM全体を生成してbodyに挿入
+function _buildSidebar(currentPage, pinned, isPC) {
   var sidebar = document.createElement('div');
   sidebar.id = 'sidebar';
 
   var appTitle = document.createElement('div');
   appTitle.className = 'sidebar-app-title';
-
   var titleText = document.createElement('span');
   titleText.textContent = '🌿 HealthReport';
   appTitle.appendChild(titleText);
 
-  // ピンボタン（PCのみ）
   if (isPC) {
     var pinBtn = document.createElement('button');
     pinBtn.id = 'sidebar-pin-btn';
@@ -71,10 +50,8 @@ async function initNav(currentPage) {
     pinBtn.addEventListener('click', togglePin);
     appTitle.appendChild(pinBtn);
   }
-
   sidebar.appendChild(appTitle);
 
-  // ナビ項目
   var nav = document.createElement('nav');
   nav.className = 'sidebar-nav';
   NAV_ITEMS.forEach(function(item) {
@@ -92,7 +69,6 @@ async function initNav(currentPage) {
   });
   sidebar.appendChild(nav);
 
-  // フッターボタン
   var footer = document.createElement('div');
   footer.className = 'sidebar-footer';
   var btnReset = document.createElement('button');
@@ -107,21 +83,16 @@ async function initNav(currentPage) {
   footer.appendChild(btnLogout);
   sidebar.appendChild(footer);
 
-  // オーバーレイ
   var overlay = document.createElement('div');
   overlay.id = 'sidebar-overlay';
   overlay.addEventListener('click', closeSidebar);
 
-  // DOM注入
   document.body.insertBefore(overlay, document.body.firstChild);
   document.body.insertBefore(sidebar, document.body.firstChild);
+}
 
-  // aria-expanded 初期設定
-  if (hamburger) {
-    hamburger.setAttribute('aria-expanded', pinned ? 'true' : 'false');
-  }
-
-  // Esc キーリスナー
+// Escキー・pageshoイベントリスナー登録
+function _registerNavListeners() {
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
       var pb = document.getElementById('sidebar-pin-btn');
@@ -152,7 +123,11 @@ async function initNav(currentPage) {
       } else {
         document.body.classList.remove('sidebar-open');
         var h2 = document.getElementById('hamburger');
-        if (h2) h2.style.display = '';
+        if (h2) {
+          h2.style.display = '';
+          h2.setAttribute('aria-label', 'メニューを開く');
+          h2.setAttribute('aria-expanded', 'false');
+        }
       }
       var pb = document.getElementById('sidebar-pin-btn');
       if (pb) {
@@ -161,6 +136,33 @@ async function initNav(currentPage) {
       }
     }).catch(function() {});
   });
+}
+
+async function initNav(currentPage) {
+  if (document.getElementById('sidebar')) return;
+
+  // DBからピン状態を取得
+  var pinned = false;
+  var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  var isPC = viewportWidth > 768;
+  try {
+    var r = await fetch('/api/settings');
+    if (r.ok) {
+      var s = await r.json();
+      pinned = isPC && s.sidebar_pinned === 'true';
+    }
+  } catch (_) {}
+
+  // ピン状態に応じてbody.sidebar-openを設定
+  if (pinned) {
+    document.body.classList.add('sidebar-open');
+  } else {
+    document.body.classList.remove('sidebar-open');
+  }
+
+  _buildHamburger(pinned);
+  _buildSidebar(currentPage, pinned, isPC);
+  _registerNavListeners();
 }
 
 function openSidebar() {
@@ -187,19 +189,25 @@ async function togglePin() {
   var nowPinned = pinBtn.classList.contains('pinned');
   var next = !nowPinned;
 
+  // 楽観的UI更新
   pinBtn.classList.toggle('pinned', next);
   pinBtn.setAttribute('aria-label', next ? 'サイドバーの固定を解除' : 'サイドバーを固定');
-
   var hamburger = document.getElementById('hamburger');
   if (hamburger) hamburger.style.display = next ? 'none' : '';
 
   try {
-    await fetch('/api/settings', {
+    var res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sidebar_pinned: next ? 'true' : 'false' })
     });
-  } catch (_) {}
+    if (!res.ok) throw new Error('save failed');
+  } catch (_) {
+    // ロールバック
+    pinBtn.classList.toggle('pinned', nowPinned);
+    pinBtn.setAttribute('aria-label', nowPinned ? 'サイドバーの固定を解除' : 'サイドバーを固定');
+    if (hamburger) hamburger.style.display = nowPinned ? 'none' : '';
+  }
 }
 
 // ── 共通：会話リセット・ログアウト（index.html でオーバーライド）─────────────

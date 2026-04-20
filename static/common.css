@@ -297,11 +297,15 @@ html.sidebar-open #sidebar {
   font-weight: 700;
   color: var(--text-secondary);
   padding: 20px 20px 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   align-items: center;
+}
+
+.sidebar-app-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
 }
 
 .sidebar-pin-btn {
