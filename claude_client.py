@@ -61,10 +61,10 @@ TOOLS: list[anthropic.types.ToolParam] = [
                 "sodium": {"type": "number", "description": "塩分相当量 (g)"},
                 "notes": {"type": "string", "description": (
                     "備考。タグは必ず以下のルールで付けること:\n"
-                    "- search_food_nutrition ツールで検索成功した場合のみ '[Slism]' を含める\n"
+                    "- search_food_nutrition ツールで得た候補を実際に採用して record_meal を呼ぶ場合のみ '[Slism]' を含める（ユーザーが候補を却下して Claude 推定にフォールバックした場合は '[推定値]' を付ける）\n"
                     "- Claude の知識で推定した場合は '[推定値] カロリー・PFCはClaudeによる推定' を含める\n"
                     "- ユーザーがチャットで栄養素（kcal/PFC/塩分等）を直接指定した場合はタグを付けない\n"
-                    "- 食品ラベル画像から読み取った場合もタグを付けない"
+                    "- 食品ラベル画像またはバーコード画像から読み取った場合もタグを付けない（image_source_type が 'label' または 'barcode' のケース）"
                 )},
                 "image_source_type": {
                     "type": "string",
