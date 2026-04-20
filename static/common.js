@@ -10,17 +10,84 @@ const NAV_ITEMS = [
 ];
 
 function initNav(currentPage) {
-  var el = document.getElementById('headerNav');
-  if (!el) return;
-  var items = NAV_ITEMS.map(function(item) {
+  // ハンバーガーボタンをヘッダー先頭に挿入
+  var header = document.querySelector('.header');
+  if (header) {
+    var hamburger = document.createElement('button');
+    hamburger.id = 'hamburger';
+    hamburger.setAttribute('aria-label', 'メニューを開く');
+    hamburger.innerHTML = '<span></span><span></span><span></span>';
+    hamburger.addEventListener('click', function() {
+      if (document.body.classList.contains('sidebar-open')) {
+        closeSidebar();
+      } else {
+        openSidebar();
+      }
+    });
+    header.insertBefore(hamburger, header.firstChild);
+  }
+
+  // サイドバー生成
+  var sidebar = document.createElement('div');
+  sidebar.id = 'sidebar';
+
+  var appTitle = document.createElement('div');
+  appTitle.className = 'sidebar-app-title';
+  appTitle.textContent = '🌿 HealthReport';
+  sidebar.appendChild(appTitle);
+
+  var nav = document.createElement('nav');
+  nav.className = 'sidebar-nav';
+  NAV_ITEMS.forEach(function(item) {
+    var el;
     if (item.id === currentPage) {
-      return '<span class="nav-btn current" title="' + item.label + '">' + item.icon + '<span class="nl"> ' + item.label + '</span></span>';
+      el = document.createElement('span');
+      el.className = 'sidebar-nav-item current';
+    } else {
+      el = document.createElement('a');
+      el.className = 'sidebar-nav-item';
+      el.href = item.href;
     }
-    return '<a href="' + item.href + '" class="nav-btn" title="' + item.label + '">' + item.icon + '<span class="nl"> ' + item.label + '</span></a>';
+    el.innerHTML = item.icon + ' <span class="sidebar-nav-label">' + escHtml(item.label) + '</span>';
+    nav.appendChild(el);
   });
-  items.push('<button class="nav-btn nav-reset" title="会話履歴をリセット" onclick="clearHistory()">🔄</button>');
-  items.push('<button class="nav-btn" onclick="doLogout()" title="ログアウト">🚪<span class="nl"> ログアウト</span></button>');
-  el.innerHTML = items.join('');
+  sidebar.appendChild(nav);
+
+  var footer = document.createElement('div');
+  footer.className = 'sidebar-footer';
+
+  var btnReset = document.createElement('button');
+  btnReset.className = 'sidebar-footer-btn';
+  btnReset.innerHTML = '🔄 <span>会話リセット</span>';
+  btnReset.addEventListener('click', clearHistory);
+
+  var btnLogout = document.createElement('button');
+  btnLogout.className = 'sidebar-footer-btn';
+  btnLogout.innerHTML = '🚪 <span>ログアウト</span>';
+  btnLogout.addEventListener('click', doLogout);
+
+  footer.appendChild(btnReset);
+  footer.appendChild(btnLogout);
+  sidebar.appendChild(footer);
+
+  // オーバーレイ生成
+  var overlay = document.createElement('div');
+  overlay.id = 'sidebar-overlay';
+  overlay.addEventListener('click', closeSidebar);
+
+  // DOMへ注入（sidebarが最前面）
+  document.body.insertBefore(overlay, document.body.firstChild);
+  document.body.insertBefore(sidebar, document.body.firstChild);
+}
+
+function openSidebar() {
+  document.body.classList.add('sidebar-open');
+  try { localStorage.setItem('healthreport_sidebar', 'open'); } catch(_) {}
+}
+
+function closeSidebar() {
+  document.body.classList.remove('sidebar-open');
+  try { localStorage.setItem('healthreport_sidebar', 'closed'); } catch(_) {}
 }
 
 // ── 共通：会話リセット・ログアウト（index.html でオーバーライド）─────────────
