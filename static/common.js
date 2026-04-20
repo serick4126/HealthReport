@@ -91,7 +91,7 @@ function _buildSidebar(currentPage, pinned, isPC) {
   document.body.insertBefore(sidebar, document.body.firstChild);
 }
 
-// Escキー・pageshoイベントリスナー登録
+// Escキー・pageshowイベントリスナー登録
 function _registerNavListeners() {
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
@@ -120,6 +120,10 @@ function _registerNavListeners() {
         document.body.classList.add('sidebar-open');
         var h = document.getElementById('hamburger');
         if (h) h.style.display = 'none';
+        if (h) {
+          h.setAttribute('aria-expanded', 'true');
+          h.setAttribute('aria-label', 'メニューを閉じる');
+        }
       } else {
         document.body.classList.remove('sidebar-open');
         var h2 = document.getElementById('hamburger');
