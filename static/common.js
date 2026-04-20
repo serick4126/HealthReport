@@ -79,6 +79,10 @@ function initNav(currentPage) {
   // DOMへ注入（sidebarが最前面）
   document.body.insertBefore(overlay, document.body.firstChild);
   document.body.insertBefore(sidebar, document.body.firstChild);
+
+  if (document.body.classList.contains('sidebar-open')) {
+    hamburger.setAttribute('aria-expanded', 'true');
+  }
 }
 
 function openSidebar() {
