@@ -11,10 +11,12 @@ const NAV_ITEMS = [
 
 function initNav(currentPage) {
   if (document.getElementById('sidebar')) return;
-  // ハンバーガーボタンをヘッダー先頭に挿入
+
+  // 1. ハンバーガーボタン生成（header先頭に挿入）
+  var hamburger;
   var header = document.querySelector('.header');
   if (header) {
-    var hamburger = document.createElement('button');
+    hamburger = document.createElement('button');
     hamburger.id = 'hamburger';
     hamburger.setAttribute('aria-label', 'メニューを開く');
     hamburger.innerHTML = '<span></span><span></span><span></span>';
@@ -28,7 +30,21 @@ function initNav(currentPage) {
     header.insertBefore(hamburger, header.firstChild);
   }
 
-  // サイドバー生成
+  // 2. #sidebar挿入前にbody.sidebar-openを確定（アニメーション防止のため先行設定）
+  var docEl = document.documentElement;
+  var fouc = docEl.classList.contains('sidebar-open');
+  docEl.classList.remove('sidebar-open');  // FOUCクラスをhtml要素から除去
+  var shouldOpen = false;
+  try {
+    shouldOpen = window.innerWidth > 768 && (fouc || localStorage.getItem('healthreport_sidebar') !== 'closed');
+  } catch (_) {
+    shouldOpen = window.innerWidth > 768 && fouc;
+  }
+  if (shouldOpen) {
+    document.body.classList.add('sidebar-open');
+  }
+
+  // 3. サイドバー生成
   var sidebar = document.createElement('div');
   sidebar.id = 'sidebar';
 
@@ -71,30 +87,18 @@ function initNav(currentPage) {
   footer.appendChild(btnLogout);
   sidebar.appendChild(footer);
 
-  // オーバーレイ生成
+  // 4. オーバーレイ生成
   var overlay = document.createElement('div');
   overlay.id = 'sidebar-overlay';
   overlay.addEventListener('click', closeSidebar);
 
-  // DOMへ注入（sidebarが最前面）
+  // 5. DOMへ注入（body.sidebar-openが設定済みのため新規要素にアニメーションなし）
   document.body.insertBefore(overlay, document.body.firstChild);
   document.body.insertBefore(sidebar, document.body.firstChild);
 
-  // PC: localStorageからサイドバー開閉状態を復元（FOUC scriptが失敗した場合のフォールバック）
-  if (window.innerWidth > 768) {
-    var htmlHasClass = document.documentElement.classList.contains('sidebar-open');
-    var shouldOpen = htmlHasClass || localStorage.getItem('healthreport_sidebar') !== 'closed';
-    if (shouldOpen) {
-      sidebar.style.transition = 'none';
-      document.documentElement.classList.remove('sidebar-open');
-      document.body.classList.add('sidebar-open');
-      hamburger.setAttribute('aria-expanded', 'true');
-      requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          sidebar.style.transition = '';
-        });
-      });
-    }
+  // 6. aria-expanded 初期設定
+  if (hamburger) {
+    hamburger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
   }
 }
 
