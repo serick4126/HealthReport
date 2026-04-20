@@ -25,6 +25,7 @@
   --toggle-off: #e5e5ea;
   --star-active: #b8860b; /* ダークゴールド（白背景上でコントラスト比 4.6:1） */
   --card-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  --skip-badge-bg: #e8f0fe;
 }
 
 /* ── ダークモード ── */
@@ -274,7 +275,8 @@ body.sidebar-open #hamburger span:nth-child(3) {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-right: 1px solid var(--border);
-  z-index: 200;
+  z-index: 50;
+  padding-top: env(safe-area-inset-top);
   transform: translateX(-240px);
   transition: transform 0.25s ease;
   display: flex;
@@ -364,7 +366,7 @@ body.sidebar-open #sidebar {
 #sidebar-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.45);
-  z-index: 199;
+  z-index: 49;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease;
@@ -381,6 +383,7 @@ body.sidebar-open #sidebar {
 @media (min-width: 769px) {
   body {
     transition: padding-left 0.25s ease;
+    will-change: padding-left;
   }
   body.sidebar-open {
     padding-left: 240px;
