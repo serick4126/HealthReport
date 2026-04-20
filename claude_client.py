@@ -59,7 +59,13 @@ TOOLS: list[anthropic.types.ToolParam] = [
                 "fat": {"type": "number", "description": "脂質 (g)"},
                 "carbs": {"type": "number", "description": "炭水化物・糖質 (g)"},
                 "sodium": {"type": "number", "description": "塩分相当量 (g)"},
-                "notes": {"type": "string", "description": "備考。推定値の場合は '[推定値] カロリー・PFCはClaudeによる推定' を含める。Slismで検索した場合は '[Slism]' を含める。"},
+                "notes": {"type": "string", "description": (
+                    "備考。タグは必ず以下のルールで付けること:\n"
+                    "- search_food_nutrition ツールで検索成功した場合のみ '[Slism]' を含める\n"
+                    "- Claude の知識で推定した場合は '[推定値] カロリー・PFCはClaudeによる推定' を含める\n"
+                    "- ユーザーがチャットで栄養素（kcal/PFC/塩分等）を直接指定した場合はタグを付けない\n"
+                    "- 食品ラベル画像から読み取った場合もタグを付けない"
+                )},
                 "image_source_type": {
                     "type": "string",
                     "enum": ["photo", "label", "barcode"],
