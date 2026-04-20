@@ -80,8 +80,21 @@ function initNav(currentPage) {
   document.body.insertBefore(overlay, document.body.firstChild);
   document.body.insertBefore(sidebar, document.body.firstChild);
 
-  if (document.body.classList.contains('sidebar-open')) {
-    hamburger.setAttribute('aria-expanded', 'true');
+  // PC: localStorageからサイドバー開閉状態を復元（FOUC scriptが失敗した場合のフォールバック）
+  if (window.innerWidth > 768) {
+    var htmlHasClass = document.documentElement.classList.contains('sidebar-open');
+    var shouldOpen = htmlHasClass || localStorage.getItem('healthreport_sidebar') !== 'closed';
+    if (shouldOpen) {
+      sidebar.style.transition = 'none';
+      document.documentElement.classList.remove('sidebar-open');
+      document.body.classList.add('sidebar-open');
+      hamburger.setAttribute('aria-expanded', 'true');
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          sidebar.style.transition = '';
+        });
+      });
+    }
   }
 }
 
