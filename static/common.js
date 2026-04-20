@@ -10,6 +10,7 @@ const NAV_ITEMS = [
 ];
 
 function initNav(currentPage) {
+  if (document.getElementById('sidebar')) return;
   // ハンバーガーボタンをヘッダー先頭に挿入
   var header = document.querySelector('.header');
   if (header) {
@@ -82,11 +83,15 @@ function initNav(currentPage) {
 
 function openSidebar() {
   document.body.classList.add('sidebar-open');
+  var h = document.getElementById('hamburger');
+  if (h) h.setAttribute('aria-expanded', 'true');
   try { localStorage.setItem('healthreport_sidebar', 'open'); } catch(_) {}
 }
 
 function closeSidebar() {
   document.body.classList.remove('sidebar-open');
+  var h = document.getElementById('hamburger');
+  if (h) h.setAttribute('aria-expanded', 'false');
   try { localStorage.setItem('healthreport_sidebar', 'closed'); } catch(_) {}
 }
 
@@ -119,7 +124,6 @@ async function initTheme() {
   } catch (_) {
     // localStorage無効時（プライベートブラウジング等）はスキップ
   }
-  // バックグラウンドで最新を取得して更新
   try {
     var r = await fetch('/api/settings');
     if (!r.ok) return;
