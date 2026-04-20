@@ -9,10 +9,22 @@ const NAV_ITEMS = [
   { id: 'settings', icon: '⚙️', label: '設定',     href: '/settings' },
 ];
 
-function initNav(currentPage) {
+async function initNav(currentPage) {
   if (document.getElementById('sidebar')) return;
 
-  // 1. ハンバーガーボタン生成（header先頭に挿入）
+  // DBからピン状態を取得
+  var pinned = false;
+  var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  var isPC = viewportWidth > 768;
+  try {
+    var r = await fetch('/api/settings');
+    if (r.ok) {
+      var s = await r.json();
+      pinned = isPC && s.sidebar_pinned === 'true';
+    }
+  } catch (_) {}
+
+  // ハンバーガーボタン生成（ピン中は非表示）
   var hamburger;
   var header = document.querySelector('.header');
   if (header) {
@@ -27,38 +39,42 @@ function initNav(currentPage) {
         openSidebar();
       }
     });
+    if (pinned) hamburger.style.display = 'none';
     header.insertBefore(hamburger, header.firstChild);
   }
 
-  // 2. #sidebar挿入前にbody.sidebar-openを確定（アニメーション防止のため先行設定）
-  var docEl = document.documentElement;
-  var fouc = docEl.classList.contains('sidebar-open');
-  docEl.classList.remove('sidebar-open');  // FOUCクラスをhtml要素から除去
-  var shouldOpen = false;
-  try {
-    var sidebarPref = localStorage.getItem('healthreport_sidebar');
-    var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    if (fouc) {
-      shouldOpen = true;
-    } else {
-      shouldOpen = viewportWidth > 768 && (sidebarPref !== 'closed');
-    }
-  } catch (_) {
-    shouldOpen = fouc;
-  }
-  if (shouldOpen) {
+  // ピン状態に応じてbody.sidebar-openを設定
+  if (pinned) {
     document.body.classList.add('sidebar-open');
+  } else {
+    document.body.classList.remove('sidebar-open');
   }
 
-  // 3. サイドバー生成
+  // サイドバー生成
   var sidebar = document.createElement('div');
   sidebar.id = 'sidebar';
 
   var appTitle = document.createElement('div');
   appTitle.className = 'sidebar-app-title';
-  appTitle.textContent = '🌿 HealthReport';
+
+  var titleText = document.createElement('span');
+  titleText.textContent = '🌿 HealthReport';
+  appTitle.appendChild(titleText);
+
+  // ピンボタン（PCのみ）
+  if (isPC) {
+    var pinBtn = document.createElement('button');
+    pinBtn.id = 'sidebar-pin-btn';
+    pinBtn.className = 'sidebar-pin-btn' + (pinned ? ' pinned' : '');
+    pinBtn.setAttribute('aria-label', pinned ? 'サイドバーの固定を解除' : 'サイドバーを固定');
+    pinBtn.textContent = '📌';
+    pinBtn.addEventListener('click', togglePin);
+    appTitle.appendChild(pinBtn);
+  }
+
   sidebar.appendChild(appTitle);
 
+  // ナビ項目
   var nav = document.createElement('nav');
   nav.className = 'sidebar-nav';
   NAV_ITEMS.forEach(function(item) {
@@ -76,50 +92,114 @@ function initNav(currentPage) {
   });
   sidebar.appendChild(nav);
 
+  // フッターボタン
   var footer = document.createElement('div');
   footer.className = 'sidebar-footer';
-
   var btnReset = document.createElement('button');
   btnReset.className = 'sidebar-footer-btn';
   btnReset.innerHTML = '🔄 <span>会話リセット</span>';
   btnReset.addEventListener('click', clearHistory);
-
   var btnLogout = document.createElement('button');
   btnLogout.className = 'sidebar-footer-btn';
   btnLogout.innerHTML = '🚪 <span>ログアウト</span>';
   btnLogout.addEventListener('click', doLogout);
-
   footer.appendChild(btnReset);
   footer.appendChild(btnLogout);
   sidebar.appendChild(footer);
 
-  // 4. オーバーレイ生成
+  // オーバーレイ
   var overlay = document.createElement('div');
   overlay.id = 'sidebar-overlay';
   overlay.addEventListener('click', closeSidebar);
 
-  // 5. DOMへ注入（body.sidebar-openが設定済みのため新規要素にアニメーションなし）
+  // DOM注入
   document.body.insertBefore(overlay, document.body.firstChild);
   document.body.insertBefore(sidebar, document.body.firstChild);
 
-  // 6. aria-expanded 初期設定
+  // aria-expanded 初期設定
   if (hamburger) {
-    hamburger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    hamburger.setAttribute('aria-expanded', pinned ? 'true' : 'false');
   }
+
+  // Esc キーリスナー
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+      var pb = document.getElementById('sidebar-pin-btn');
+      var isPinned = pb && pb.classList.contains('pinned');
+      if (!isPinned) {
+        closeSidebar();
+        var h = document.getElementById('hamburger');
+        if (h) h.focus();
+      }
+    }
+  });
+
+  // pageshow bfcache 対応
+  window.addEventListener('pageshow', function(e) {
+    if (!e.persisted) return;
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var pc = vw > 768;
+    fetch('/api/settings').then(function(r) {
+      if (!r.ok) return;
+      return r.json();
+    }).then(function(s) {
+      if (!s) return;
+      var p = pc && s.sidebar_pinned === 'true';
+      if (p) {
+        document.body.classList.add('sidebar-open');
+        var h = document.getElementById('hamburger');
+        if (h) h.style.display = 'none';
+      } else {
+        document.body.classList.remove('sidebar-open');
+        var h2 = document.getElementById('hamburger');
+        if (h2) h2.style.display = '';
+      }
+      var pb = document.getElementById('sidebar-pin-btn');
+      if (pb) {
+        pb.classList.toggle('pinned', p);
+        pb.setAttribute('aria-label', p ? 'サイドバーの固定を解除' : 'サイドバーを固定');
+      }
+    }).catch(function() {});
+  });
 }
 
 function openSidebar() {
   document.body.classList.add('sidebar-open');
   var h = document.getElementById('hamburger');
-  if (h) h.setAttribute('aria-expanded', 'true');
-  try { localStorage.setItem('healthreport_sidebar', 'open'); } catch(_) {}
+  if (h) {
+    h.setAttribute('aria-expanded', 'true');
+    h.setAttribute('aria-label', 'メニューを閉じる');
+  }
 }
 
 function closeSidebar() {
   document.body.classList.remove('sidebar-open');
   var h = document.getElementById('hamburger');
-  if (h) h.setAttribute('aria-expanded', 'false');
-  try { localStorage.setItem('healthreport_sidebar', 'closed'); } catch(_) {}
+  if (h) {
+    h.setAttribute('aria-expanded', 'false');
+    h.setAttribute('aria-label', 'メニューを開く');
+  }
+}
+
+async function togglePin() {
+  var pinBtn = document.getElementById('sidebar-pin-btn');
+  if (!pinBtn) return;
+  var nowPinned = pinBtn.classList.contains('pinned');
+  var next = !nowPinned;
+
+  pinBtn.classList.toggle('pinned', next);
+  pinBtn.setAttribute('aria-label', next ? 'サイドバーの固定を解除' : 'サイドバーを固定');
+
+  var hamburger = document.getElementById('hamburger');
+  if (hamburger) hamburger.style.display = next ? 'none' : '';
+
+  try {
+    await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sidebar_pinned: next ? 'true' : 'false' })
+    });
+  } catch (_) {}
 }
 
 // ── 共通：会話リセット・ログアウト（index.html でオーバーライド）─────────────
