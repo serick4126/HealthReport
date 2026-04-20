@@ -36,9 +36,15 @@ function initNav(currentPage) {
   docEl.classList.remove('sidebar-open');  // FOUCクラスをhtml要素から除去
   var shouldOpen = false;
   try {
-    shouldOpen = window.innerWidth > 768 && (fouc || localStorage.getItem('healthreport_sidebar') !== 'closed');
+    var sidebarPref = localStorage.getItem('healthreport_sidebar');
+    var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    if (fouc) {
+      shouldOpen = true;
+    } else {
+      shouldOpen = viewportWidth > 768 && (sidebarPref !== 'closed');
+    }
   } catch (_) {
-    shouldOpen = window.innerWidth > 768 && fouc;
+    shouldOpen = fouc;
   }
   if (shouldOpen) {
     document.body.classList.add('sidebar-open');

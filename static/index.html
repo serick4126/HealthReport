@@ -458,7 +458,7 @@
     .bmi-widget .bmi-sep { color: var(--border); margin: 0 2px; }
     .bmi-widget .bmi-hint { color: var(--text-secondary); font-style: italic; font-size: 11px; }
   </style>
-<script>(function(){try{if(localStorage.getItem('healthreport_sidebar')!=='closed'&&window.innerWidth>768){document.documentElement.classList.add('sidebar-open');}}catch(_){}})();</script>
+<script>(function(){try{var w=window.innerWidth||document.documentElement.clientWidth||0;if(localStorage.getItem('healthreport_sidebar')!=='closed'&&w>768){document.documentElement.classList.add('sidebar-open');}}catch(_){}})();</script>
 </head>
 <body>
 
