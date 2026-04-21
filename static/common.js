@@ -103,6 +103,10 @@ async function initNav(currentPage) {
   var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
   var isPC = viewportWidth >= 768; // リサイズ非対応（リロードで反映）
 
+  if (isPC) {
+    setTimeout(function() { document.body.classList.add('nav-ready'); }, 1000);
+  }
+
   if (!isPC) {
     _buildHamburger();
   }
