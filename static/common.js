@@ -101,7 +101,7 @@ async function initNav(currentPage) {
   if (document.getElementById('sidebar')) return;
 
   var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-  var isPC = viewportWidth >= 768;
+  var isPC = viewportWidth >= 768; // リサイズ非対応（リロードで反映）
 
   if (!isPC) {
     _buildHamburger();
