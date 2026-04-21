@@ -392,9 +392,6 @@ html.sidebar-open #sidebar {
 
 /* ── PC（≥768px）: サイドバー常時表示・サイドバイサイドレイアウト ── */
 @media (min-width: 768px) {
-  .header {
-    display: none;
-  }
   #sidebar {
     transform: translateX(0) !important;
     transition: none !important;
