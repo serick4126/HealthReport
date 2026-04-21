@@ -308,27 +308,6 @@ html.sidebar-open #sidebar {
   flex: 1;
 }
 
-.sidebar-pin-btn {
-  margin-left: auto;
-  background: none;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-  opacity: 0.4;
-  padding: 4px 6px;
-  border-radius: 4px;
-  transition: opacity 0.2s;
-}
-
-.sidebar-pin-btn:hover {
-  opacity: 0.8;
-}
-
-.sidebar-pin-btn.pinned {
-  opacity: 1;
-  background: var(--accent-light, rgba(0,128,0,0.15));
-}
-
 .sidebar-nav {
   flex: 1;
   display: flex;
@@ -411,15 +390,32 @@ html.sidebar-open #sidebar {
   }
 }
 
-/* ── PC: サイドバー展開時のメインコンテンツシフト ── */
-@media (min-width: 769px) {
-  body {
-    transition: padding-left 0.25s ease;
-    will-change: padding-left;
+/* ── PC（≥768px）: サイドバー常時表示・サイドバイサイドレイアウト ── */
+@media (min-width: 768px) {
+  .header {
+    display: none;
   }
-  body.sidebar-open,
-  html.sidebar-open body {
-    padding-left: 240px;
+  #sidebar {
+    transform: translateX(0);
+  }
+  body {
+    margin-left: 240px;
+  }
+  #sidebar-overlay {
+    display: none !important;
+  }
+  #hamburger {
+    display: none !important;
+  }
+}
+
+/* ── 印刷時 ── */
+@media print {
+  #sidebar {
+    display: none;
+  }
+  body {
+    margin-left: 0;
   }
 }
 
