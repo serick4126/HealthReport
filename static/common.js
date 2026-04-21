@@ -10,13 +10,13 @@ const NAV_ITEMS = [
 ];
 
 // ハンバーガーボタンを生成してheaderに挿入し、buttonを返す
-function _buildHamburger(pinned) {
+function _buildHamburger() {
   var header = document.querySelector('.header');
   if (!header) return null;
   var hamburger = document.createElement('button');
   hamburger.id = 'hamburger';
   hamburger.setAttribute('aria-label', 'メニューを開く');
-  hamburger.setAttribute('aria-expanded', pinned ? 'true' : 'false');
+  hamburger.setAttribute('aria-expanded', 'false');
   hamburger.innerHTML = '<span></span><span></span><span></span>';
   hamburger.addEventListener('click', function() {
     if (document.body.classList.contains('sidebar-open')) {
@@ -25,13 +25,12 @@ function _buildHamburger(pinned) {
       openSidebar();
     }
   });
-  if (pinned) hamburger.style.display = 'none';
   header.insertBefore(hamburger, header.firstChild);
   return hamburger;
 }
 
 // サイドバーDOM全体を生成してbodyに挿入
-function _buildSidebar(currentPage, pinned, isPC) {
+function _buildSidebar(currentPage) {
   var sidebar = document.createElement('div');
   sidebar.id = 'sidebar';
 
@@ -40,16 +39,6 @@ function _buildSidebar(currentPage, pinned, isPC) {
   var titleText = document.createElement('span');
   titleText.textContent = '🌿 HealthReport';
   appTitle.appendChild(titleText);
-
-  if (isPC) {
-    var pinBtn = document.createElement('button');
-    pinBtn.id = 'sidebar-pin-btn';
-    pinBtn.className = 'sidebar-pin-btn' + (pinned ? ' pinned' : '');
-    pinBtn.setAttribute('aria-label', pinned ? 'サイドバーの固定を解除' : 'サイドバーを固定');
-    pinBtn.textContent = '📌';
-    pinBtn.addEventListener('click', togglePin);
-    appTitle.appendChild(pinBtn);
-  }
   sidebar.appendChild(appTitle);
 
   var nav = document.createElement('nav');
@@ -95,77 +84,29 @@ function _buildSidebar(currentPage, pinned, isPC) {
 function _registerNavListeners() {
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
-      var pb = document.getElementById('sidebar-pin-btn');
-      var isPinned = pb && pb.classList.contains('pinned');
-      if (!isPinned) {
-        closeSidebar();
-        var h = document.getElementById('hamburger');
-        if (h) h.focus();
-      }
+      closeSidebar();
+      var h = document.getElementById('hamburger');
+      if (h) h.focus();
     }
   });
 
-  // pageshow bfcache 対応
+  // pageshow bfcache 対応（モバイルでbfcacheから戻った場合にサイドバーが開いたままになるのを防ぐ）
   window.addEventListener('pageshow', function(e) {
     if (!e.persisted) return;
-    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-    var pc = vw > 768;
-    fetch('/api/settings').then(function(r) {
-      if (!r.ok) return;
-      return r.json();
-    }).then(function(s) {
-      if (!s) return;
-      var p = pc && s.sidebar_pinned === 'true';
-      if (p) {
-        document.body.classList.add('sidebar-open');
-        var h = document.getElementById('hamburger');
-        if (h) h.style.display = 'none';
-        if (h) {
-          h.setAttribute('aria-expanded', 'true');
-          h.setAttribute('aria-label', 'メニューを閉じる');
-        }
-      } else {
-        document.body.classList.remove('sidebar-open');
-        var h2 = document.getElementById('hamburger');
-        if (h2) {
-          h2.style.display = '';
-          h2.setAttribute('aria-label', 'メニューを開く');
-          h2.setAttribute('aria-expanded', 'false');
-        }
-      }
-      var pb = document.getElementById('sidebar-pin-btn');
-      if (pb) {
-        pb.classList.toggle('pinned', p);
-        pb.setAttribute('aria-label', p ? 'サイドバーの固定を解除' : 'サイドバーを固定');
-      }
-    }).catch(function() {});
+    document.body.classList.remove('sidebar-open');
   });
 }
 
 async function initNav(currentPage) {
   if (document.getElementById('sidebar')) return;
 
-  // DBからピン状態を取得
-  var pinned = false;
   var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
   var isPC = viewportWidth > 768;
-  try {
-    var r = await fetch('/api/settings');
-    if (r.ok) {
-      var s = await r.json();
-      pinned = isPC && s.sidebar_pinned === 'true';
-    }
-  } catch (_) {}
 
-  // ピン状態に応じてbody.sidebar-openを設定
-  if (pinned) {
-    document.body.classList.add('sidebar-open');
-  } else {
-    document.body.classList.remove('sidebar-open');
+  if (!isPC) {
+    _buildHamburger();
   }
-
-  _buildHamburger(pinned);
-  _buildSidebar(currentPage, pinned, isPC);
+  _buildSidebar(currentPage);
   _registerNavListeners();
 }
 
@@ -184,33 +125,6 @@ function closeSidebar() {
   if (h) {
     h.setAttribute('aria-expanded', 'false');
     h.setAttribute('aria-label', 'メニューを開く');
-  }
-}
-
-async function togglePin() {
-  var pinBtn = document.getElementById('sidebar-pin-btn');
-  if (!pinBtn) return;
-  var nowPinned = pinBtn.classList.contains('pinned');
-  var next = !nowPinned;
-
-  // 楽観的UI更新
-  pinBtn.classList.toggle('pinned', next);
-  pinBtn.setAttribute('aria-label', next ? 'サイドバーの固定を解除' : 'サイドバーを固定');
-  var hamburger = document.getElementById('hamburger');
-  if (hamburger) hamburger.style.display = next ? 'none' : '';
-
-  try {
-    var res = await fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sidebar_pinned: next ? 'true' : 'false' })
-    });
-    if (!res.ok) throw new Error('save failed');
-  } catch (_) {
-    // ロールバック
-    pinBtn.classList.toggle('pinned', nowPinned);
-    pinBtn.setAttribute('aria-label', nowPinned ? 'サイドバーの固定を解除' : 'サイドバーを固定');
-    if (hamburger) hamburger.style.display = nowPinned ? 'none' : '';
   }
 }
 
