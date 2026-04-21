@@ -90,7 +90,7 @@ function _registerNavListeners() {
     }
   });
 
-  // pageshow bfcache 対応（モバイルでbfcacheから戻った場合にサイドバーが開いたままになるのを防ぐ）
+  // pageshow bfcache 対応（モバイルでbfcacheから戻った場合にサイドバーが開いたままになるのを防ぐ。PC時はsidebar-openを設定しないためno-op）
   window.addEventListener('pageshow', function(e) {
     if (!e.persisted) return;
     document.body.classList.remove('sidebar-open');
