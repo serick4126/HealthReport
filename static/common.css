@@ -399,6 +399,10 @@ html.sidebar-open #sidebar {
   body {
     margin-left: 240px;
   }
+  body:not(.nav-ready) {
+    margin-left: 0;
+    visibility: hidden;
+  }
   #sidebar-overlay {
     display: none !important;
   }

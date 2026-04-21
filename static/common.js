@@ -108,6 +108,9 @@ async function initNav(currentPage) {
   }
   _buildSidebar(currentPage);
   _registerNavListeners();
+  if (isPC) {
+    document.body.classList.add('nav-ready');
+  }
 }
 
 function openSidebar() {
