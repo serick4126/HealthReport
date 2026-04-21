@@ -397,6 +397,7 @@ html.sidebar-open #sidebar {
   }
   #sidebar {
     transform: translateX(0) !important;
+    transition: none !important;
   }
   body {
     margin-left: 240px;
