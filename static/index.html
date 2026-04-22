@@ -903,9 +903,9 @@ function addPreviewItem(idx, previewUrl) {
   const div = document.createElement('div');
   div.className = 'preview-item';
   div.dataset.idx = idx;
-  div.innerHTML = `
-    <img src="${previewUrl}" alt="添付画像">
-    <button class="remove" onclick="removePreview(${idx})">×</button>`;
+  div.innerHTML = '<img src="' + previewUrl + '" alt="添付画像"><button class="remove" aria-label="削除">×</button>';
+  const removeBtn = div.querySelector('.remove');
+  removeBtn.addEventListener('click', function() { removePreview(idx); });
   wrap.appendChild(div);
   wrap.classList.add('has-items');
 }
@@ -1131,14 +1131,14 @@ function showChoiceButtons(parentEl, question, options) {
     const btn = document.createElement('button');
     btn.className = 'choice-btn' + (opt.value === '該当なし' ? ' no-match' : '');
     btn.textContent = opt.label;
-    btn.onclick = () => {
+    btn.addEventListener('click', function() {
       // ボタンを非活性化（二重送信防止）
       wrap.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
       wrap.style.opacity = '0.5';
       // 選択値をテキスト入力にセットして送信
       document.getElementById('textInput').value = opt.value;
       sendMessage();
-    };
+    });
     wrap.appendChild(btn);
   });
 
@@ -1267,8 +1267,9 @@ async function loadQuickPalette() {
       html += '<button class="qp-chip meal" data-action="quick" data-text="' + m + '">' + m + '</button>';
     });
     for (const f of (data.favorites || [])) {
-      const attr = escHtml(f.keyword);
-      html += '<button class="qp-chip fav" data-action="quick" data-text="' + attr + '">★ ' + attr + '</button>';
+      const rawKeyword = f.keyword;
+      const dispKeyword = escHtml(f.keyword);
+      html += '<button class="qp-chip fav" data-action="quick" data-text="' + rawKeyword.replace(/"/g, '&quot;') + '">★ ' + dispKeyword + '</button>';
     }
     chips.innerHTML = html;
     palette.style.display = 'block';
