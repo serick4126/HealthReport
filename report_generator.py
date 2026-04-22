@@ -66,7 +66,7 @@ def generate_charts_base64(data: dict) -> dict:
 
     trend = calculate_trend(list(range(len(w_data))), w_data)
 
-    fig_w, ax_w = plt.subplots(figsize=(10, 2.4))
+    fig_w, ax_w = plt.subplots(figsize=(10, 1.8))
     if valid_idx:
         ax_w.plot(valid_idx, valid_y, color="#8e8e93", linewidth=1.5, zorder=1)
         for xi, yi, ci in zip(valid_idx, valid_y, valid_col):
@@ -78,8 +78,8 @@ def generate_charts_base64(data: dict) -> dict:
             ax_w.plot(tx, ty, color="#ff3b30", linewidth=1, linestyle="--", zorder=0)
         margin = max(0.5, (max(valid_y) - min(valid_y)) * 0.15) if len(valid_y) > 1 else 0.5
         ax_w.set_ylim(min(valid_y) - margin, max(valid_y) + margin)
-    ax_w.set_xticks(range(len(w_labels)))
-    ax_w.set_xticklabels(w_labels, fontsize=7, rotation=45, ha="right")
+    ax_w.set_xticks([])
+    ax_w.tick_params(axis="x", bottom=False)
     ax_w.set_ylabel("kg", fontsize=8)
     ax_w.tick_params(axis="y", labelsize=8)
     ax_w.set_title("体重推移", fontsize=10)
@@ -389,7 +389,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 
     period_str = (
         f"{start.year}年{start.month}月{start.day}日"
-        f"（{WEEKDAYS_JA[start.weekday()]}）〜"
+        f"（{WEEKDAYS_JA[start.weekday()]}）～"
         f"{end.month}月{end.day}日（{WEEKDAYS_JA[end.weekday()]}）"
     )
     period_short = (
@@ -520,8 +520,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   td {{ line-height: 1.4; }}
   tr th:first-child {{ text-align: left; width: 6%; }}
   .pfc {{ font-size: 6.5pt; }}
-  .meal-cell {{ max-height: 22mm; overflow: hidden; line-height: 1.35; }}
-  .meal-cell-sub {{ font-size: 6.5pt; max-height: 14mm; overflow: hidden; line-height: 1.35; }}
+  .meal-cell {{ max-height: 30mm; overflow: hidden; line-height: 1.35; }}
+  .meal-cell-sub {{ font-size: 6.5pt; max-height: 20mm; overflow: hidden; line-height: 1.35; }}
   .skip-cell {{ color: #8e8e93; font-size: 6.5pt; font-style: italic; }}
   .achievement-summary {{
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
