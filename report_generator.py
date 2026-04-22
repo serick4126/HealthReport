@@ -272,6 +272,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 
     MAIN_MEAL_TYPES = ["breakfast", "lunch", "dinner"]
     MAIN_MEAL_LABELS = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食"}
+    MAIN_MEAL_BADGE = {"breakfast": "badge-breakfast", "lunch": "badge-lunch", "dinner": "badge-dinner"}
 
     date_headers = "".join(f"<th>{fmt_header(d['date'])}</th>" for d in days)
 
@@ -285,7 +286,9 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
                 and not d["meals"][mt]
             )
             cells += f"<td>{meals_cell(d['meals'][mt], is_skipped)}</td>"
-        meal_rows += f"<tr><th>{MAIN_MEAL_LABELS[mt]}</th>{cells}</tr>\n"
+        badge_cls = MAIN_MEAL_BADGE[mt]
+        label = MAIN_MEAL_LABELS[mt]
+        meal_rows += f'<tr><th><span class="badge {badge_cls}">{label}</span></th>{cells}</tr>\n'
 
     # 間食/夜食統合行
     snack_cells = ""
@@ -297,7 +300,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
             and not combined
         )
         snack_cells += f"<td>{meals_cell(combined, both_skipped, css_class='meal-cell-sub')}</td>"
-    meal_rows += f'<tr><th>間食<br/>夜食</th>{snack_cells}</tr>\n'
+    meal_rows += f'<tr><th><span class="badge badge-snack">間食/夜食</span></th>{snack_cells}</tr>\n'
 
     def pfc(d: dict) -> str:
         p = d["protein"]
@@ -393,6 +396,22 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         f"〜{end.month}/{end.day}（{WEEKDAYS_JA[end.weekday()]}）"
     )
 
+    # メトリクスカード用データ計算
+    valid_cals_list = [d["calories"] for d in days if d["calories"] is not None]
+    avg_cal_val = round(sum(valid_cals_list) / len(valid_cals_list)) if valid_cals_list else None
+    avg_cal_str = f"{avg_cal_val:,}" if avg_cal_val is not None else "&#8212;"
+
+    morning_weights_list = [d["weight_morning"] for d in days if d["weight_morning"] is not None]
+    avg_weight_val = round(sum(morning_weights_list) / len(morning_weights_list), 1) if morning_weights_list else None
+    avg_weight_str = f"{avg_weight_val:.1f}" if avg_weight_val is not None else "&#8212;"
+
+    valid_steps_list = [d["steps"] for d in days if d["steps"] is not None]
+    avg_steps_val = round(sum(valid_steps_list) / len(valid_steps_list)) if valid_steps_list else None
+    avg_steps_str = f"{avg_steps_val:,}" if avg_steps_val is not None else "&#8212;"
+
+    # AI注釈の3カラム分割
+    comment_blocks = _split_comment_blocks(comment_html)
+
     # colgroup（ラベル列6% ＋ 7日列 各13.4%）
     colgroup = (
         '<col style="width:6%"/>'
@@ -404,14 +423,28 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 <head>
 <meta charset="UTF-8"/>
 <title>食事記録レポート {period_str}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDGothic:wght@400;700&display=swap" rel="stylesheet">
 <style>
+  :root {{
+    --teal:   #2BA899;
+    --amber:  #E8A042;
+    --coral:  #E06B62;
+    --lav:    #7B9ED9;
+    --text:   #1A1A1E;
+    --sub:    #6B7280;
+    --border: #EDECE8;
+    --bg:     #F7F6F3;
+    --white:  #FFFFFF;
+  }}
   /* ===== 画面表示 ===== */
   body {{
-    font-family: -apple-system, "Yu Gothic UI", "Hiragino Sans", "Noto Sans CJK JP", sans-serif;
+    font-family: 'BIZ UDGothic', 'BIZ UDPGothic', -apple-system, sans-serif;
     font-size: 9pt;
     margin: 0;
     background: #f0f0f5;
-    color: #1c1c1e;
+    color: var(--text);
   }}
   .print-toolbar {{
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
@@ -475,6 +508,14 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     background: #f0f0f0; font-weight: 700;
     font-size: 8pt; white-space: nowrap;
   }}
+  /* 食事時間帯バッジ */
+  .badge {{
+    display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 7pt; font-weight: 700;
+  }}
+  .badge-breakfast {{ background: rgba(43,168,153,.13); color: #1E7A6E; }}
+  .badge-lunch     {{ background: rgba(232,160,66,.13);  color: #B57A20; }}
+  .badge-dinner    {{ background: rgba(123,158,217,.13); color: #4B72A8; }}
+  .badge-snack     {{ background: rgba(155,126,212,.13); color: #6B4EA8; }}
   td {{ line-height: 1.4; }}
   tr th:first-child {{ text-align: left; width: 6%; }}
   .pfc {{ font-size: 6.5pt; }}
@@ -499,11 +540,49 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     background: #dde8f5; font-weight: 700;
   }}
 
-  /* 2ページ目ヘッダー */
-  .page2-title {{
-    font-size: 9pt; font-weight: 700; color: #555;
-    margin-bottom: 2mm; border-bottom: 0.5pt solid #ddd; padding-bottom: 1mm;
+  /* レポートヘッダー（ティール背景・両ページ共通） */
+  .report-header {{
+    background: var(--teal);
+    color: #fff;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    margin-bottom: 3mm;
+    border-radius: 2mm;
   }}
+  .report-header .rh-title {{ font-size: 14px; font-weight: 700; letter-spacing: -0.3px; }}
+  .report-header .rh-period {{ font-size: 10.5px; opacity: .88; margin-top: 2px; }}
+  .report-header .rh-meta {{ display: flex; gap: 20px; font-size: 10px; opacity: .88; }}
+  .report-header .rh-meta span strong {{ font-weight: 700; }}
+
+  /* メトリクスカード */
+  .metric-cards {{ display: flex; gap: 8px; flex-shrink: 0; margin-bottom: 10px; }}
+  .metric-card {{ flex: 1; background: var(--bg); border-radius: 8px; padding: 9px 12px; }}
+  .metric-card .mc-lbl {{ font-size: 8px; color: var(--sub); font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }}
+  .metric-card .mc-val {{ font-size: 20px; font-weight: 700; line-height: 1; }}
+  .metric-card .mc-sub {{ font-size: 8.5px; color: var(--sub); margin-top: 2px; }}
+  .c-teal  {{ color: var(--teal); }}
+  .c-amber {{ color: var(--amber); }}
+  .c-lav   {{ color: var(--lav); }}
+
+  /* 2カラムレイアウト（2ページ目） */
+  .p2-cols {{ display: grid; grid-template-columns: 1fr 210px; gap: 10px; flex: 1; min-height: 0; }}
+  .p2-left {{ overflow: hidden; }}
+  .p2-right {{ display: flex; flex-direction: column; gap: 8px; }}
+
+  /* グラフボックス */
+  .chart-box {{ background: var(--bg); border-radius: 8px; padding: 9px 10px; flex-shrink: 0; }}
+  .chart-lbl {{ font-size: 8.5px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }}
+
+  /* AI注釈ボックス */
+  .ai-box {{ background: var(--bg); border-radius: 8px; padding: 9px 12px; flex: 1; }}
+  .ai-title {{ font-size: 9px; font-weight: 700; color: var(--teal); margin-bottom: 7px; }}
+  .ai-grid {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }}
+  .ai-block-lbl {{ font-size: 8px; font-weight: 700; color: var(--sub); margin-bottom: 4px; letter-spacing: .3px; text-transform: uppercase; }}
+  .ai-block ul {{ padding-left: 11px; }}
+  .ai-block ul li {{ font-size: 8.5px; line-height: 1.65; margin-bottom: 1px; }}
 
   .comment-section {{
     border: 0.5pt solid #aaa;
@@ -554,6 +633,20 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       column-count: 2;
       column-gap: 3mm;
     }}
+    .report-header {{
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
+    .metric-card {{
+      background: var(--bg) !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
+    .chart-box, .ai-box {{
+      background: var(--bg) !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
   }}
 </style>
 </head>
@@ -567,8 +660,17 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 <!-- ===== 1ページ目：体重グラフ＋食事内容 ===== -->
 <div class="page page-1">
   <div class="page-label">1 / 2</div>
-  <h1>食事記録レポート　{period_str}</h1>
-  <div class="sub">氏名：{data["user_name"]}　身長：{data["height_cm"]}cm　目標カロリー：{data["calorie_goal"]}kcal/日</div>
+  <div class="report-header">
+    <div>
+      <div class="rh-title">食事記録レポート</div>
+      <div class="rh-period">{period_str}</div>
+    </div>
+    <div class="rh-meta">
+      <span>氏名: <strong>{data["user_name"]}</strong></span>
+      <span>身長: <strong>{data["height_cm"]}cm</strong></span>
+      <span>目標: <strong>{data["calorie_goal"]}kcal/日</strong></span>
+    </div>
+  </div>
 
   <div class="chart-wrap">
     <img src="data:image/png;base64,{charts['weight']}" alt="体重推移"/>
@@ -588,39 +690,72 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 <!-- ===== 2ページ目：栄養サマリー＋カロリー・歩数グラフ＋メモ ===== -->
 <div class="page page-2">
   <div class="page-label">2 / 2</div>
-  <div class="page2-title">
-    食事記録レポート（続き）— {period_short}
-    氏名：{data["user_name"]}　目標カロリー：{data["calorie_goal"]}kcal/日
+
+  <div class="report-header">
+    <div>
+      <div class="rh-title">食事記録レポート（続き）</div>
+      <div class="rh-period">{period_short}</div>
+    </div>
+    <div class="rh-meta">
+      <span>氏名: <strong>{data["user_name"]}</strong></span>
+      <span>目標: <strong>{data["calorie_goal"]}kcal/日</strong></span>
+    </div>
   </div>
 
   {achievement_html}
 
-  <table>
-    <colgroup>{colgroup}</colgroup>
-    <thead>
-      <tr><th></th>{date_headers}</tr>
-    </thead>
-    <tbody>
-      <tr class="sec-hd"><th>食事時刻</th>{meal_time_cells}</tr>
-      <tr class="sec-hd"><th>Cal(kcal)</th>{cal_cells}</tr>
-      <tr><th>目標差分</th>{diff_cells}</tr>
-      <tr><th>PFC</th>{pfc_cells}</tr>
-      <tr><th>塩分(g)</th>{sod_cells}</tr>
-      <tr class="sec-hd"><th>体重・朝</th>{wm_cells}</tr>
-      <tr><th>体重・夜</th>{we_cells}</tr>
-      <tr><th>BMI</th>{bmi_cells}</tr>
-      <tr><th>歩数</th>{steps_cells}</tr>
-    </tbody>
-  </table>
-
-  <div class="chart-row">
-    <img src="data:image/png;base64,{charts['calories']}" alt="カロリー推移"/>
-    <img src="data:image/png;base64,{charts['steps']}"    alt="歩数推移"/>
+  <div class="metric-cards">
+    <div class="metric-card">
+      <div class="mc-lbl">AVG CALORIES</div>
+      <div class="mc-val c-teal">{avg_cal_str}</div>
+      <div class="mc-sub">kcal/日</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-lbl">AVG WEIGHT</div>
+      <div class="mc-val c-amber">{avg_weight_str}</div>
+      <div class="mc-sub">kg（朝）</div>
+    </div>
+    <div class="metric-card">
+      <div class="mc-lbl">AVG STEPS</div>
+      <div class="mc-val c-lav">{avg_steps_str}</div>
+      <div class="mc-sub">歩/日</div>
+    </div>
   </div>
 
-  <div class="comment-section">
-    <div class="box-title">AI注釈：</div>
-    {comment_html}
+  <div class="p2-cols">
+    <div class="p2-left">
+      <table>
+        <colgroup>{colgroup}</colgroup>
+        <thead>
+          <tr><th></th>{date_headers}</tr>
+        </thead>
+        <tbody>
+          <tr class="sec-hd"><th>食事時刻</th>{meal_time_cells}</tr>
+          <tr class="sec-hd"><th>Cal(kcal)</th>{cal_cells}</tr>
+          <tr><th>目標差分</th>{diff_cells}</tr>
+          <tr><th>PFC</th>{pfc_cells}</tr>
+          <tr><th>塩分(g)</th>{sod_cells}</tr>
+          <tr class="sec-hd"><th>体重・朝</th>{wm_cells}</tr>
+          <tr><th>体重・夜</th>{we_cells}</tr>
+          <tr><th>BMI</th>{bmi_cells}</tr>
+          <tr><th>歩数</th>{steps_cells}</tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="p2-right">
+      <div class="chart-box">
+        <div class="chart-lbl">CALORIES</div>
+        <img src="data:image/png;base64,{charts['calories']}" alt="カロリー推移" style="width:100%;display:block;"/>
+      </div>
+      <div class="chart-box">
+        <div class="chart-lbl">STEPS</div>
+        <img src="data:image/png;base64,{charts['steps']}" alt="歩数推移" style="width:100%;display:block;"/>
+      </div>
+      <div class="ai-box">
+        <div class="ai-title">AI注釈</div>
+        {_build_p2_ai_grid(comment_blocks)}
+      </div>
+    </div>
   </div>
 </div>
 
@@ -663,6 +798,41 @@ def _format_structured_comment(comment: str) -> str:
     if in_list:
         html_parts.append("</ul>")
     return "\n".join(html_parts)
+
+
+def _split_comment_blocks(comment_html: str) -> list:
+    """AI注釈HTMLを ■ 見出し単位で最大3ブロックに分割してHTMLリストを返す。
+    ブロック数が3未満/超過の場合はそのまま1ブロックとして返す。
+    """
+    # font-weight:700 の div タグで見出し区切りを検出
+    pattern = r'(<div style="font-weight:700[^"]*"[^>]*>.*?</div>)'
+    parts = re.split(pattern, comment_html)
+
+    blocks = []
+    current = ""
+    for part in parts:
+        if re.match(r'<div style="font-weight:700', part):
+            if current.strip():
+                blocks.append(current.strip())
+            current = part
+        else:
+            current += part
+    if current.strip():
+        blocks.append(current.strip())
+
+    if len(blocks) < 2 or len(blocks) > 4:
+        return [comment_html]
+    return blocks[:3]
+
+
+def _build_p2_ai_grid(blocks: list) -> str:
+    """AI注釈ブロックリストを .ai-grid HTML に変換する。
+    blocks が1要素（分割不能）の場合はそのままラップして返す。
+    """
+    if len(blocks) == 1:
+        return f'<div style="font-size:8.5px;line-height:1.65">{blocks[0]}</div>'
+    inner = "".join(f'<div class="ai-block">{b}</div>' for b in blocks)
+    return f'<div class="ai-grid">{inner}</div>'
 
 
 def _build_comment_summary(data: dict) -> dict:
