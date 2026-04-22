@@ -549,15 +549,15 @@
             datasets: [
               {
                 label: '朝', data: data.weights_morning || [],
-                borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,0.1)',
+                borderColor: CHART_COLORS.primary, backgroundColor: CHART_COLORS.primary + '1a',
                 tension: 0.3, fill: false, spanGaps: true,
-                pointRadius: 3, pointBackgroundColor: '#34c759',
+                pointRadius: 3, pointBackgroundColor: CHART_COLORS.primary,
               },
               {
                 label: '夜', data: data.weights_evening || [],
-                borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.1)',
+                borderColor: CHART_COLORS.secondary, backgroundColor: CHART_COLORS.secondary + '1a',
                 tension: 0.3, fill: false, spanGaps: true,
-                pointRadius: 3, pointBackgroundColor: '#ff9500',
+                pointRadius: 3, pointBackgroundColor: CHART_COLORS.secondary,
               }
             ]
           };
@@ -574,8 +574,8 @@
             var d = shortDate(data.dates[i]);
             var wm = (data.weights_morning || [])[i] ?? null;
             var we = (data.weights_evening || [])[i] ?? null;
-            wLabels.push(d + '朝'); wData.push(wm); wPointColors.push('#34c759');
-            wLabels.push(d + '夜'); wData.push(we); wPointColors.push('#ff9500');
+            wLabels.push(d + '朝'); wData.push(wm); wPointColors.push(CHART_COLORS.primary);
+            wLabels.push(d + '夜'); wData.push(we); wPointColors.push(CHART_COLORS.secondary);
           }
           wChartData = {
             labels: wLabels,
@@ -595,8 +595,8 @@
                 labels: {
                   ...defaults.plugins.legend.labels,
                   generateLabels: () => [
-                    { text: '朝', fillStyle: '#34c759', strokeStyle: '#34c759', lineWidth: 2, fontColor: chartTextColor },
-                    { text: '夜', fillStyle: '#ff9500', strokeStyle: '#ff9500', lineWidth: 2, fontColor: chartTextColor },
+                    { text: '朝', fillStyle: CHART_COLORS.primary, strokeStyle: CHART_COLORS.primary, lineWidth: 2, fontColor: chartTextColor },
+                    { text: '夜', fillStyle: CHART_COLORS.secondary, strokeStyle: CHART_COLORS.secondary, lineWidth: 2, fontColor: chartTextColor },
                   ]
                 }
               }
