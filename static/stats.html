@@ -440,6 +440,17 @@
       return '<div class="summary-row" style="grid-template-columns:repeat(' + colCount + ',1fr)">' + cards + '</div>';
     }
 
+    // ── チャートカラーパレット ────────────────────────────────────────────────
+    const CHART_COLORS = {
+      primary:    '#2BA899',  // ティール  — 摂取カロリー・歩数・タンパク質
+      secondary:  '#E8A042',  // アンバー  — 消費カロリー・脂質
+      tertiary:   '#7B9ED9',  // ペリウィンクル — 炭水化物・最低血圧
+      danger:     '#E06B62',  // コーラル  — 最高血圧・体脂肪率
+      dangerLt:   '#F4A89E',  // ライトコーラル
+      tertiaryLt: '#A8C5E2',  // ライトペリウィンクル
+      target:     '#C4B9A8',  // ウォームグレー（破線・目標）
+    };
+
     // ── チャート描画ディスパッチテーブル ──────────────────────────────────────
     // 新ウィジェット追加時はここに1エントリ追加するだけ。render()本体は変更不要。
 
@@ -451,20 +462,20 @@
           var cal = data.calories[i];
           var skips = extras.mealSkips[d] || [];
           if (cal === null && skips.length > 0) return '#c7c7cc';
-          return '#007aff';
+          return CHART_COLORS.primary;
         });
         var calDatasets = [
           {
             label: '摂取カロリー',
             data: data.calories,
-            borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+            borderColor: CHART_COLORS.primary, backgroundColor: CHART_COLORS.primary + '1a',
             tension: 0.3, fill: true, spanGaps: true,
             pointRadius: 4, pointBackgroundColor: calPointColors,
           },
           {
             label: '目標 ' + extras.goal + 'kcal',
             data: Array(labels.length).fill(extras.goal),
-            borderColor: '#ff3b30', borderDash: [6,3],
+            borderColor: CHART_COLORS.target, borderDash: [6,3],
             borderWidth: 1.5, pointRadius: 0, fill: false,
           }
         ];
@@ -472,9 +483,9 @@
           calDatasets.push({
             label: '消費カロリー',
             data: extras.totalExp,
-            borderColor: '#ff9500', backgroundColor: 'rgba(255,149,0,0.08)',
+            borderColor: CHART_COLORS.secondary, backgroundColor: CHART_COLORS.secondary + '14',
             tension: 0.3, fill: false, spanGaps: true,
-            pointRadius: 3, pointBackgroundColor: '#ff9500',
+            pointRadius: 3, pointBackgroundColor: CHART_COLORS.secondary,
           });
         }
         charts.cal = new Chart(document.getElementById(_canvasId('calories')), {
@@ -570,7 +581,7 @@
             labels: wLabels,
             datasets: [{
               label: '体重', data: wData,
-              borderColor: '#8e8e93',
+              borderColor: CHART_COLORS.primary,
               tension: 0.3, fill: false, spanGaps: true,
               pointRadius: 5, pointBackgroundColor: wPointColors, pointBorderColor: wPointColors,
             }]
@@ -610,7 +621,7 @@
             labels: labels,
             datasets: [{
               label: '歩数', data: data.steps,
-              backgroundColor: 'rgba(90,200,250,0.7)', borderColor: '#5ac8fa', borderWidth: 1,
+              backgroundColor: CHART_COLORS.primary + 'b3', borderColor: CHART_COLORS.primary, borderWidth: 1,
             }]
           },
           options: {
@@ -655,10 +666,10 @@
             datasets: [{
               label: '体脂肪率',
               data: bfData,
-              borderColor: '#ff6b6b',
-              backgroundColor: 'rgba(255,107,107,0.1)',
+              borderColor: CHART_COLORS.danger,
+              backgroundColor: CHART_COLORS.danger + '1a',
               tension: 0.3, fill: true, spanGaps: true,
-              pointRadius: 4, pointBackgroundColor: '#ff6b6b',
+              pointRadius: 4, pointBackgroundColor: CHART_COLORS.danger,
             }]
           },
           options: {
@@ -687,9 +698,9 @@
           data: {
             labels: labels,
             datasets: [
-              { label: 'タンパク質(g)', data: data.protein, backgroundColor: 'rgba(52,199,89,0.8)', stack: 'pfc' },
-              { label: '脂質(g)',       data: data.fat,     backgroundColor: 'rgba(255,149,0,0.8)',  stack: 'pfc' },
-              { label: '炭水化物(g)',   data: data.carbs,   backgroundColor: 'rgba(0,122,255,0.8)',  stack: 'pfc' },
+              { label: 'タンパク質(g)', data: data.protein, backgroundColor: CHART_COLORS.primary   + 'cc', stack: 'pfc' },
+              { label: '脂質(g)',       data: data.fat,     backgroundColor: CHART_COLORS.secondary  + 'cc', stack: 'pfc' },
+              { label: '炭水化物(g)',   data: data.carbs,   backgroundColor: CHART_COLORS.tertiary   + 'cc', stack: 'pfc' },
             ]
           },
           options: {
@@ -768,19 +779,19 @@
             labels: labels,
             datasets: [
               { label: '朝 最高血圧', data: mSys,
-                borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.1)',
-                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: '#ff3b30' },
+                borderColor: CHART_COLORS.danger, backgroundColor: CHART_COLORS.danger + '1a',
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: CHART_COLORS.danger },
               { label: '朝 最低血圧', data: mDias,
-                borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
-                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: '#007aff' },
+                borderColor: CHART_COLORS.tertiary, backgroundColor: CHART_COLORS.tertiary + '1a',
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: CHART_COLORS.tertiary },
               { label: '夜 最高血圧', data: eSys,
-                borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.05)',
+                borderColor: CHART_COLORS.danger, backgroundColor: CHART_COLORS.danger + '0d',
                 borderDash: [4, 3],
-                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: 'rgba(255,59,48,0.5)' },
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: CHART_COLORS.dangerLt },
               { label: '夜 最低血圧', data: eDias,
-                borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.05)',
+                borderColor: CHART_COLORS.tertiary, backgroundColor: CHART_COLORS.tertiary + '0d',
                 borderDash: [4, 3],
-                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: 'rgba(0,122,255,0.5)' },
+                tension: 0.3, fill: false, spanGaps: true, pointRadius: 3, pointBackgroundColor: CHART_COLORS.tertiaryLt },
             ]
           };
           chartOptions = {
@@ -799,22 +810,22 @@
             var es = eSys[i]  != null ? eSys[i]  : null;
             var ed = eDias[i] != null ? eDias[i] : null;
             bpLabels.push(d + '朝'); sysData.push(ms); diasData.push(md);
-            sysPtColors.push('#ff3b30'); diasPtColors.push('#007aff');
+            sysPtColors.push(CHART_COLORS.danger); diasPtColors.push(CHART_COLORS.tertiary);
             bpLabels.push(d + '夜'); sysData.push(es); diasData.push(ed);
-            sysPtColors.push('rgba(255,59,48,0.5)'); diasPtColors.push('rgba(0,122,255,0.5)');
+            sysPtColors.push(CHART_COLORS.dangerLt); diasPtColors.push(CHART_COLORS.tertiaryLt);
           }
           chartData = {
             labels: bpLabels,
             datasets: [
               {
                 label: '最高血圧 (mmHg)', data: sysData,
-                borderColor: '#ff3b30', backgroundColor: 'rgba(255,59,48,0.1)',
+                borderColor: CHART_COLORS.danger, backgroundColor: CHART_COLORS.danger + '1a',
                 tension: 0.3, fill: false, spanGaps: true,
                 pointRadius: 4, pointBackgroundColor: sysPtColors, pointBorderColor: sysPtColors,
               },
               {
                 label: '最低血圧 (mmHg)', data: diasData,
-                borderColor: '#007aff', backgroundColor: 'rgba(0,122,255,0.1)',
+                borderColor: CHART_COLORS.tertiary, backgroundColor: CHART_COLORS.tertiary + '1a',
                 tension: 0.3, fill: false, spanGaps: true,
                 pointRadius: 4, pointBackgroundColor: diasPtColors, pointBorderColor: diasPtColors,
               },
@@ -830,10 +841,10 @@
                   ...defaults.plugins.legend.labels,
                   generateLabels: function() {
                     return [
-                      { text: '朝 最高', fillStyle: '#ff3b30',             strokeStyle: '#ff3b30',             lineWidth: 2, fontColor: c.text },
-                      { text: '夜 最高', fillStyle: 'rgba(255,59,48,0.5)', strokeStyle: 'rgba(255,59,48,0.5)', lineWidth: 2, fontColor: c.text },
-                      { text: '朝 最低', fillStyle: '#007aff',             strokeStyle: '#007aff',             lineWidth: 2, fontColor: c.text },
-                      { text: '夜 最低', fillStyle: 'rgba(0,122,255,0.5)', strokeStyle: 'rgba(0,122,255,0.5)', lineWidth: 2, fontColor: c.text },
+                      { text: '朝 最高', fillStyle: CHART_COLORS.danger,     strokeStyle: CHART_COLORS.danger,     lineWidth: 2, fontColor: c.text },
+                      { text: '夜 最高', fillStyle: CHART_COLORS.dangerLt,   strokeStyle: CHART_COLORS.dangerLt,   lineWidth: 2, fontColor: c.text },
+                      { text: '朝 最低', fillStyle: CHART_COLORS.tertiary,   strokeStyle: CHART_COLORS.tertiary,   lineWidth: 2, fontColor: c.text },
+                      { text: '夜 最低', fillStyle: CHART_COLORS.tertiaryLt, strokeStyle: CHART_COLORS.tertiaryLt, lineWidth: 2, fontColor: c.text },
                     ];
                   }
                 }
