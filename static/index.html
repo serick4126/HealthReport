@@ -319,54 +319,69 @@
     .login-btn:active { background: color-mix(in srgb, var(--accent) 80%, #000); }
     .login-error { color: var(--error-color); font-size: 13px; margin-top: 10px; height: 18px; }
 
-    /* ── ダッシュボードバー ── */
-    .dashboard {
-      background: var(--input-bg);
+    /* ── デイリーサマリーパネル ── */
+    .daily-summary-panel {
+      background: var(--card-bg);
       border-bottom: 1px solid var(--border);
+      padding: 12px 20px 14px;
+      box-shadow: var(--card-shadow);
       flex-shrink: 0;
-      overflow: hidden;
     }
-    .dash-toggle-row {
+    .ds-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .ds-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .ds-metric {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .ds-metric-icon { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; }
+    .ds-metric-val  { font-size: 16px; font-weight: 700; color: var(--accent); line-height: 1; }
+    .ds-metric-weight .ds-metric-val,
+    .ds-metric-steps .ds-metric-val { color: var(--text-primary); }
+    .ds-metric-sub  { font-size: 11px; color: var(--text-secondary); }
+    .ds-progress-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 6px 14px;
-      cursor: pointer;
-      user-select: none;
-      gap: 8px;
-      background: none;
-      border: none;
-      width: 100%;
-      text-align: left;
-      font: inherit;
-      color: inherit;
+      gap: 6px;
+      margin-bottom: 10px;
     }
-    .dash-toggle-row:active { background: var(--bg); }
-    .dash-date { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
-    .dash-compact { font-size: 12px; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dash-arrow { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
-
-    .dash-body { padding: 0 14px 8px; }
-
-    /* カロリー行 */
-    .dash-cal-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
-    .dash-cal-text { font-size: 13px; font-weight: 600; white-space: nowrap; }
-    .dash-bar-wrap { flex: 1; min-width: 60px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-    .dash-bar { height: 100%; border-radius: 3px; background: var(--success); transition: width 0.3s; }
-    .dash-bar.over { background: var(--error-color); }
-    .dash-pct { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
-
-    /* 体重・歩数行 */
-    .dash-meta-row { font-size: 12px; color: var(--text-primary); margin-bottom: 5px; display: flex; gap: 12px; flex-wrap: wrap; }
-    .dash-meta-item { white-space: nowrap; }
-
-    /* 食事区分行 */
-    .dash-meals-row { font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
-    .dash-meal-chip { white-space: nowrap; }
+    .ds-progress-bar {
+      flex: 1; height: 5px;
+      background: var(--bg); border-radius: 3px; overflow: hidden;
+    }
+    .ds-progress-fill {
+      height: 100%; width: 0%;
+      background: var(--accent); border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .ds-progress-fill.over { background: var(--error-color); }
+    .ds-progress-pct { font-size: 11px; color: var(--text-secondary); }
+    .ds-meal-chips   { display: flex; gap: 6px; flex-wrap: wrap; }
+    .ds-chip {
+      font-size: 12px; padding: 3px 10px; border-radius: 20px;
+      background: var(--bg); color: var(--text-secondary);
+    }
+    .ds-chip.done {
+      background: rgba(43,168,153,0.12); color: var(--accent); font-weight: 600;
+    }
 
     @media (max-width: 480px) {
-      .dash-toggle-row { padding: 5px 10px; }
-      .dash-body { padding: 0 10px 6px; }
+      .daily-summary-panel { padding: 10px 12px 12px; }
+      .ds-metrics { gap: 6px; }
+      .ds-metric { padding: 6px 8px; }
+      .ds-metric-val { font-size: 14px; }
       .bubble { max-width: 88%; }
       .toast { top: 12px; font-size: 13px; padding: 8px 16px; }
     }
@@ -450,16 +465,10 @@
     .toast.show { opacity: 1; }
     .toast.toast-error { background: var(--danger, #ff3b30); color: #fff; }
 
-    /* ── BMIウィジェット ── */
-    .bmi-widget {
-      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-      font-size: 12px; padding: 5px 8px; margin-top: 4px;
-      background: var(--toggle-off); border-radius: 8px;
-    }
-    .bmi-widget .bmi-lbl { color: var(--text-secondary); }
-    .bmi-widget .bmi-val { font-weight: 700; }
-    .bmi-widget .bmi-sep { color: var(--border); margin: 0 2px; }
-    .bmi-widget .bmi-hint { color: var(--text-secondary); font-style: italic; font-size: 11px; }
+    /* ── BMIスパン（ds-meta-row内） ── */
+    .ds-bmi { font-size: 12px; color: var(--text-secondary); }
+    .ds-bmi .bmi-val { font-weight: 700; }
+    .ds-bmi .bmi-hint { font-style: italic; }
   </style>
 </head>
 <body>
@@ -483,34 +492,36 @@
   <div class="header-nav" id="headerNav"></div>
 </div>
 
-<!-- ダッシュボードバー -->
-<div class="dashboard" id="dashboard" style="display:none">
-  <button class="dash-toggle-row" id="dashToggleBtn" onclick="toggleDashboard()"
-    aria-expanded="true" aria-controls="dashBody">
-    <span class="dash-date" id="dashDate"></span>
-    <span class="dash-compact" id="dashCompact"></span>
-    <span class="dash-arrow" id="dashArrow">▾</span>
-  </button>
-  <div class="dash-body" id="dashBody">
-    <div class="dash-cal-row">
-      <span class="dash-cal-text" id="dashCalText"></span>
-      <div class="dash-bar-wrap"><div class="dash-bar" id="dashBar" style="width:0%"></div></div>
-      <span class="dash-pct" id="dashPct"></span>
+<!-- デイリーサマリーパネル -->
+<div id="daily-summary" class="daily-summary-panel" style="display:none">
+  <div class="ds-meta-row">
+    <span id="ds-date" class="ds-date"></span>
+    <span id="ds-bmi" class="ds-bmi"></span>
+  </div>
+  <div class="ds-metrics">
+    <div class="ds-metric ds-metric-cal">
+      <div class="ds-metric-icon">🔥</div>
+      <div class="ds-metric-val" id="ds-cal-val">—</div>
+      <div class="ds-metric-sub" id="ds-cal-sub">/ — kcal</div>
     </div>
-    <div class="dash-meta-row" id="dashMeta"></div>
-    <div class="dash-meals-row" id="dashMeals"></div>
-    <div class="bmi-widget" id="bmiWidget" aria-label="BMI・基礎代謝情報" hidden>
-      <span class="bmi-lbl">BMI</span>
-      <span id="bmiValue" class="bmi-val">—</span>
-      <span id="bmiStatus"></span>
-      <span class="bmi-sep">｜</span>
-      <span class="bmi-lbl">基礎代謝</span>
-      <span id="bmrValue" class="bmi-val">—</span>
-      <span class="bmi-lbl">kcal/日</span>
-      <span id="bmrNote" style="font-size:11px;color:var(--text-secondary)"></span>
-      <span id="bmiHint" class="bmi-hint"></span>
+    <div class="ds-metric ds-metric-weight">
+      <div class="ds-metric-icon">⚖️</div>
+      <div class="ds-metric-val" id="ds-weight-val">—</div>
+      <div class="ds-metric-sub" id="ds-weight-sub">kg (朝)</div>
+    </div>
+    <div class="ds-metric ds-metric-steps">
+      <div class="ds-metric-icon">👟</div>
+      <div class="ds-metric-val" id="ds-steps-val">—</div>
+      <div class="ds-metric-sub">歩</div>
     </div>
   </div>
+  <div class="ds-progress-row">
+    <div class="ds-progress-bar">
+      <div id="ds-progress-fill" class="ds-progress-fill"></div>
+    </div>
+    <span id="ds-progress-pct" class="ds-progress-pct">0%</span>
+  </div>
+  <div class="ds-meal-chips" id="ds-meal-chips"></div>
 </div>
 
 <!-- クイックパレット -->
@@ -600,8 +611,7 @@ function getGreetingHtml(name) {
 const chatState = {
   pendingImages: [], // { base64: string, previewUrl: string }
   isStreaming: false,
-  dashExpanded: true,
-  renderTimer: null,  // SSEデバウンス用（Step 8で使用）
+  renderTimer: null,  // SSEデバウンス用
   reader: null,       // fetch SSE ストリームのReader（beforeunloadでcancel）
 };
 
@@ -615,36 +625,32 @@ const MEAL_TYPES = [
 const WEEKDAYS = ['日','月','火','水','木','金','土'];
 
 async function loadBmi() {
-  var widget = document.getElementById('bmiWidget');
+  var bmiSpan = document.getElementById('ds-bmi');
+  if (!bmiSpan) return;
   try {
     var res = await fetch('/api/bmi');
     if (!res.ok) {
       if (res.status === 404) {
         var err = await res.json().catch(function() { return {}; });
-        var hint = document.getElementById('bmiHint');
         if (err.detail === 'no_weight_record') {
-          hint.textContent = '体重を記録するとBMIが表示されます';
+          bmiSpan.textContent = '体重を記録するとBMIが表示されます';
         } else if (err.detail === 'height_not_configured') {
-          hint.textContent = '設定画面で身長を入力してください';
+          bmiSpan.textContent = '設定画面で身長を入力してください';
         }
-        widget.removeAttribute('hidden');
       }
       return;
     }
     var data = await res.json();
-    document.getElementById('bmiValue').textContent = data.bmi;
-    var statusEl = document.getElementById('bmiStatus');
-    statusEl.textContent = data.bmi_status;
     var statusColors = {
       '低体重': '#60a5fa', '普通体重': '#34d399',
       '肥満(1度)': '#fbbf24', '肥満(2度)': '#f97316',
       '肥満(3度)': '#f87171', '肥満(4度)': '#dc2626'
     };
-    statusEl.style.color = statusColors[data.bmi_status] || '';
-    document.getElementById('bmrValue').textContent = data.bmr_kcal;
-    document.getElementById('bmrNote').textContent = data.bmr_note || '';
-    document.getElementById('bmiHint').textContent = '';
-    widget.removeAttribute('hidden');
+    var color = statusColors[data.bmi_status] || '';
+    bmiSpan.innerHTML = 'BMI <span class="bmi-val" style="color:' + escHtml(color) + '">'
+      + escHtml(String(data.bmi)) + '</span> '
+      + escHtml(data.bmi_status)
+      + (data.bmr_kcal ? ' ｜ 基礎代謝 <span class="bmi-val">' + escHtml(String(data.bmr_kcal)) + '</span>kcal' : '');
   } catch (e) { console.error('BMI読込エラー:', e); }
 }
 
@@ -672,94 +678,88 @@ function updateDashboard(data, settings) {
   // 日付ラベル
   const d = new Date(data.date + 'T00:00:00');
   const dateLabel = (d.getMonth() + 1) + '/' + d.getDate() + '（' + WEEKDAYS[d.getDay()] + '）';
-  document.getElementById('dashDate').textContent = '今日 ' + dateLabel;
+  const dateEl = document.getElementById('ds-date');
+  if (dateEl) dateEl.textContent = '今日 ' + dateLabel;
 
-  // カロリー行
-  document.getElementById('dashCalText').textContent = '🔥 ' + cal + ' / ' + goal + ' kcal';
-  const bar = document.getElementById('dashBar');
-  bar.style.width = pct + '%';
-  bar.className = 'dash-bar' + (over ? ' over' : '');
-  document.getElementById('dashPct').textContent = pct + '%';
+  // カロリーメトリクス
+  const calVal = document.getElementById('ds-cal-val');
+  const calSub = document.getElementById('ds-cal-sub');
+  if (calVal) calVal.textContent = cal;
+  if (calSub) calSub.textContent = '/ ' + goal + ' kcal';
 
-  // 体重・歩数行
-  const metaItems = [];
+  // 体重メトリクス
   const w = data.weight || {};
-  if (w.morning != null) metaItems.push('⚖️ 朝 ' + w.morning + 'kg');
-  if (w.evening != null) metaItems.push('⚖️ 夜 ' + w.evening + 'kg');
-  if (data.steps != null) metaItems.push('👟 ' + data.steps.toLocaleString() + '歩');
-  document.getElementById('dashMeta').innerHTML = metaItems.map(function(t) {
-    return '<span class="dash-meta-item">' + t + '</span>';
-  }).join('');
+  const weightVal = document.getElementById('ds-weight-val');
+  const weightSub = document.getElementById('ds-weight-sub');
+  if (weightVal) {
+    if (w.morning != null) {
+      weightVal.textContent = w.morning;
+      if (weightSub) weightSub.textContent = 'kg (朝)';
+    } else if (w.evening != null) {
+      weightVal.textContent = w.evening;
+      if (weightSub) weightSub.textContent = 'kg (夜)';
+    } else {
+      weightVal.textContent = '—';
+      if (weightSub) weightSub.textContent = 'kg';
+    }
+  }
 
-  // 食事区分行
+  // 歩数メトリクス
+  const stepsVal = document.getElementById('ds-steps-val');
+  if (stepsVal) {
+    stepsVal.textContent = data.steps != null ? data.steps.toLocaleString() : '—';
+  }
+
+  // プログレスバー
+  const fill = document.getElementById('ds-progress-fill');
+  const pctEl = document.getElementById('ds-progress-pct');
+  if (fill) {
+    fill.style.width = pct + '%';
+    fill.className = 'ds-progress-fill' + (over ? ' over' : '');
+  }
+  if (pctEl) pctEl.textContent = pct + '%';
+
+  // 食事チップ行
   const SKIP_ELIGIBLE = new Set(['breakfast', 'lunch', 'dinner']);
   const recordedTypes = new Set((data.meals || []).map(function(m) { return m.meal_type; }));
   const skippedTypes = new Set(data.skipped_meal_types || []);
-  document.getElementById('dashMeals').innerHTML = MEAL_TYPES.map(function(mt) {
-    const done = recordedTypes.has(mt.key);
-    const skipped = SKIP_ELIGIBLE.has(mt.key) && skippedTypes.has(mt.key) && !done;
-    const canSkip = SKIP_ELIGIBLE.has(mt.key) && !done && !skipped;
-    if (done) {
-      return '<span class="dash-meal-chip">' + mt.label + '✅</span>';
-    }
-    if (skipped) {
-      return '<span class="dash-meal-chip">' + mt.label
-        + '<span class="skip-badge"> 食べなかった✓</span>'
-        + '<button class="skip-undo-btn" data-meal-type="' + escHtml(mt.key) + '" data-meal-date="' + escHtml(data.date) + '" aria-label="' + escHtml(mt.label) + 'スキップを取り消す">取り消す</button>'
-        + '</span>';
-    }
-    if (canSkip) {
-      return '<span class="dash-meal-chip">' + mt.label + '⬜'
-        + '<button class="skip-btn" data-meal-type="' + escHtml(mt.key) + '" data-meal-date="' + escHtml(data.date) + '" aria-label="' + escHtml(mt.label) + 'を食べなかったと記録">食べなかった</button>'
-        + '</span>';
-    }
-    return '<span class="dash-meal-chip">' + mt.label + '⬜</span>';
-  }).join('');
-  // スキップボタンのイベント登録
-  document.querySelectorAll('.skip-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() { recordSkip(this.dataset.mealType, this.dataset.mealDate); });
-  });
-  document.querySelectorAll('.skip-undo-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() { removeSkip(this.dataset.mealType, this.dataset.mealDate); });
-  });
-
-  // コンパクト表示テキスト
-  const compactParts = ['🔥 ' + cal + '/' + goal + 'kcal'];
-  if (w.morning != null) compactParts.push('⚖️' + w.morning);
-  if (w.evening != null && w.morning == null) compactParts.push('⚖️' + w.evening);
-  if (data.steps != null) compactParts.push('👟' + data.steps.toLocaleString());
-  document.getElementById('dashCompact').textContent = compactParts.join('  ');
+  const chipsEl = document.getElementById('ds-meal-chips');
+  if (chipsEl) {
+    chipsEl.innerHTML = MEAL_TYPES.map(function(mt) {
+      const done = recordedTypes.has(mt.key);
+      const skipped = SKIP_ELIGIBLE.has(mt.key) && skippedTypes.has(mt.key) && !done;
+      const canSkip = SKIP_ELIGIBLE.has(mt.key) && !done && !skipped;
+      if (done) {
+        return '<span class="ds-chip done">' + mt.label + '✅</span>';
+      }
+      if (skipped) {
+        return '<span class="ds-chip">' + mt.label
+          + '<span class="skip-badge"> 食べなかった✓</span>'
+          + '<button class="skip-undo-btn" data-meal-type="' + escHtml(mt.key) + '" data-meal-date="' + escHtml(data.date) + '" aria-label="' + escHtml(mt.label) + 'スキップを取り消す">取り消す</button>'
+          + '</span>';
+      }
+      if (canSkip) {
+        return '<span class="ds-chip">' + mt.label + '⬜'
+          + '<button class="skip-btn" data-meal-type="' + escHtml(mt.key) + '" data-meal-date="' + escHtml(data.date) + '" aria-label="' + escHtml(mt.label) + 'を食べなかったと記録">食べなかった</button>'
+          + '</span>';
+      }
+      return '<span class="ds-chip">' + mt.label + '⬜</span>';
+    }).join('');
+    // スキップボタンのイベント登録
+    chipsEl.querySelectorAll('.skip-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { recordSkip(this.dataset.mealType, this.dataset.mealDate); });
+    });
+    chipsEl.querySelectorAll('.skip-undo-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { removeSkip(this.dataset.mealType, this.dataset.mealDate); });
+    });
+  }
 
   // 表示
-  document.getElementById('dashboard').style.display = 'block';
-  applyDashState();
+  const panel = document.getElementById('daily-summary');
+  if (panel) panel.style.display = 'block';
 }
 
-function toggleDashboard() {
-  chatState.dashExpanded = !chatState.dashExpanded;
-  applyDashState();
-}
-
-function applyDashState() {
-  const body = document.getElementById('dashBody');
-  const arrow = document.getElementById('dashArrow');
-  const compact = document.getElementById('dashCompact');
-  const date = document.getElementById('dashDate');
-  const btn = document.getElementById('dashToggleBtn');
-  if (chatState.dashExpanded) {
-    body.style.display = 'block';
-    arrow.textContent = '▾';
-    compact.style.display = 'none';
-    date.style.display = 'inline';
-    if (btn) btn.setAttribute('aria-expanded', 'true');
-  } else {
-    body.style.display = 'none';
-    arrow.textContent = '▸';
-    compact.style.display = 'inline';
-    date.style.display = 'none';
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-  }
-}
+// toggleDashboard / applyDashState は新パネル構造では不要（常時展開表示）
 
 // ── 認証 ─────────────────────────────────────────────────────────────────────
 async function checkAuth() {
