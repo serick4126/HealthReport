@@ -726,8 +726,9 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     </div>
   </div>
 
-  <div class="p2-cols">
-    <div class="p2-left">
+  <!-- 段2: デイリーサマリーテーブル ＋ チャート縦積み -->
+  <div class="p2-section2">
+    <div class="p2-table-col">
       <table>
         <colgroup>{colgroup}</colgroup>
         <thead>
@@ -746,19 +747,23 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         </tbody>
       </table>
     </div>
-    <div class="p2-right">
+    <div class="p2-charts">
       <div class="chart-box">
-        <div class="chart-lbl">CALORIES</div>
-        <img src="data:image/png;base64,{charts['calories']}" alt="カロリー推移" style="width:100%;display:block;"/>
+        <div class="chart-lbl">PFC</div>
+        <img src="data:image/png;base64,{charts['calories']}" alt="PFC推移" style="width:100%;display:block;"/>
       </div>
       <div class="chart-box">
         <div class="chart-lbl">STEPS</div>
         <img src="data:image/png;base64,{charts['steps']}" alt="歩数推移" style="width:100%;display:block;"/>
       </div>
-      <div class="ai-box">
-        <div class="ai-title">AI注釈</div>
-        {_build_p2_ai_grid(comment_blocks)}
-      </div>
+    </div>
+  </div>
+
+  <!-- 段3: AI注釈（全幅） -->
+  <div class="p2-ai-section">
+    <div class="ai-box">
+      <div class="ai-title">✦ AI注釈</div>
+      {_build_p2_ai_grid(comment_blocks)}
     </div>
   </div>
 </div>
