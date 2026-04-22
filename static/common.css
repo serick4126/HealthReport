@@ -1,93 +1,102 @@
 /* HealthReport 共通スタイルシート */
 
 :root {
-  --bg: #f2f2f7;
-  --header-bg: rgba(255,255,255,0.85);
+  --bg: #F5F4F0;
+  --header-bg: #FFFFFF;
   --card-bg: #ffffff;
-  --bubble-user: #007aff;
+  --bubble-user: #2BA899;
   --bubble-user-text: #fff;
   --bubble-ai: #ffffff;
   --bubble-ai-text: #1c1c1e;
   --input-bg: #ffffff;
-  --border: #e5e5ea;
-  --accent: #007aff;
-  --success: #34c759;
+  --border: #EDECE8;
+  --accent: #2BA899;
+  --success: #2BA899;
   --danger: #ff3b30;
   --error-color: #ff3b30;
-  --text-secondary: #8e8e93;
-  --radius: 12px;
+  --text-secondary: #6B7280;
+  --radius: 14px;
   /* テキスト・フォーム */
-  --text-primary: #1c1c1e;
+  --text-primary: #1A1A1E;
   --form-bg: #ffffff;
   --note-tip-bg: #f9f9fb;   --note-tip-text: #555555;
   --note-info-bg: #f0f7ff;  --note-info-text: #1a4a7a;
   --note-warn-bg: #fff9e6;  --note-warn-text: #7a5c00;
   --toggle-off: #e5e5ea;
   --star-active: #b8860b; /* ダークゴールド（白背景上でコントラスト比 4.6:1） */
-  --card-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  --card-shadow: 0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
   --skip-badge-bg: #e8f0fe;
+  /* サイドバー専用変数（ライト・ダーク共通） */
+  --sidebar-bg: #1A2B38;
+  --sidebar-border: transparent;
+  --sidebar-nav-text: rgba(255,255,255,0.55);
+  --sidebar-nav-active-bg: rgba(255,255,255,0.1);
+  --sidebar-nav-active-text: #ffffff;
+  --sidebar-nav-active-border: #2BA899;
+  --sidebar-app-title-color: rgba(255,255,255,0.9);
+  --sidebar-footer-color: rgba(255,255,255,0.4);
+  --sidebar-footer-border: rgba(255,255,255,0.08);
 }
 
 /* ── ダークモード ── */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1c1c1e;
-    --header-bg: rgba(28,28,30,0.88);
-    --card-bg: #2c2c2e;
-    --bubble-user: #0a84ff;
+    --bg: #141B22;
+    --header-bg: #1A2B38;
+    --card-bg: #1E2B38;
+    --bubble-user: #2BA899;
     --bubble-user-text: #fff;
-    --bubble-ai: #2c2c2e;
+    --bubble-ai: #1E2B38;
     --bubble-ai-text: #f2f2f7;
-    --input-bg: #2c2c2e;
-    --border: #38383a;
-    --accent: #0a84ff;
-    --success: #30d158;
+    --input-bg: #1E2B38;
+    --border: #2A3A48;
+    --accent: #2BA899;
+    --success: #2BA899;
     --danger: #ff453a;
     --error-color: #ff453a;
-    --text-secondary: #98989d;
-    --text-primary: #f2f2f7;
-    --form-bg: #3a3a3c;
+    --text-secondary: #7A8B97;
+    --text-primary: #EEEDe8;
+    --form-bg: #1E2B38;
     --note-tip-bg: #3a3a3c;  --note-tip-text: #adadb8;
     --note-info-bg: #1a2a3a; --note-info-text: #7ab3e8;
     --note-warn-bg: #2a2018; --note-warn-text: #d4a84b;
     --toggle-off: #48484a;
     --star-active: #ffd700; /* ブライトゴールド（ダーク背景上で高視認性） */
-    --card-shadow: 0 1px 6px rgba(0,0,0,0.32);
+    --card-shadow: 0 2px 14px rgba(0,0,0,0.4);
   }
 }
 
 [data-theme="dark"] {
-  --bg: #1c1c1e;
-  --header-bg: rgba(28,28,30,0.88);
-  --card-bg: #2c2c2e;
-  --bubble-user: #0a84ff;
+  --bg: #141B22;
+  --header-bg: #1A2B38;
+  --card-bg: #1E2B38;
+  --bubble-user: #2BA899;
   --bubble-user-text: #fff;
-  --bubble-ai: #2c2c2e;
+  --bubble-ai: #1E2B38;
   --bubble-ai-text: #f2f2f7;
-  --input-bg: #2c2c2e;
-  --border: #38383a;
-  --accent: #0a84ff;
-  --success: #30d158;
+  --input-bg: #1E2B38;
+  --border: #2A3A48;
+  --accent: #2BA899;
+  --success: #2BA899;
   --danger: #ff453a;
   --error-color: #ff453a;
-  --text-secondary: #98989d;
-  --text-primary: #f2f2f7;
-  --form-bg: #3a3a3c;
+  --text-secondary: #7A8B97;
+  --text-primary: #EEEDe8;
+  --form-bg: #1E2B38;
   --note-tip-bg: #3a3a3c;  --note-tip-text: #adadb8;
   --note-info-bg: #1a2a3a; --note-info-text: #7ab3e8;
   --note-warn-bg: #2a2018; --note-warn-text: #d4a84b;
   --toggle-off: #48484a;
   --star-active: #ffd700; /* ブライトゴールド（ダーク背景上で高視認性） */
-  --skip-badge-bg: #2c2c2e;
-  --card-shadow: 0 1px 6px rgba(0,0,0,0.32);
+  --skip-badge-bg: #1E2B38;
+  --card-shadow: 0 2px 14px rgba(0,0,0,0.4);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 input, select, textarea, button { color: inherit; font-family: inherit; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
-               "BIZ UDPGothic", "Yu Gothic UI", sans-serif;
+  font-family: "BIZ UDGothic", "BIZ UDPGothic", -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   min-height: 100dvh;
@@ -274,10 +283,8 @@ html.sidebar-open #hamburger span:nth-child(3) {
   position: fixed;
   top: 0; left: 0; height: 100%;
   width: 240px;
-  background: var(--header-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
   z-index: 50;
   padding-top: env(safe-area-inset-top);
   transform: translateX(-240px);
@@ -295,7 +302,7 @@ html.sidebar-open #sidebar {
 .sidebar-app-title {
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--sidebar-app-title-color);
   padding: 20px 20px 12px;
   display: flex;
   align-items: center;
@@ -324,26 +331,29 @@ html.sidebar-open #sidebar {
   padding: 12px 20px;
   border-radius: 8px;
   font-size: 14px;
-  color: var(--accent);
+  color: var(--sidebar-nav-text);
   text-decoration: none;
   cursor: pointer;
   transition: background 0.15s;
   white-space: nowrap;
+  border-left: 2px solid transparent;
 }
 
 .sidebar-nav-item:not(.current):hover {
-  background: var(--bg);
+  background: var(--sidebar-nav-active-bg);
 }
 
 .sidebar-nav-item.current {
-  background: var(--bg);
-  color: var(--text-secondary);
+  background: var(--sidebar-nav-active-bg);
+  color: var(--sidebar-nav-active-text);
+  border-left-color: var(--sidebar-nav-active-border);
+  font-weight: 600;
   pointer-events: none;
   cursor: default;
 }
 
 .sidebar-footer {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--sidebar-footer-border);
   padding: 8px 12px 16px;
   display: flex;
   flex-direction: column;
@@ -361,7 +371,7 @@ html.sidebar-open #sidebar {
   border: none;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--sidebar-footer-color);
   font-family: inherit;
   transition: background 0.15s;
   text-align: left;
@@ -369,7 +379,7 @@ html.sidebar-open #sidebar {
 }
 
 .sidebar-footer-btn:hover {
-  background: var(--bg);
+  background: var(--sidebar-nav-active-bg);
 }
 
 /* ── サイドバーオーバーレイ ── */
