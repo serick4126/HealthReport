@@ -55,13 +55,14 @@
     --danger: #ff453a;
     --error-color: #ff453a;
     --text-secondary: #7A8B97;
-    --text-primary: #EEEDe8;
+    --text-primary: #EEEDE8;
     --form-bg: #1E2B38;
     --note-tip-bg: #3a3a3c;  --note-tip-text: #adadb8;
     --note-info-bg: #1a2a3a; --note-info-text: #7ab3e8;
     --note-warn-bg: #2a2018; --note-warn-text: #d4a84b;
     --toggle-off: #48484a;
     --star-active: #ffd700; /* ブライトゴールド（ダーク背景上で高視認性） */
+    --skip-badge-bg: #1E2B38;
     --card-shadow: 0 2px 14px rgba(0,0,0,0.4);
   }
 }
@@ -81,7 +82,7 @@
   --danger: #ff453a;
   --error-color: #ff453a;
   --text-secondary: #7A8B97;
-  --text-primary: #EEEDe8;
+  --text-primary: #EEEDE8;
   --form-bg: #1E2B38;
   --note-tip-bg: #3a3a3c;  --note-tip-text: #adadb8;
   --note-info-bg: #1a2a3a; --note-info-text: #7ab3e8;
