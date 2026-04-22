@@ -1,5 +1,6 @@
 """レポート生成モジュール — グラフ・HTML・Claude補足コメント（ブラウザ印刷方式）"""
 
+import html
 import io
 import base64
 import json
@@ -261,7 +262,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 
     def meals_cell(meal_list: list, is_skipped: bool = False, css_class: str = "meal-cell") -> str:
         if meal_list:
-            inner = "<br/>".join(m["description"] for m in meal_list)
+            inner = "<br/>".join(html.escape(str(m["description"])) for m in meal_list)
             return f'<div class="{css_class}">{inner}</div>'
         if is_skipped:
             return f'<div class="{css_class}"><span class="skip-cell">食べなかった</span></div>'
@@ -666,7 +667,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       <div class="rh-period">{period_str}</div>
     </div>
     <div class="rh-meta">
-      <span>氏名: <strong>{data["user_name"]}</strong></span>
+      <span>氏名: <strong>{html.escape(str(data["user_name"]))}</strong></span>
       <span>身長: <strong>{data["height_cm"]}cm</strong></span>
       <span>目標: <strong>{data["calorie_goal"]}kcal/日</strong></span>
     </div>
@@ -697,7 +698,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       <div class="rh-period">{period_short}</div>
     </div>
     <div class="rh-meta">
-      <span>氏名: <strong>{data["user_name"]}</strong></span>
+      <span>氏名: <strong>{html.escape(str(data["user_name"]))}</strong></span>
       <span>目標: <strong>{data["calorie_goal"]}kcal/日</strong></span>
     </div>
   </div>
@@ -775,9 +776,9 @@ def _format_structured_comment(comment: str) -> str:
                 in_list = False
             if line.startswith("#"):
                 stripped = re.sub(r"^#+\s*", "", line)
-                display_line = f"■ {stripped}" if stripped else ""
+                display_line = f"■ {html.escape(stripped)}" if stripped else ""
             else:
-                display_line = line
+                display_line = html.escape(line)
             if display_line:
                 html_parts.append(
                     f'<div style="font-weight:700;font-size:7.5pt;margin-top:2mm;'
@@ -789,7 +790,7 @@ def _format_structured_comment(comment: str) -> str:
                 html_parts.append('<ul style="break-inside:avoid;-webkit-column-break-inside:avoid">')
                 in_list = True
             text = line.lstrip("・•-").strip()
-            html_parts.append(f"<li>{text}</li>")
+            html_parts.append(f"<li>{html.escape(text)}</li>")
         else:
             if in_list:
                 html_parts.append("</ul>")
@@ -1296,7 +1297,7 @@ def generate_monthly_report_html(data: dict, charts: dict, comment: str) -> str:
 <div class="page">
   <h1>月次健康レポート　{year}年{month}月</h1>
   <div class="sub">
-    氏名：{data["user_name"]}
+    氏名：{html.escape(str(data["user_name"]))}
     身長：{data["height_cm"]}cm
     目標カロリー：{data["calorie_goal"]}kcal/日
     記録日数：{len(valid_cals)}日
