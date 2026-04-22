@@ -568,17 +568,20 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   .c-amber {{ color: var(--amber); }}
   .c-lav   {{ color: var(--lav); }}
 
-  /* 2カラムレイアウト（2ページ目） */
-  .p2-cols {{ display: grid; grid-template-columns: 1fr 210px; gap: 10px; flex: 1; min-height: 0; }}
-  .p2-left {{ overflow: hidden; }}
-  .p2-right {{ display: flex; flex-direction: column; gap: 8px; }}
+  /* 2ページ目 段2: デイリーテーブル＋チャート縦積み */
+  .p2-section2 {{ display: grid; grid-template-columns: 1fr 210px; gap: 10px; flex-shrink: 0; }}
+  .p2-table-col {{ overflow: hidden; }}
+  .p2-charts {{ display: flex; flex-direction: column; gap: 8px; }}
+
+  /* 2ページ目 段3: AI注釈（全幅） */
+  .p2-ai-section {{ margin-top: 8px; }}
 
   /* グラフボックス */
   .chart-box {{ background: var(--bg); border-radius: 8px; padding: 9px 10px; flex-shrink: 0; }}
   .chart-lbl {{ font-size: 8.5px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }}
 
   /* AI注釈ボックス */
-  .ai-box {{ background: var(--bg); border-radius: 8px; padding: 9px 12px; flex: 1; }}
+  .ai-box {{ background: var(--bg); border-radius: 8px; padding: 9px 12px; }}
   .ai-title {{ font-size: 9px; font-weight: 700; color: var(--teal); margin-bottom: 7px; }}
   .ai-grid {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }}
   .ai-block-lbl {{ font-size: 8px; font-weight: 700; color: var(--sub); margin-bottom: 4px; letter-spacing: .3px; text-transform: uppercase; }}
