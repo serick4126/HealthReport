@@ -382,6 +382,12 @@
 
     const MEAL_TYPE_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食', late_night: '夜食' };
     const TIME_OF_DAY_JA = { morning: '朝', evening: '夜' };
+    const MEAL_GROUPS = [
+      { keys: ['breakfast'],            label: '🌅 朝食' },
+      { keys: ['lunch'],                label: '☀️ 昼食' },
+      { keys: ['dinner'],               label: '🌙 夕食' },
+      { keys: ['snack', 'late_night'],  label: '🍿 間食/夜食' },
+    ];
     const PAGE_SIZE = 10;
     const pageState = {
       calorieGoal: 1500,
@@ -391,6 +397,40 @@
       savedScrollY: 0,
       vitalsData: null,
     };
+
+    function buildMealBreakdown(meals) {
+      var rows = '';
+      var totalCal = 0, totalP = 0, totalF = 0, totalC = 0;
+      for (var gi = 0; gi < MEAL_GROUPS.length; gi++) {
+        var group = MEAL_GROUPS[gi];
+        var gMeals = meals.filter(function(m) { return group.keys.indexOf(m.meal_type) !== -1; });
+        if (!gMeals.length) continue;
+        var cal = gMeals.reduce(function(s, m) { return s + (m.calories != null ? m.calories : 0); }, 0);
+        var p   = gMeals.reduce(function(s, m) { return s + (m.protein  != null ? m.protein  : 0); }, 0);
+        var f   = gMeals.reduce(function(s, m) { return s + (m.fat      != null ? m.fat      : 0); }, 0);
+        var c   = gMeals.reduce(function(s, m) { return s + (m.carbs    != null ? m.carbs    : 0); }, 0);
+        if (cal === 0 && p === 0 && f === 0 && c === 0) continue;
+        totalCal += cal; totalP += p; totalF += f; totalC += c;
+        rows += '<div class="breakdown-row">'
+          + '<span class="breakdown-label">' + group.label + '</span>'
+          + '<span class="breakdown-vals">'
+          + '<span class="breakdown-kcal">' + Math.round(cal) + 'kcal</span>'
+          + '<span class="breakdown-p">P:' + Math.round(p) + 'g</span>'
+          + '<span class="breakdown-f">F:' + Math.round(f) + 'g</span>'
+          + '<span class="breakdown-c">C:' + Math.round(c) + 'g</span>'
+          + '</span></div>';
+      }
+      return '<div class="breakdown-title">カロリー・PFC内訳</div>'
+        + rows
+        + '<div class="breakdown-row breakdown-total">'
+        + '<span class="breakdown-label">合計</span>'
+        + '<span class="breakdown-vals">'
+        + '<span class="breakdown-kcal">' + Math.round(totalCal) + 'kcal</span>'
+        + '<span class="breakdown-p">P:' + Math.round(totalP) + 'g</span>'
+        + '<span class="breakdown-f">F:' + Math.round(totalF) + 'g</span>'
+        + '<span class="breakdown-c">C:' + Math.round(totalC) + 'g</span>'
+        + '</span></div>';
+    }
 
     // ── データ取得 ─────────────────────────────────────────────────────────────
     async function load(days, start, end) {
