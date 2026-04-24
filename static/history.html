@@ -399,6 +399,7 @@
     };
 
     function buildMealBreakdown(meals) {
+      if (!meals || !meals.length) return '';
       var rows = '';
       var totalCal = 0, totalP = 0, totalF = 0, totalC = 0;
       for (var gi = 0; gi < MEAL_GROUPS.length; gi++) {
