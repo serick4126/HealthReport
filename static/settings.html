@@ -320,8 +320,8 @@
               <span class="row-label">一週間の開始曜日<br><small style="color:var(--text-secondary);font-size:11px">（週次レポート）</small></span>
               <div class="model-select-wrap">
                 <select class="model-select" id="report_week_start_day">
-                  <option value="sunday" ${(s.report_week_start_day||'sunday')==='sunday' ? 'selected':''}>日曜日</option>
-                  <option value="monday" ${s.report_week_start_day==='monday' ? 'selected':''}>月曜日</option>
+                  <option value="sunday" ${s.report_week_start_day !== 'monday' ? 'selected':''}>日曜日</option>
+                  <option value="monday" ${s.report_week_start_day === 'monday' ? 'selected':''}>月曜日</option>
                 </select>
               </div>
             </div>
