@@ -22,3 +22,5 @@ run.bat
 .claude/
 *.bak
 .vscode/extensions.json
+.superpowers/
+docs/
