@@ -585,6 +585,14 @@
         ? '<div class="skip-row">' + skipItems.join('') + '</div>'
         : '';
 
+      var hasMeals = day.meals.length > 0;
+      var infoBtn = hasMeals
+        ? '<button class="info-btn" aria-label="' + label + ' のカロリー内訳">ℹ️</button>'
+        : '';
+      var breakdownHtml = hasMeals
+        ? '<div class="meal-breakdown-popup" style="display:none">' + buildMealBreakdown(day.meals) + '</div>'
+        : '';
+
       const remaining = pageState.calorieGoal - t.calories;
       const remainingText = remaining >= 0
         ? `<span style="color:var(--text-secondary);font-size:11px">残り ${remaining}kcal</span>`
@@ -594,7 +602,8 @@
         <div class="day-section">
           <div class="day-header">
             <span class="day-date">${label}</span>
-            <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g</span>
+            <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g${infoBtn}</span>
+            ${breakdownHtml}
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <div class="calorie-bar-wrap" style="flex:1"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
