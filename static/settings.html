@@ -316,6 +316,15 @@
             <div class="row" style="padding:6px 14px">
               <span style="font-size:12px;color:var(--text-secondary)">例: 4 に設定すると、0:00〜3:59 に記録した食事や体重は前日分として扱います。変更しても過去に記録済みの食事データの日付は変わりません。</span>
             </div>
+            <div class="row">
+              <span class="row-label">一週間の開始曜日<br><small style="color:var(--text-secondary);font-size:11px">（週次レポート）</small></span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="report_week_start_day">
+                  <option value="sunday" ${(s.report_week_start_day||'sunday')==='sunday' ? 'selected':''}>日曜日</option>
+                  <option value="monday" ${s.report_week_start_day==='monday' ? 'selected':''}>月曜日</option>
+                </select>
+              </div>
+            </div>
             <div class="row" style="align-items:flex-start">
               <span class="row-label" style="padding-top:6px">注意事項</span>
               <div style="flex:1;display:flex;flex-direction:column;gap:6px">
@@ -751,8 +760,9 @@
         user_birthdate:     document.getElementById('user_birthdate').value,
         daily_calorie_goal: document.getElementById('daily_calorie_goal').value.trim(),
         daily_steps_goal:   document.getElementById('daily_steps_goal').value.trim(),
-        day_start_hour:     document.getElementById('day_start_hour').value.trim(),
-        user_notes:         document.getElementById('user_notes').value.trim(),
+        day_start_hour:          document.getElementById('day_start_hour').value.trim(),
+        report_week_start_day:   document.getElementById('report_week_start_day').value,
+        user_notes:              document.getElementById('user_notes').value.trim(),
         savings_mode:       document.getElementById('savings_mode').checked ? 'true' : 'false',
         normal_model:       document.getElementById('normal_model').value,
         savings_model:      document.getElementById('savings_model').value,
