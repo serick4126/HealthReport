@@ -9,6 +9,13 @@
   <link href="https://fonts.googleapis.com/css2?family=BIZ+UDGothic:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/common.css">
   <style>
+    /* PFC カラー変数（ライトテーマデフォルト） */
+    :root { --pfc-kcal: #0e7a73; --pfc-p: #1a7a6e; --pfc-f: #b8720a; --pfc-c: #4b6bb5; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --pfc-kcal: #7ec8e3; --pfc-p: #2BA899; --pfc-f: #E8A042; --pfc-c: #7B9ED9; }
+    }
+    [data-theme="dark"] { --pfc-kcal: #7ec8e3; --pfc-p: #2BA899; --pfc-f: #E8A042; --pfc-c: #7B9ED9; }
+
     .period-bar { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--header-bg); flex-wrap: wrap; }
     /* 検索バー */
     .search-bar {
@@ -51,9 +58,21 @@
     }
     .page-btn:disabled { opacity: 0.35; cursor: default; }
     .day-section { margin-bottom: 20px; }
-    .day-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
+    .day-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; position: relative; }
     .day-date { font-size: 15px; font-weight: 700; }
     .day-totals { font-size: 12px; color: var(--text-secondary); }
+    .info-btn { background: none; border: none; cursor: pointer; padding: 2px 4px; font-size: 14px; line-height: 1; border-radius: 4px; transition: opacity 0.15s; vertical-align: middle; }
+    .info-btn:hover, .info-btn:focus { opacity: 0.7; outline: none; }
+    .meal-breakdown-popup { position: absolute; right: 0; top: calc(100% + 4px); z-index: 100; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 10px 12px; min-width: 260px; white-space: nowrap; }
+    .breakdown-title { font-size: 11px; color: var(--text-secondary); font-weight: 600; margin-bottom: 6px; }
+    .breakdown-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--border); gap: 8px; }
+    .breakdown-total { border-bottom: none; border-top: 1px solid var(--border); margin-top: 2px; padding-top: 5px; font-weight: 700; }
+    .breakdown-label { color: var(--text-primary); }
+    .breakdown-vals { display: flex; gap: 6px; align-items: center; }
+    .breakdown-kcal { color: var(--pfc-kcal); font-weight: 600; }
+    .breakdown-p { color: var(--pfc-p); font-size: 11px; }
+    .breakdown-f { color: var(--pfc-f); font-size: 11px; }
+    .breakdown-c { color: var(--pfc-c); font-size: 11px; }
     .day-meta { font-size: 12px; color: var(--text-secondary); display: flex; gap: 8px; margin-bottom: 8px; padding: 0 4px; flex-wrap: wrap; align-items: center; }
     .meta-item { display: flex; align-items: center; gap: 4px; }
     .meal-card { background: var(--card-bg); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--border); }
