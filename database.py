@@ -255,6 +255,7 @@ def init_db():
                 ("external_api_key", ""),
                 ("daily_steps_goal", "8000"),
                 ("day_start_hour", "4"),
+                ("report_week_start_day", "sunday"),
                 ("password_disabled", "false"),
                 ("user_gender", ""),
                 ("user_birthdate", ""),
@@ -1475,8 +1476,10 @@ def get_stats(
     }
 
 
-def get_report_weeks() -> list[dict]:
-    """記録が存在する週（日曜〜土曜）のリストを降順で返す"""
+def get_report_weeks(week_start_day: str = "sunday") -> list[dict]:
+    """記録が存在する週のリストを降順で返す。
+    week_start_day: 'sunday'（日〜土）または 'monday'（月〜日）
+    """
     with get_conn() as conn:
         dates: set[str] = set()
         for row in conn.execute("SELECT DISTINCT meal_date FROM meals").fetchall():
@@ -1494,10 +1497,13 @@ def get_report_weeks() -> list[dict]:
         except ValueError:
             logger.warning("get_report_weeks: 不正な日付をスキップ: %s", d)
             continue
-        days_since_sunday = (dt.weekday() + 1) % 7
-        sunday = dt - timedelta(days=days_since_sunday)
-        saturday = sunday + timedelta(days=6)
-        weeks.add((sunday.isoformat(), saturday.isoformat()))
+        if week_start_day == "monday":
+            days_since_start = dt.weekday() % 7  # Python weekday(): Mon=0
+        else:
+            days_since_start = (dt.weekday() + 1) % 7  # Sun=0
+        week_start = dt - timedelta(days=days_since_start)
+        week_end = week_start + timedelta(days=6)
+        weeks.add((week_start.isoformat(), week_end.isoformat()))
     return sorted(
         [{"start": s, "end": e} for s, e in weeks],
         key=lambda x: x["start"],
