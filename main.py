@@ -287,7 +287,7 @@ WIDGET_REGISTRY = [
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -296,7 +296,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -339,6 +339,9 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
         if key == "user_gender":
             if value not in ("male", "female", ""):
                 raise HTTPException(status_code=400, detail="user_genderは 'male', 'female', '' のいずれかです")
+        if key == "report_week_start_day":
+            if value not in ("sunday", "monday"):
+                raise HTTPException(status_code=400, detail="report_week_start_dayは 'sunday' または 'monday' で指定してください")
         if key == "user_birthdate" and value:
             if not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
                 raise HTTPException(status_code=400, detail="user_birthdateはYYYY-MM-DD形式で入力してください")
@@ -1447,7 +1450,8 @@ async def settings_page():
 @app.get("/api/report/weeks")
 async def report_weeks(request: Request):
     require_auth(request)
-    return JSONResponse(database.get_report_weeks())
+    week_start_day = database.get_setting("report_week_start_day") or "sunday"
+    return JSONResponse(database.get_report_weeks(week_start_day))
 
 
 @app.get("/api/report/preview")
