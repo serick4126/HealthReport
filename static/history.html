@@ -468,6 +468,7 @@
 
     // ── ページ描画 ─────────────────────────────────────────────────────────────
     function renderPage() {
+      hidePopup();
       const content = document.getElementById('content');
       if (!pageState.allDays.length) {
         content.innerHTML = '<div class="empty">この期間に記録はありません</div>';
@@ -491,6 +492,7 @@
     }
 
     function showPopup(popup) {
+      if (!popup) return;
       hidePopup();
       popup.style.display = 'block';
       pageState.activePopup = popup;
@@ -515,6 +517,7 @@
           if (!btn) return;
           e.stopPropagation();
           var popup = btn.closest('.day-header').querySelector('.meal-breakdown-popup');
+          if (!popup) return;
           if (pageState.activePopup === popup) { hidePopup(); } else { showPopup(popup); }
         });
         document.addEventListener('click', function(e) {
@@ -529,6 +532,7 @@
           clearTimeout(closeTimer);
           if (trigger.classList.contains('info-btn')) {
             var popup = trigger.closest('.day-header').querySelector('.meal-breakdown-popup');
+            if (!popup) return;
             showPopup(popup);
           }
         });
