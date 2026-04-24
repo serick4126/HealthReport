@@ -396,6 +396,7 @@
       currentPeriod: { days: 7, start: null, end: null },
       savedScrollY: 0,
       vitalsData: null,
+      activePopup: null,
     };
 
     function buildMealBreakdown(meals) {
@@ -486,6 +487,58 @@
         const y = pageState.savedScrollY;
         pageState.savedScrollY = 0;
         requestAnimationFrame(() => window.scrollTo(0, y));
+      }
+    }
+
+    function showPopup(popup) {
+      hidePopup();
+      popup.style.display = 'block';
+      pageState.activePopup = popup;
+    }
+
+    function hidePopup() {
+      if (pageState.activePopup) {
+        pageState.activePopup.style.display = 'none';
+        pageState.activePopup = null;
+      }
+    }
+
+    function initPopupEvents() {
+      var isCoarse = window.matchMedia('(pointer: coarse)').matches;
+      var closeTimer = null;
+      var content = document.getElementById('content');
+
+      if (isCoarse) {
+        // SP: タップで開閉、ポップアップ外タップで閉じる
+        content.addEventListener('click', function(e) {
+          var btn = e.target.closest('.info-btn');
+          if (!btn) return;
+          e.stopPropagation();
+          var popup = btn.closest('.day-header').querySelector('.meal-breakdown-popup');
+          if (pageState.activePopup === popup) { hidePopup(); } else { showPopup(popup); }
+        });
+        document.addEventListener('click', function(e) {
+          if (!pageState.activePopup) return;
+          if (!e.target.closest('.meal-breakdown-popup') && !e.target.closest('.info-btn')) hidePopup();
+        });
+      } else {
+        // PC: ホバーで表示・150ms 遅延でギャップ対応
+        content.addEventListener('mouseover', function(e) {
+          var trigger = e.target.closest('.info-btn, .meal-breakdown-popup');
+          if (!trigger) return;
+          clearTimeout(closeTimer);
+          if (trigger.classList.contains('info-btn')) {
+            var popup = trigger.closest('.day-header').querySelector('.meal-breakdown-popup');
+            showPopup(popup);
+          }
+        });
+        content.addEventListener('mouseout', function(e) {
+          var trigger = e.target.closest('.info-btn, .meal-breakdown-popup');
+          if (!trigger) return;
+          var rel = e.relatedTarget;
+          if (rel && rel.closest('.info-btn, .meal-breakdown-popup')) return;
+          closeTimer = setTimeout(hidePopup, 150);
+        });
       }
     }
 
@@ -1446,6 +1499,7 @@
   <script>
     initNav('history');
     initTheme();
+    initPopupEvents();
   </script>
 </body>
 </html>
