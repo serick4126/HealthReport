@@ -1498,7 +1498,7 @@ def get_report_weeks(week_start_day: str = "sunday") -> list[dict]:
             logger.warning("get_report_weeks: 不正な日付をスキップ: %s", d)
             continue
         if week_start_day == "monday":
-            days_since_start = dt.weekday() % 7  # Python weekday(): Mon=0
+            days_since_start = dt.weekday()  # Python weekday(): Mon=0, Sun=6
         else:
             days_since_start = (dt.weekday() + 1) % 7  # Sun=0
         week_start = dt - timedelta(days=days_since_start)
