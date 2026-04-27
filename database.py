@@ -1938,6 +1938,7 @@ def get_vital_logs(
                 """,
                 (start_date, end_date),
             ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_last_activity_date() -> Optional[str]:
@@ -1961,4 +1962,3 @@ def get_last_activity_date() -> Optional[str]:
             """
         ).fetchone()
     return row["last_date"] if row and row["last_date"] else None
-    return [dict(r) for r in rows]
