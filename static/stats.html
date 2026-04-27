@@ -901,6 +901,12 @@
         var baseEnd = new Date(baseDate + 'T00:00:00');
         const s = toLocalDateStr(new Date(baseEnd.getTime() - (days - 1) * 86400000));
         pageState.dateRange = { start: s, end: baseDate };
+        if (baseDate !== today) {
+          document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+          document.getElementById('customBtn').classList.add('active');
+          document.getElementById('customBtn').textContent =
+            '📅 ' + s.slice(5).replace('-', '/') + ' 〜 ' + baseDate.slice(5).replace('-', '/');
+        }
       }
 
       updateShiftButtons();

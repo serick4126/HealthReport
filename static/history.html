@@ -475,6 +475,13 @@
         pageState.currentPeriod._shiftedEnd = baseDate;
         url = `/api/history?start=${baseStart}&end=${baseDate}`;
         statsUrl = `/api/stats?start=${baseStart}&end=${baseDate}`;
+        const _today = new Date(); _today.setHours(0, 0, 0, 0);
+        if (baseDate !== toLocalDateStr(_today)) {
+          document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+          document.getElementById('customBtn').classList.add('active');
+          document.getElementById('customBtn').textContent =
+            '📅 ' + baseStart.slice(5).replace('-', '/') + ' 〜 ' + baseDate.slice(5).replace('-', '/');
+        }
       }
       try {
         const [histRes, statsRes] = await Promise.all([fetch(url), fetch(statsUrl)]);
