@@ -1938,4 +1938,27 @@ def get_vital_logs(
                 """,
                 (start_date, end_date),
             ).fetchall()
+
+
+def get_last_activity_date() -> Optional[str]:
+    """記録がある最新の日付を返す。全テーブルにデータが無い場合は None。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT MAX(d) AS last_date FROM (
+                SELECT MAX(meal_date) AS d FROM meals
+                UNION ALL
+                SELECT MAX(log_date) FROM weight_logs
+                UNION ALL
+                SELECT MAX(log_date) FROM steps_logs
+                UNION ALL
+                SELECT MAX(log_date) FROM exercise_logs
+                UNION ALL
+                SELECT MAX(log_date) FROM blood_pressure_logs
+                UNION ALL
+                SELECT MAX(log_date) FROM body_fat_logs
+            )
+            """
+        ).fetchone()
+    return row["last_date"] if row and row["last_date"] else None
     return [dict(r) for r in rows]
