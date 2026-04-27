@@ -186,6 +186,7 @@
       dateRange: { start: null, end: null },
       dates: [],
       currentDays: 7,
+      lastActivityDate: null,
       _shiftedEnd: null,     // 期間シフト後の実効end日付
       widgetConfig: [],      // [{id, visible}, ...] 表示順（保存済み＋マージ済み）
       widgetRegistry: [],    // [{id, label, emoji, widget_type, canvas_id, wrap_style}, ...]
@@ -862,6 +863,23 @@
 
     };
 
+    async function fetchLastActivityDate() {
+      try {
+        var res = await fetch('/api/last-activity-date');
+        if (res.status === 401) { location.href = '/'; return; }
+        if (res.ok) {
+          var data = await res.json();
+          pageState.lastActivityDate = data.date || null;
+        }
+      } catch (e) {
+        console.warn('[fetchLastActivityDate]', e);
+      }
+      if (!pageState.lastActivityDate) {
+        var _d = new Date(); _d.setHours(0, 0, 0, 0);
+        pageState.lastActivityDate = toLocalDateStr(_d);
+      }
+    }
+
     // ── メイン処理 ────────────────────────────────────────────────────────────
 
     function destroyCharts() {
@@ -872,15 +890,16 @@
     async function load(days, start, end) {
       document.getElementById('content').innerHTML = '<div class="loading-spinner">読み込み中...</div>';
       destroyCharts();
-      const _today = new Date();
-      _today.setHours(0, 0, 0, 0);
+      var _today = new Date(); _today.setHours(0, 0, 0, 0);
       const today = toLocalDateStr(_today);
       if (start && end) {
         pageState.dateRange = { start, end };
       } else {
         pageState.currentDays = days;
-        const s = toLocalDateStr(new Date(_today.getTime() - (days - 1) * 86400000));
-        pageState.dateRange = { start: s, end: today };
+        var baseDate = pageState.lastActivityDate || today;
+        var baseEnd = new Date(baseDate + 'T00:00:00');
+        const s = toLocalDateStr(new Date(baseEnd.getTime() - (days - 1) * 86400000));
+        pageState.dateRange = { start: s, end: baseDate };
       }
 
       updateShiftButtons();
@@ -1719,7 +1738,7 @@
       t._timer = setTimeout(function() { t.classList.remove('show'); }, type === 'error' ? 5000 : 3000);
     }
 
-    load(7, null, null);
+    fetchLastActivityDate().then(function() { load(7, null, null); });
   </script>
   <script src="/static/common.js"></script>
   <script>
