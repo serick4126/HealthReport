@@ -1288,13 +1288,19 @@
       updateShiftButtons();
     }
 
+    function toLocalDateStr(d) {
+      return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+    }
+
     // ── 前後ナビゲーション ──────────────────────────────────────────────────────
     function shiftPeriod(direction) {
       var cp = pageState.currentPeriod;
       var shiftDays = cp.days || 7;
       var today = new Date();
       today.setHours(0,0,0,0);
-      var todayStr = today.toISOString().slice(0, 10);
+      var todayStr = toLocalDateStr(today);
 
       var newEnd, newStart;
       if (cp.start && cp.end) {
@@ -1302,7 +1308,7 @@
         var s = new Date(cp.start + 'T00:00:00');
         var e = new Date(cp.end + 'T00:00:00');
         shiftDays = Math.round((e - s) / 86400000) + 1;
-        var ms = 86400000 * direction;
+        var ms = 86400000 * shiftDays * direction;
         newStart = new Date(s.getTime() + ms);
         newEnd = new Date(e.getTime() + ms);
       } else {
@@ -1314,7 +1320,7 @@
         if (cp._shiftedEnd) {
           baseEnd = new Date(cp._shiftedEnd + 'T00:00:00');
         }
-        newEnd = new Date(baseEnd.getTime() + 86400000 * direction);
+        newEnd = new Date(baseEnd.getTime() + 86400000 * shiftDays * direction);
         newStart = new Date(newEnd.getTime() - (shiftDays - 1) * 86400000);
       }
 
@@ -1330,8 +1336,8 @@
         if (newStart >= newEnd) return;
       }
 
-      var startStr = newStart.toISOString().slice(0, 10);
-      var endStr = newEnd.toISOString().slice(0, 10);
+      var startStr = toLocalDateStr(newStart);
+      var endStr = toLocalDateStr(newEnd);
 
       // プリセットのアクティブ状態を解除してカスタム表示
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
@@ -1347,7 +1353,7 @@
     function updateShiftButtons() {
       var today = new Date();
       today.setHours(0,0,0,0);
-      var todayStr = today.toISOString().slice(0, 10);
+      var todayStr = toLocalDateStr(today);
       var cp = pageState.currentPeriod;
       // 「次」ボタン：endが今日以降なら無効
       var endStr = cp.end || cp._shiftedEnd || todayStr;
@@ -1355,22 +1361,23 @@
       // 「前」ボタン：startが1年前以前なら無効
       var minDate = new Date(today);
       minDate.setFullYear(minDate.getFullYear() - 1);
-      var minDateStr = minDate.toISOString().slice(0, 10);
+      var minDateStr = toLocalDateStr(minDate);
       var startStr;
       if (cp.start) {
         startStr = cp.start;
       } else {
         var days = cp.days || 7;
         var endDate = new Date(endStr + 'T00:00:00');
-        startStr = new Date(endDate.getTime() - (days - 1) * 86400000).toISOString().slice(0, 10);
+        startStr = toLocalDateStr(new Date(endDate.getTime() - (days - 1) * 86400000));
       }
       document.getElementById('prevBtn').disabled = (startStr <= minDateStr);
     }
 
     // ── 期間指定モーダル ───────────────────────────────────────────────────────
     function openDateModal() {
-      const today = new Date().toISOString().slice(0, 10);
-      const oneMonthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      var _today = new Date(); _today.setHours(0,0,0,0);
+      const today = toLocalDateStr(_today);
+      const oneMonthAgo = toLocalDateStr(new Date(_today.getTime() - 30 * 86400000));
       document.getElementById('startDate').value = oneMonthAgo;
       document.getElementById('endDate').value = today;
       document.getElementById('dateModal').style.display = 'flex';
