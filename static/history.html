@@ -1375,11 +1375,12 @@
 
     // ── 期間指定モーダル ───────────────────────────────────────────────────────
     function openDateModal() {
-      var _today = new Date(); _today.setHours(0,0,0,0);
-      const today = toLocalDateStr(_today);
-      const oneMonthAgo = toLocalDateStr(new Date(_today.getTime() - 30 * 86400000));
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      var todayStr = toLocalDateStr(today);
+      var oneMonthAgo = toLocalDateStr(new Date(today.getTime() - 30 * 86400000));
       document.getElementById('startDate').value = oneMonthAgo;
-      document.getElementById('endDate').value = today;
+      document.getElementById('endDate').value = todayStr;
       document.getElementById('dateModal').style.display = 'flex';
     }
 
