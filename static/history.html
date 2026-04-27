@@ -423,6 +423,10 @@
           + '<span class="breakdown-c">C:' + Math.round(c) + 'g</span>'
           + '</span></div>';
       }
+      if (!rows) {
+        return '<div class="breakdown-title">カロリー・PFC内訳</div>'
+          + '<div class="breakdown-row" style="color:var(--text-secondary)">栄養素データなし</div>';
+      }
       return '<div class="breakdown-title">カロリー・PFC内訳</div>'
         + rows
         + '<div class="breakdown-row breakdown-total">'
