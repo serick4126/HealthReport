@@ -443,7 +443,9 @@
           var data = await res.json();
           pageState.lastActivityDate = data.date || null;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[fetchLastActivityDate]', e);
+      }
       if (!pageState.lastActivityDate) {
         var _d = new Date(); _d.setHours(0, 0, 0, 0);
         pageState.lastActivityDate = toLocalDateStr(_d);
