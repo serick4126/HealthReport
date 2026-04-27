@@ -446,6 +446,15 @@ async def get_quick_entries(request: Request):
 
 # ── 履歴・集計・画像エンドポイント ────────────────────────────────────────────
 
+@app.get("/api/last-activity-date")
+async def last_activity_date_api(request: Request):
+    require_auth(request)
+    date = database.get_last_activity_date()
+    if date is None:
+        date = database.get_logical_today_jst()
+    return JSONResponse({"date": date})
+
+
 @app.get("/api/history")
 async def history_api(request: Request, days: int = 30, start: str = None, end: str = None):
     require_auth(request)
