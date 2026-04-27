@@ -397,6 +397,7 @@
       savedScrollY: 0,
       vitalsData: null,
       activePopup: null,
+      lastActivityDate: null,
     };
 
     function buildMealBreakdown(meals) {
@@ -434,12 +435,41 @@
         + '</span></div>';
     }
 
+    async function fetchLastActivityDate() {
+      try {
+        var res = await fetch('/api/last-activity-date');
+        if (res.status === 401) { location.href = '/'; return; }
+        if (res.ok) {
+          var data = await res.json();
+          pageState.lastActivityDate = data.date || null;
+        }
+      } catch (e) {}
+      if (!pageState.lastActivityDate) {
+        var _d = new Date(); _d.setHours(0, 0, 0, 0);
+        pageState.lastActivityDate = toLocalDateStr(_d);
+      }
+    }
+
     // ── データ取得 ─────────────────────────────────────────────────────────────
     async function load(days, start, end) {
       pageState.currentPeriod = { days, start, end };
       document.getElementById('content').innerHTML = '<div class="loading-spinner">読み込み中...</div>';
-      const url = start && end ? `/api/history?start=${start}&end=${end}` : `/api/history?days=${days}`;
-      const statsUrl = start && end ? `/api/stats?start=${start}&end=${end}` : `/api/stats?days=${days}`;
+      var url, statsUrl;
+      if (start && end) {
+        url = `/api/history?start=${start}&end=${end}`;
+        statsUrl = `/api/stats?start=${start}&end=${end}`;
+      } else {
+        var baseDate = pageState.lastActivityDate;
+        if (!baseDate) {
+          var _d = new Date(); _d.setHours(0, 0, 0, 0);
+          baseDate = toLocalDateStr(_d);
+        }
+        var baseEnd = new Date(baseDate + 'T00:00:00');
+        var baseStart = toLocalDateStr(new Date(baseEnd.getTime() - (days - 1) * 86400000));
+        pageState.currentPeriod._shiftedEnd = baseDate;
+        url = `/api/history?start=${baseStart}&end=${baseDate}`;
+        statsUrl = `/api/stats?start=${baseStart}&end=${baseDate}`;
+      }
       try {
         const [histRes, statsRes] = await Promise.all([fetch(url), fetch(statsUrl)]);
         if (histRes.status === 401) { location.href = '/'; return; }
@@ -455,6 +485,7 @@
           pageState.currentPage = 0;
         }
         renderPage();
+        updateShiftButtons();
       } catch(e) {
         handleFetchError(document.getElementById('content'), e);
       }
@@ -1505,7 +1536,7 @@
       }
     })();
 
-    load(7, null, null);
+    fetchLastActivityDate().then(function() { load(7, null, null); });
   </script>
   <script src="/static/common.js"></script>
   <script>
