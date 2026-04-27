@@ -890,7 +890,8 @@
     async function load(days, start, end) {
       document.getElementById('content').innerHTML = '<div class="loading-spinner">読み込み中...</div>';
       destroyCharts();
-      var _today = new Date(); _today.setHours(0, 0, 0, 0);
+      const _today = new Date();
+      _today.setHours(0, 0, 0, 0);
       const today = toLocalDateStr(_today);
       if (start && end) {
         pageState.dateRange = { start, end };
