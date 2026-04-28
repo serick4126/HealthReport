@@ -462,23 +462,16 @@ def _build_split_section(enabled: bool) -> str:
 
 def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
                        user_notes: str, search_flow: str,
-                       auto_save: str, split: str, day_start_hour: int = 4) -> str:
+                       auto_save: str, split: str) -> str:
     """Block 1（キャッシュ対象）のプロンプトテキストを構築"""
     notes_line = "\n- 注意事項: " + user_notes if user_notes else ""
-    if day_start_hour > 0:
-        hour_end = day_start_hour - 1
-        day_boundary_rule = (
-            f"- 日の区切りは午前{day_start_hour}時。0:00〜{hour_end}:59 の記録は前日として扱う\n"
-        )
-    else:
-        day_boundary_rule = ""
     return f"""あなたは食事記録アシスタントです。ユーザー {user_name} の食事・体重・歩数・運動（消費カロリー）を記録します。
 
 【ユーザー情報】
 - 身長: {height_cm}cm / 1日の目標カロリー: {calorie_goal}kcal{notes_line}
 
 【記録ルール】
-- 日付指定なし → 今日の日付を使用（今日の日付は【セッション情報】を参照すること）
+- 日付指定なし → 今日の日付を使用（【送信コンテキスト】の論理日付を参照すること）
 - 日付指定あり → 明示された日付を使用（例：「3月18日」→ 2026-03-18）
 - 水分摂取量の報告 → mealsのnotesに記録
 - 記録後は必ず日本語で確認メッセージを返す
@@ -493,7 +486,7 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
 - 消費カロリーは運動の種類・強度・時間・ユーザーの体重から推定する（体重が設定されている場合は参照）
 - ユーザーが「消費カロリーは〇〇kcal」と明示した場合はその値をそのまま calories_burned に使用すること
 - ユーザーに確認なく推定値で記録する（record_meal と同様の方針）
-{day_boundary_rule}- 食事・体重記録後に日の合計を表示する際は、必ず get_daily_summary ツールを呼んでDBから取得した当日分のみを表示すること。会話履歴から以前の日付の食事を推測してサマリーに含めることを厳禁とする
+- 記録後の合計は必ず get_daily_summary ツールを呼んで最新値を取得すること
 
 【確認メッセージの形式】
 ✅ 朝食を記録しました
@@ -513,8 +506,12 @@ def _build_block1_text(user_name: str, height_cm: str, calorie_goal: str,
 ユーザーが食事の提案を求めた場合のみ提案する。
 get_daily_summary で当日の記録を取得し、残りカロリーに基づいて3候補を提案する。
 
-【関連食品情報について】
-ユーザーメッセージに「【関連食品情報】」セクションが含まれる場合、その情報はユーザーが事前登録した食品データです。
+【送信コンテキストについて】
+ユーザーメッセージに「【送信コンテキスト】」セクションが含まれる場合、そこに記載された論理日付・本日の記録（DB最新値）を必ず参照すること。
+日付未指定の記録はこの論理日付を使用し、摂取合計は会話履歴ではなくこのDB最新値を基準にすること。
+
+【関連食品情報（ユーザー登録済み）について】
+ユーザーメッセージに「【関連食品情報（ユーザー登録済み）】」セクションが含まれる場合、その情報はユーザーが事前登録した食品データです。
 入力内容と関連すると判断した場合のみ使用してください。関連しない場合は無視して構いません。
 
 すべての返答を日本語で行うこと。"""
@@ -534,12 +531,6 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
     height_cm = database.get_setting("user_height_cm") or "160"
     user_notes = database.get_setting("user_notes") or ""
     cache_ttl = database.get_setting("cache_ttl") or "5min"
-    raw_hour = database.get_setting("day_start_hour") or "4"
-    try:
-        day_start_hour = int(raw_hour)
-    except ValueError:
-        logger.warning("day_start_hour の設定値が不正です: %s。デフォルト値 4 を使用します。", raw_hour)
-        day_start_hour = 4
 
     if summary is None:
         summary = database.load_conversation_summary()
@@ -555,7 +546,6 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
         search_flow=_build_search_flow_section(savings_mode),
         auto_save=_build_auto_save_section(database.get_setting("auto_save_food_defaults") != "false"),
         split=_build_split_section(database.get_setting("split_multiple_items") == "true"),
-        day_start_hour=day_start_hour,
     )
 
     block2_text = f"【セッション情報】\n今日の日付: {today}（{weekday}曜日）{summary_section}"

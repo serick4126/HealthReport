@@ -156,7 +156,50 @@ def test_build_send_context_same_meal_type_summed():
     assert "昼食: 500kcal" in result
 
 
-from claude_client import _inject_send_context
+from claude_client import _inject_send_context, _build_block1_text, _build_search_flow_section
+
+
+def _make_block1():
+    return _build_block1_text(
+        user_name="TestUser",
+        height_cm="165",
+        calorie_goal="1800",
+        user_notes="",
+        search_flow=_build_search_flow_section(False),
+        auto_save="",
+        split="",
+    )
+
+
+def test_block1_no_session_info_date_rule():
+    """Block 1 に「セッション情報を参照すること」が含まれないこと"""
+    text = _make_block1()
+    assert "セッション情報を参照" not in text
+
+
+def test_block1_no_day_boundary_rule():
+    """Block 1 に「日の区切りは午前」が含まれないこと"""
+    text = _make_block1()
+    assert "日の区切りは午前" not in text
+
+
+def test_block1_contains_send_context_section():
+    """Block 1 に送信コンテキストの説明が含まれること"""
+    text = _make_block1()
+    assert "【送信コンテキスト】" in text
+
+
+def test_block1_label_name_corrected():
+    """Block 1 に「関連食品情報（ユーザー登録済み）」が含まれること"""
+    text = _make_block1()
+    assert "【関連食品情報（ユーザー登録済み）】" in text
+
+
+def test_block1_simplified_daily_summary_rule():
+    """Block 1 の記録後合計ルールが簡略化されていること"""
+    text = _make_block1()
+    assert "会話履歴から以前の日付の食事を推測してサマリーに含めることを厳禁とする" not in text
+    assert "get_daily_summary" in text
 
 
 # ── _inject_send_context ────────────────────────────────────────────────────
