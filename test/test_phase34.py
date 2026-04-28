@@ -128,3 +128,29 @@ def test_build_send_context_weight_morning_only():
          patch("claude_client.database.get_exercise_logs", return_value=[]):
         result = _build_send_context("2026-04-28", "07:00", 1800)
     assert "体重: 朝 65.2kg" in result
+
+
+def test_build_send_context_weight_evening_only():
+    """夜体重のみ記録の場合の表示を確認"""
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(weight={"evening": 64.5})), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "22:00", 1800)
+    assert "体重: 夜 64.5kg" in result
+
+
+def test_build_send_context_same_meal_type_summed():
+    """同一食事区分に複数レコードがある場合にkcalが合計されること"""
+    meals = [
+        {"meal_type": "lunch", "calories": 300,
+         "protein": 10.0, "fat": 5.0, "carbs": 50.0, "sodium": 1.0},
+        {"meal_type": "lunch", "calories": 200,
+         "protein": 8.0, "fat": 3.0, "carbs": 30.0, "sodium": 0.5},
+    ]
+    totals = {"calories": 500, "protein": 18.0, "fat": 8.0,
+              "carbs": 80.0, "sodium": 1.5}
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(meals=meals, totals=totals)), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "13:00", 1800)
+    assert "昼食: 500kcal" in result
