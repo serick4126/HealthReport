@@ -154,3 +154,52 @@ def test_build_send_context_same_meal_type_summed():
          patch("claude_client.database.get_exercise_logs", return_value=[]):
         result = _build_send_context("2026-04-28", "13:00", 1800)
     assert "昼食: 500kcal" in result
+
+
+from claude_client import _inject_send_context
+
+
+# ── _inject_send_context ────────────────────────────────────────────────────
+
+def test_inject_send_context_prepends_to_message():
+    """送信コンテキストがユーザーメッセージの先頭に挿入されること"""
+    history = [{"role": "user", "content": [{"type": "text", "text": "テスト"}]}]
+    with patch("claude_client._build_send_context", return_value="【送信コンテキスト】TEST"), \
+         patch("claude_client.database.get_logical_today_jst", return_value="2026-04-28"), \
+         patch("claude_client.datetime") as mock_dt:
+        mock_dt.now.return_value.strftime.return_value = "09:00"
+        mock_dt.strptime.side_effect = real_datetime.strptime
+        _inject_send_context(history, 1800)
+    text = history[0]["content"][0]["text"]
+    assert text.startswith("【送信コンテキスト】TEST")
+    assert "テスト" in text
+
+
+def test_inject_send_context_comes_before_food_hints():
+    """food_hints が既注入でも送信コンテキストがその前に来ること"""
+    hint = "【関連食品情報（ユーザー登録済み）】\nヤクルト: 47kcal\n\n"
+    history = [{"role": "user", "content": [{"type": "text", "text": hint + "ヤクルト飲んだ"}]}]
+    with patch("claude_client._build_send_context", return_value="【送信コンテキスト】TEST"), \
+         patch("claude_client.database.get_logical_today_jst", return_value="2026-04-28"), \
+         patch("claude_client.datetime") as mock_dt:
+        mock_dt.now.return_value.strftime.return_value = "09:00"
+        mock_dt.strptime.side_effect = real_datetime.strptime
+        _inject_send_context(history, 1800)
+    text = history[0]["content"][0]["text"]
+    assert text.index("【送信コンテキスト】") < text.index("【関連食品情報（ユーザー登録済み）】")
+
+
+def test_inject_send_context_only_text_block_modified():
+    """image ブロックが含まれていてもテキストブロックのみ変更されること"""
+    history = [{"role": "user", "content": [
+        {"type": "image", "source": {"data": "base64=="}},
+        {"type": "text", "text": "食事の写真"},
+    ]}]
+    with patch("claude_client._build_send_context", return_value="【送信コンテキスト】TEST"), \
+         patch("claude_client.database.get_logical_today_jst", return_value="2026-04-28"), \
+         patch("claude_client.datetime") as mock_dt:
+        mock_dt.now.return_value.strftime.return_value = "09:00"
+        mock_dt.strptime.side_effect = real_datetime.strptime
+        _inject_send_context(history, 1800)
+    assert history[0]["content"][0]["type"] == "image"
+    assert "【送信コンテキスト】TEST" in history[0]["content"][1]["text"]

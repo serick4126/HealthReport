@@ -1081,6 +1081,17 @@ def _build_send_context(logical_date: str, send_time: str, calorie_goal: int) ->
     return header + "\n\n" + "\n".join(lines)
 
 
+def _inject_send_context(conversation_history: list[dict], calorie_goal: int) -> None:
+    """最新メッセージのテキストブロック先頭に送信コンテキストを注入する（DBに保存しない）"""
+    logical_date = database.get_logical_today_jst()
+    send_time = datetime.now(JST).strftime("%H:%M")
+    context = _build_send_context(logical_date, send_time, calorie_goal)
+    for item in conversation_history[-1]["content"]:
+        if item["type"] == "text":
+            item["text"] = context + "\n\n" + item["text"]
+            break
+
+
 def _inject_food_hints(conversation_history: list[dict], user_message: str) -> None:
     """food_defaults スマートマッチングを行い、最新メッセージにヒントを注入する（DBには保存しない）"""
     if database.get_setting("use_food_defaults") == "false":
@@ -1231,6 +1242,7 @@ async def stream_chat(
 
     # food_defaults スマートマッチング（インメモリのみ）
     _inject_food_hints(conversation_history, user_message)
+    _inject_send_context(conversation_history, int(database.get_setting("daily_calorie_goal") or 1800))
 
     # システムプロンプト / トークン超過時に会話圧縮
     system_prompt = build_system_prompt(savings_mode=savings_mode)
