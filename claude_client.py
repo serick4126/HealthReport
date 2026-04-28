@@ -914,7 +914,7 @@ async def _compress_history(
     if savings_mode:
         instruction = "以下の会話を1〜3行の箇条書きで極めて簡潔に要約してください。記録済みの食事・体重・歩数の数値のみ残してください。"
     else:
-        instruction = "以下の会話の重要情報（記録済みの食事・体重・歩数・ユーザーの好み・決定事項）を箇条書きで要約してください。"
+        instruction = "以下の会話の重要情報（記録済みの食事・体重・歩数・運動・睡眠・バイタル・血圧・ユーザーの好み・決定事項）を箇条書きで要約してください。"
 
     summary_prompt = instruction
     if existing_summary:

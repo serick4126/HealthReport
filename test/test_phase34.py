@@ -300,3 +300,29 @@ def test_inject_send_context_only_text_block_modified():
         _inject_send_context(history, 1800)
     assert history[0]["content"][0]["type"] == "image"
     assert "【送信コンテキスト】TEST" in history[0]["content"][1]["text"]
+
+
+# ── 会話圧縮プロンプト ──────────────────────────────────────────────────────────
+
+import inspect
+import claude_client as cc
+
+
+def test_compress_history_normal_mode_includes_exercise():
+    """通常モードの圧縮指示に「運動」が含まれること"""
+    source = inspect.getsource(cc._compress_history)
+    assert "運動" in source
+
+
+def test_compress_history_normal_mode_includes_vitals():
+    """通常モードの圧縮指示に「睡眠・バイタル・血圧」が含まれること"""
+    source = inspect.getsource(cc._compress_history)
+    assert "睡眠" in source
+    assert "バイタル" in source
+    assert "血圧" in source
+
+
+def test_compress_history_savings_mode_instruction_minimal():
+    """節約モードの圧縮指示が変更されていないこと（数値のみの方針）"""
+    source = inspect.getsource(cc._compress_history)
+    assert "数値のみ残してください" in source
