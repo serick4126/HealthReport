@@ -411,10 +411,6 @@
     const PAGE_SIZE = 10;
     const pageState = {
       calorieGoal: 1500,
-      stepsGoal: 8000,
-      heightCm: null,
-      gender: null,
-      birthdate: null,
       activeCopyMenu: null,
       allDays: [],
       currentPage: 0,
@@ -425,39 +421,6 @@
       lastActivityDate: null,
     };
 
-    function calcAgeAt(birthdate, dateStr) {
-      if (!birthdate || !dateStr) return null;
-      var b = new Date(birthdate + 'T00:00:00');
-      var d = new Date(dateStr  + 'T00:00:00');
-      var age = d.getFullYear() - b.getFullYear();
-      var m = d.getMonth() - b.getMonth();
-      if (m < 0 || (m === 0 && d.getDate() < b.getDate())) age--;
-      return age < 0 ? null : age;
-    }
-
-    function calcBmrForDay(weightKg, dateStr) {
-      if (!weightKg || !pageState.heightCm || !pageState.gender || !pageState.birthdate) return null;
-      var age = calcAgeAt(pageState.birthdate, dateStr);
-      if (age === null) return null;
-      var base = 10 * weightKg + 6.25 * pageState.heightCm - 5 * age;
-      return Math.round(pageState.gender === 'male' ? base + 5 : base - 161);
-    }
-
-    function getWeightForBmr(day) {
-      if (day.weight && day.weight.morning) return day.weight.morning.weight_kg;
-      if (day.weight && day.weight.evening) return day.weight.evening.weight_kg;
-      var best = null, bestDiff = Infinity;
-      pageState.allDays.forEach(function(d) {
-        var w = d.weight && d.weight.morning ? d.weight.morning.weight_kg
-               : d.weight && d.weight.evening ? d.weight.evening.weight_kg : null;
-        if (w !== null) {
-          var diff = Math.abs(new Date(d.date) - new Date(day.date));
-          if (diff < bestDiff) { bestDiff = diff; best = w; }
-        }
-      });
-      return best;
-    }
-
     const MEAL_TYPE_JA = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '間食', late_night: '夜食' };
     const TSV_HEADER = ['日付','種別','区分','内容','時刻','kcal','P(g)','F(g)','C(g)','Na(g)','数値1','数値2'].join('\t');
 
@@ -465,7 +428,7 @@
       return cells.map(function(v) { return v == null ? '' : String(v); }).join('\t');
     }
 
-    function buildHistoryTsv(day) {
+    function buildHistoryTsv(day, enrichment) {
       var rows = [TSV_HEADER];
       var d = day.date;
       var t = day.totals;
@@ -482,13 +445,11 @@
           });
       });
 
-      var weight  = getWeightForBmr(day);
-      var bmr     = calcBmrForDay(weight, d);
-      var exCal   = day.exercise.reduce(function(s, e) { return s + (e.calories_burned || 0); }, 0);
-      var totalExp = bmr !== null ? bmr + exCal : null;
-      var balance  = totalExp !== null && t.calories != null ? t.calories - totalExp : null;
+      var bmr      = enrichment.bmr_kcal;
+      var totalExp = enrichment.total_expenditure;
+      var balance  = enrichment.calorie_balance;
       var balStr   = balance !== null ? (balance >= 0 ? '+' : '') + balance : '';
-      var noteStr  = 'ゴール:' + pageState.calorieGoal
+      var noteStr  = 'ゴール:' + enrichment.calories_goal
         + (bmr      !== null ? ' / 基礎代謝:' + bmr      : '')
         + (totalExp !== null ? ' / 総消費:'   + totalExp  : '')
         + (balStr            ? ' / 収支:'     + balStr    : '');
@@ -502,7 +463,7 @@
       });
 
       if (day.steps !== null) {
-        rows.push(tsvRow([d, '歩数', '', 'ゴール:' + pageState.stepsGoal, '', '', '', '', '', '', day.steps, '']));
+        rows.push(tsvRow([d, '歩数', '', 'ゴール:' + enrichment.steps_goal, '', '', '', '', '', '', day.steps, '']));
       }
 
       day.exercise.forEach(function(ex) {
@@ -524,17 +485,16 @@
       return rows.join('\n');
     }
 
-    function buildHistoryJson(day) {
+    function buildHistoryJson(day, enrichment) {
       var d = day.date;
       var t = day.totals;
       var dateObj  = new Date(d + 'T00:00:00');
       var weekdays = ['日','月','火','水','木','金','土'];
 
-      var weight   = getWeightForBmr(day);
-      var bmr      = calcBmrForDay(weight, d);
+      var bmr      = enrichment.bmr_kcal;
       var exCal    = day.exercise.reduce(function(s, e) { return s + (e.calories_burned || 0); }, 0);
-      var totalExp = bmr !== null ? bmr + exCal : null;
-      var balance  = totalExp !== null && t.calories != null ? t.calories - totalExp : null;
+      var totalExp = enrichment.total_expenditure;
+      var balance  = enrichment.calorie_balance;
 
       var mealOrder = ['breakfast', 'lunch', 'dinner', 'snack', 'late_night'];
       var meals = {};
@@ -567,12 +527,12 @@
           generated_at: new Date().toISOString().slice(0, 19)
         },
         profile: {
-          calories_goal: pageState.calorieGoal,
-          steps_goal:    pageState.stepsGoal
+          calories_goal: enrichment.calories_goal,
+          steps_goal:    enrichment.steps_goal
         },
         summary: {
           calories_total:    t.calories,
-          calories_diff:     t.calories != null ? t.calories - pageState.calorieGoal : null,
+          calories_diff:     t.calories != null ? t.calories - enrichment.calories_goal : null,
           protein_g:         t.protein,
           fat_g:             t.fat,
           carbs_g:           t.carbs,
@@ -580,7 +540,7 @@
           weight_morning_kg: day.weight && day.weight.morning ? day.weight.morning.weight_kg : null,
           weight_evening_kg: day.weight && day.weight.evening ? day.weight.evening.weight_kg : null,
           steps:             day.steps,
-          steps_diff:        day.steps != null ? day.steps - pageState.stepsGoal : null,
+          steps_diff:        day.steps != null ? day.steps - enrichment.steps_goal : null,
           exercise_calories: exCal || null,
           bmr_kcal:          bmr,
           total_expenditure: totalExp,
@@ -633,21 +593,6 @@
         + '<span class="breakdown-f">F:' + Math.round(totalF) + 'g</span>'
         + '<span class="breakdown-c">C:' + Math.round(totalC) + 'g</span>'
         + '</span></div>';
-    }
-
-    async function fetchSettings() {
-      try {
-        var res = await fetch('/api/settings');
-        if (res.status === 401) { location.href = '/'; return; }
-        if (!res.ok) return;
-        var sett = await res.json();
-        pageState.stepsGoal   = parseInt(sett.daily_steps_goal) || 8000;
-        pageState.heightCm    = parseFloat(sett.user_height_cm) || null;
-        pageState.gender      = sett.user_gender || null;
-        pageState.birthdate   = sett.user_birthdate || null;
-      } catch(e) {
-        console.warn('[fetchSettings] 設定ロード失敗（BMR計算無効）', e);
-      }
     }
 
     async function fetchLastActivityDate() {
@@ -807,16 +752,28 @@
             var date   = copyItem.dataset.date;
             var dayData = pageState.allDays.find(function(d) { return d.date === date; });
             if (!dayData) { closeCopyMenu(); return; }
-            var text = format === 'tsv' ? buildHistoryTsv(dayData) : buildHistoryJson(dayData);
             var triggerBtn = copyItem.closest('.copy-menu-wrap').querySelector('.copy-btn');
             closeCopyMenu();
-            navigator.clipboard.writeText(text).then(function() {
-              triggerBtn.textContent = '✓ コピー済';
-              setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-            }).catch(function() {
-              triggerBtn.textContent = '✗ 失敗';
-              setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-            });
+            triggerBtn.textContent = '…';
+            fetch('/api/copy/history/' + date)
+              .then(function(res) {
+                if (!res.ok) throw new Error('api error');
+                return res.json();
+              })
+              .then(function(enrichment) {
+                var text = format === 'tsv'
+                  ? buildHistoryTsv(dayData, enrichment)
+                  : buildHistoryJson(dayData, enrichment);
+                return navigator.clipboard.writeText(text);
+              })
+              .then(function() {
+                triggerBtn.textContent = '✓ コピー済';
+                setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+              })
+              .catch(function() {
+                triggerBtn.textContent = '✗ 失敗';
+                setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+              });
           }
         });
         document.addEventListener('click', function(e) {
@@ -1813,8 +1770,7 @@
       }
     })();
 
-    Promise.all([fetchLastActivityDate(), fetchSettings()])
-      .then(function() { load(7, null, null); });
+    fetchLastActivityDate().then(function() { load(7, null, null); });
   </script>
   <script src="/static/common.js"></script>
   <script>
