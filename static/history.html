@@ -524,6 +524,78 @@
       return rows.join('\n');
     }
 
+    function buildHistoryJson(day) {
+      var d = day.date;
+      var t = day.totals;
+      var dateObj  = new Date(d + 'T00:00:00');
+      var weekdays = ['日','月','火','水','木','金','土'];
+
+      var weight   = getWeightForBmr(day);
+      var bmr      = calcBmrForDay(weight, d);
+      var exCal    = day.exercise.reduce(function(s, e) { return s + (e.calories_burned || 0); }, 0);
+      var totalExp = bmr !== null ? bmr + exCal : null;
+      var balance  = totalExp !== null && t.calories != null ? t.calories - totalExp : null;
+
+      var mealOrder = ['breakfast', 'lunch', 'dinner', 'snack', 'late_night'];
+      var meals = {};
+      mealOrder.forEach(function(type) {
+        var items = day.meals
+          .filter(function(m) { return m.meal_type === type; })
+          .map(function(m) {
+            return {
+              description: m.description,
+              meal_time:   m.meal_time ? m.meal_time.slice(0, 5) : null,
+              calories:    m.calories,
+              protein:     m.protein,
+              fat:         m.fat,
+              carbs:       m.carbs,
+              sodium:      m.sodium
+            };
+          });
+        if (items.length) meals[type] = items;
+      });
+
+      function bpObj(tod) {
+        var bp = day.blood_pressure && day.blood_pressure[tod];
+        return bp ? { systolic: bp.systolic, diastolic: bp.diastolic } : null;
+      }
+
+      return JSON.stringify({
+        meta: {
+          date:         d,
+          weekday:      weekdays[dateObj.getDay()],
+          generated_at: new Date().toISOString().slice(0, 19)
+        },
+        profile: {
+          calories_goal: pageState.calorieGoal,
+          steps_goal:    pageState.stepsGoal
+        },
+        summary: {
+          calories_total:    t.calories,
+          calories_diff:     t.calories != null ? t.calories - pageState.calorieGoal : null,
+          protein_g:         t.protein,
+          fat_g:             t.fat,
+          carbs_g:           t.carbs,
+          sodium_g:          t.sodium,
+          weight_morning_kg: day.weight && day.weight.morning ? day.weight.morning.weight_kg : null,
+          weight_evening_kg: day.weight && day.weight.evening ? day.weight.evening.weight_kg : null,
+          steps:             day.steps,
+          steps_diff:        day.steps != null ? day.steps - pageState.stepsGoal : null,
+          exercise_calories: exCal || null,
+          bmr_kcal:          bmr,
+          total_expenditure: totalExp,
+          calorie_balance:   balance,
+          body_fat_pct:      day.body_fat !== undefined ? day.body_fat : null,
+          bp_morning:        bpObj('morning'),
+          bp_evening:        bpObj('evening')
+        },
+        meals:    meals,
+        exercise: day.exercise.map(function(ex) {
+          return { description: ex.description, calories_burned: ex.calories_burned };
+        })
+      }, null, 2);
+    }
+
     function buildMealBreakdown(meals) {
       if (!meals || !meals.length) return '';
       var rows = '';
