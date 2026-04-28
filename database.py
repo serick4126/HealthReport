@@ -1975,6 +1975,7 @@ def _calc_age_at_date(birthdate_str: str, target_date_str: str) -> Optional[int]
         bd = datetime.strptime(birthdate_str, "%Y-%m-%d").date()
         td = datetime.strptime(target_date_str, "%Y-%m-%d").date()
     except (ValueError, AttributeError):
+        logger.warning("_calc_age_at_date パース失敗: birthdate=%r, target=%r", birthdate_str, target_date_str)
         return None
     age = td.year - bd.year - ((td.month, td.day) < (bd.month, bd.day))
     return age if 0 <= age <= 120 else None
@@ -2026,7 +2027,11 @@ def get_copy_enrichment_day(date_str: str) -> dict:
     gender = get_setting("user_gender") or ""
     birthdate = get_setting("user_birthdate") or ""
 
-    height_cm = float(height_str) if height_str else None
+    try:
+        height_cm = float(height_str) if height_str else None
+    except ValueError:
+        logger.warning("get_copy_enrichment_day: user_height_cm の変換失敗: %r", height_str)
+        height_cm = None
     weight_kg = _get_weight_for_copy_date(date_str)
     age = _calc_age_at_date(birthdate, date_str) if birthdate else None
     bmr = _calc_bmr_mifflin(weight_kg, height_cm, age, gender) if (
@@ -2066,10 +2071,18 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
     height_str = get_setting("user_height_cm")
     gender = get_setting("user_gender") or ""
     birthdate = get_setting("user_birthdate") or ""
-    height_cm = float(height_str) if height_str else None
+    try:
+        height_cm = float(height_str) if height_str else None
+    except ValueError:
+        logger.warning("get_copy_enrichment_stats: user_height_cm の変換失敗: %r", height_str)
+        height_cm = None
 
-    start = _date.fromisoformat(from_date)
-    end = _date.fromisoformat(to_date)
+    try:
+        start = _date.fromisoformat(from_date)
+        end = _date.fromisoformat(to_date)
+    except ValueError:
+        logger.error("get_copy_enrichment_stats: 不正な日付 from=%r to=%r", from_date, to_date)
+        raise
     dates = [
         (start + timedelta(days=i)).isoformat()
         for i in range((end - start).days + 1)
