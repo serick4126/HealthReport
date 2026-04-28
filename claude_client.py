@@ -518,14 +518,10 @@ get_daily_summary で当日の記録を取得し、残りカロリーに基づ�
 
 
 def build_system_prompt(savings_mode: bool = False, summary: str | None = None) -> list[dict]:
-    """システムプロンプトを2ブロック構成で返す。
+    """システムプロンプトを条件付きブロック構成で返す。
     Block 1（キャッシュ対象）: ユーザー設定・ルール（日付を含まない）
-    Block 2（キャッシュ対象外）: 今日の日付・会話サマリー
+    Block 2（サマリーがある場合のみ）: 会話サマリー
     """
-    today = database.get_logical_today_jst()
-    logical_dt = datetime.strptime(today, "%Y-%m-%d")
-    weekday = ["月", "火", "水", "木", "金", "土", "日"][logical_dt.weekday()]
-
     calorie_goal = database.get_setting("daily_calorie_goal") or "1800"
     user_name = database.get_setting("user_name") or "DefaultName"
     height_cm = database.get_setting("user_height_cm") or "160"
@@ -534,7 +530,6 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 
     if summary is None:
         summary = database.load_conversation_summary()
-    summary_section = f"\n【会話サマリー（自動生成）】\n{summary}\n" if summary else ""
 
     cache_control: dict = (
         {"type": "ephemeral", "ttl": "1h"} if cache_ttl == "1hour"
@@ -548,12 +543,14 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
         split=_build_split_section(database.get_setting("split_multiple_items") == "true"),
     )
 
-    block2_text = f"【セッション情報】\n今日の日付: {today}（{weekday}曜日）{summary_section}"
-
-    return [
-        {"type": "text", "text": block1_text, "cache_control": cache_control},
-        {"type": "text", "text": block2_text},
+    system_blocks: list[dict] = [
+        {"type": "text", "text": block1_text, "cache_control": cache_control}
     ]
+    if summary:
+        system_blocks.append(
+            {"type": "text", "text": f"【会話サマリー（自動生成）】\n{summary}"}
+        )
+    return system_blocks
 
 
 # ── ツール実行 ─────────────────────────────────────────────────────────────────

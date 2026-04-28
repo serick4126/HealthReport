@@ -157,6 +157,60 @@ def test_build_send_context_same_meal_type_summed():
 
 
 from claude_client import _inject_send_context, _build_block1_text, _build_search_flow_section
+from claude_client import build_system_prompt
+
+
+MOCK_SETTINGS = {
+    "daily_calorie_goal": "1800",
+    "user_name": "TestUser",
+    "user_height_cm": "165",
+    "user_notes": "",
+    "cache_ttl": "5min",
+    "auto_save_food_defaults": "true",
+    "split_multiple_items": "false",
+    "savings_mode": "false",
+}
+
+
+def _mock_get_setting(key):
+    return MOCK_SETTINGS.get(key)
+
+
+def test_build_system_prompt_no_block2_when_no_summary():
+    """会話サマリーがない場合に Block 2 が省略されること（返り値が1要素）"""
+    with patch("claude_client.database.get_setting", side_effect=_mock_get_setting), \
+         patch("claude_client.database.load_conversation_summary", return_value=None):
+        result = build_system_prompt(savings_mode=False, summary=None)
+    assert len(result) == 1
+
+
+def test_build_system_prompt_block2_when_summary_exists():
+    """会話サマリーがある場合に Block 2 が出力されること（返り値が2要素）"""
+    with patch("claude_client.database.get_setting", side_effect=_mock_get_setting), \
+         patch("claude_client.database.load_conversation_summary", return_value="要約テキスト"):
+        result = build_system_prompt(savings_mode=False, summary=None)
+    assert len(result) == 2
+    assert "要約テキスト" in result[1]["text"]
+
+
+def test_build_system_prompt_block2_no_date():
+    """Block 2 に今日の日付が含まれないこと"""
+    with patch("claude_client.database.get_setting", side_effect=_mock_get_setting), \
+         patch("claude_client.database.load_conversation_summary", return_value="要約テキスト"):
+        result = build_system_prompt(savings_mode=False, summary=None)
+    assert len(result) == 2
+    import re
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", result[1]["text"])
+
+
+def test_build_system_prompt_explicit_summary_used():
+    """summary 引数を渡した場合は DB を参照せずその値が使われること"""
+    with patch("claude_client.database.get_setting", side_effect=_mock_get_setting), \
+         patch("claude_client.database.load_conversation_summary") as mock_load:
+        result = build_system_prompt(savings_mode=False, summary="渡されたサマリー")
+    mock_load.assert_not_called()
+    assert len(result) == 2
+    assert "渡されたサマリー" in result[1]["text"]
 
 
 def _make_block1():

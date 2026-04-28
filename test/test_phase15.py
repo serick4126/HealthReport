@@ -152,12 +152,11 @@ class TestBuildSystemPrompt:
     """build_system_prompt() の動的埋め込みを検証する。
     特定の日本語テキストではなく動的値・ツール名の埋め込みを確認する。"""
 
-    def test_block2_date_matches_logical_today(self, tmp_db):
-        """Block 2 の日付文字列が get_logical_today_jst() の戻り値と一致する"""
-        expected_date = database.get_logical_today_jst()
-        blocks = claude_client.build_system_prompt()
-        block2_text = blocks[1]["text"]
-        assert expected_date in block2_text
+    def test_block2_not_present_without_summary(self, tmp_db):
+        """サマリーがない場合 Block 2 が省略されること（Phase34変更: 日付はBlock2から削除）"""
+        blocks = claude_client.build_system_prompt(summary=None)
+        # サマリーなし → 1ブロックのみ
+        assert len(blocks) == 1
 
     def test_block1_references_get_daily_summary_tool(self, tmp_db):
         """Block 1 テキストに "get_daily_summary" が含まれる（ツール名の参照確認）"""
