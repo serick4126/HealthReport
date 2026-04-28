@@ -1368,7 +1368,8 @@ def get_stats(
             """
             SELECT meal_date,
                    SUM(calories) AS cal, SUM(protein) AS p,
-                   SUM(fat) AS f, SUM(carbs) AS c
+                   SUM(fat) AS f, SUM(carbs) AS c,
+                   SUM(sodium) AS s
             FROM meals WHERE meal_date >= ? AND meal_date <= ?
             GROUP BY meal_date
             """,
@@ -1410,7 +1411,7 @@ def get_stats(
         bp_stat_map.setdefault(r["log_date"], {})[r["time_of_day"]] = (r["systolic"], r["diastolic"])
     bf_stat_map = {r["log_date"]: r["body_fat_pct"] for r in bf_stat_rows}
 
-    calories, protein, fat, carbs = [], [], [], []
+    calories, protein, fat, carbs, sodium_daily = [], [], [], [], []
     # 運動消費カロリー集計
     ex_totals = get_daily_exercise_totals(start.isoformat(), end.isoformat())
 
@@ -1432,6 +1433,7 @@ def get_stats(
         protein.append(round(c["p"], 1) if c and c["p"] is not None else None)
         fat.append(round(c["f"], 1) if c and c["f"] is not None else None)
         carbs.append(round(c["c"], 1) if c and c["c"] is not None else None)
+        sodium_daily.append(round(c["s"], 2) if c and c["s"] is not None else None)
         w = w_map.get(d, {})
         wm.append(w.get("morning"))
         we.append(w.get("evening"))
@@ -1462,6 +1464,7 @@ def get_stats(
         "protein": protein,
         "fat": fat,
         "carbs": carbs,
+        "sodium": sodium_daily,
         "meal_skips": skip_map,
         "exercise_calories": exercise_calories,
         "bmr_kcal": bmr_kcal,
