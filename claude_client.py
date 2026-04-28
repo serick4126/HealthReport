@@ -1067,7 +1067,7 @@ def _build_send_context(logical_date: str, send_time: str, calorie_goal: int) ->
     if summary["body_fat"] is not None:
         vitals_parts.append(f"体脂肪率: {summary['body_fat']}%")
     if exercises:
-        total_burned = sum(e["calories_burned"] for e in exercises)
+        total_burned = sum((e["calories_burned"] or 0) for e in exercises)
         vitals_parts.append(f"運動消費: {total_burned}kcal")
 
     lines = [
@@ -1082,14 +1082,18 @@ def _build_send_context(logical_date: str, send_time: str, calorie_goal: int) ->
 
 
 def _inject_send_context(conversation_history: list[dict], calorie_goal: int) -> None:
-    """最新メッセージのテキストブロック先頭に送信コンテキストを注入する（DBに保存しない）"""
+    """送信コンテキストを最新メッセージのテキストブロック先頭に注入する（DBに保存しない）"""
+    if not conversation_history:
+        logger.warning("_inject_send_context: conversation_history が空のためスキップ")
+        return
     logical_date = database.get_logical_today_jst()
     send_time = datetime.now(JST).strftime("%H:%M")
     context = _build_send_context(logical_date, send_time, calorie_goal)
     for item in conversation_history[-1]["content"]:
         if item["type"] == "text":
             item["text"] = context + "\n\n" + item["text"]
-            break
+            return
+    logger.warning("_inject_send_context: テキストブロックが見つからないためスキップ")
 
 
 def _inject_food_hints(conversation_history: list[dict], user_message: str) -> None:
