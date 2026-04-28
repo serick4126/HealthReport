@@ -405,6 +405,39 @@
       lastActivityDate: null,
     };
 
+    function calcAgeAt(birthdate, dateStr) {
+      if (!birthdate || !dateStr) return null;
+      var b = new Date(birthdate + 'T00:00:00');
+      var d = new Date(dateStr  + 'T00:00:00');
+      var age = d.getFullYear() - b.getFullYear();
+      var m = d.getMonth() - b.getMonth();
+      if (m < 0 || (m === 0 && d.getDate() < b.getDate())) age--;
+      return age < 0 ? null : age;
+    }
+
+    function calcBmrForDay(weightKg, dateStr) {
+      if (!weightKg || !pageState.heightCm || !pageState.gender || !pageState.birthdate) return null;
+      var age = calcAgeAt(pageState.birthdate, dateStr);
+      if (age === null) return null;
+      var base = 10 * weightKg + 6.25 * pageState.heightCm - 5 * age;
+      return Math.round(pageState.gender === 'male' ? base + 5 : base - 161);
+    }
+
+    function getWeightForBmr(day) {
+      if (day.weight && day.weight.morning) return day.weight.morning.weight_kg;
+      if (day.weight && day.weight.evening) return day.weight.evening.weight_kg;
+      var best = null, bestDiff = Infinity;
+      pageState.allDays.forEach(function(d) {
+        var w = d.weight && d.weight.morning ? d.weight.morning.weight_kg
+               : d.weight && d.weight.evening ? d.weight.evening.weight_kg : null;
+        if (w !== null) {
+          var diff = Math.abs(new Date(d.date) - new Date(day.date));
+          if (diff < bestDiff) { bestDiff = diff; best = w; }
+        }
+      });
+      return best;
+    }
+
     function buildMealBreakdown(meals) {
       if (!meals || !meals.length) return '';
       var rows = '';
