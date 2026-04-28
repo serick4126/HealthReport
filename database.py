@@ -1965,3 +1965,175 @@ def get_last_activity_date() -> Optional[str]:
             """
         ).fetchone()
     return row["last_date"] if row and row["last_date"] else None
+
+
+# ── コピーボタン機能用ヘルパー ──────────────────────────────────────────────────
+
+def _calc_age_at_date(birthdate_str: str, target_date_str: str) -> Optional[int]:
+    """指定日時点の年齢を返す。計算不能な場合はNone。"""
+    try:
+        bd = datetime.strptime(birthdate_str, "%Y-%m-%d").date()
+        td = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+    except (ValueError, AttributeError):
+        return None
+    age = td.year - bd.year - ((td.month, td.day) < (bd.month, bd.day))
+    return age if 0 <= age <= 120 else None
+
+
+def _calc_bmr_mifflin(
+    weight_kg: float, height_cm: float, age: int, gender: str
+) -> Optional[int]:
+    """Mifflin-St Jeor式でBMRを計算する（コピー機能専用）。
+    male: 10w + 6.25h - 5a + 5
+    female: 10w + 6.25h - 5a - 161
+    """
+    if not weight_kg or not height_cm or age is None:
+        return None
+    base = 10 * weight_kg + 6.25 * height_cm - 5 * age
+    if gender == "male":
+        return round(base + 5)
+    elif gender == "female":
+        return round(base - 161)
+    return None
+
+
+def _get_weight_for_copy_date(date_str: str) -> Optional[float]:
+    """指定日の体重（朝優先→夜→期間内最近傍）を返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT weight_kg, time_of_day FROM weight_logs WHERE log_date = ?"
+            " ORDER BY CASE time_of_day WHEN 'morning' THEN 0 ELSE 1 END",
+            (date_str,),
+        ).fetchall()
+    if rows:
+        return rows[0]["weight_kg"]
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT weight_kg FROM weight_logs"
+            " ORDER BY ABS(julianday(log_date) - julianday(?)) LIMIT 1",
+            (date_str,),
+        ).fetchone()
+    return row["weight_kg"] if row else None
+
+
+def get_copy_enrichment_day(date_str: str) -> dict:
+    """履歴ページのコピー用エンリッチメントデータを返す。
+    戻り値: {bmr_kcal, total_expenditure, calorie_balance, calories_goal, steps_goal}
+    """
+    calories_goal = int(get_setting("daily_calorie_goal") or 1500)
+    steps_goal = int(get_setting("daily_steps_goal") or 8000)
+    height_str = get_setting("user_height_cm")
+    gender = get_setting("user_gender") or ""
+    birthdate = get_setting("user_birthdate") or ""
+
+    height_cm = float(height_str) if height_str else None
+    weight_kg = _get_weight_for_copy_date(date_str)
+    age = _calc_age_at_date(birthdate, date_str) if birthdate else None
+    bmr = _calc_bmr_mifflin(weight_kg, height_cm, age, gender) if (
+        weight_kg and height_cm and age is not None and gender in ("male", "female")
+    ) else None
+
+    ex_totals = get_daily_exercise_totals(date_str, date_str)
+    ex_cal = ex_totals.get(date_str) or 0
+    total_exp = (bmr + ex_cal) if bmr is not None else None
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT SUM(calories) AS cal FROM meals WHERE meal_date = ?",
+            (date_str,),
+        ).fetchone()
+    cal_total = int(row["cal"]) if row and row["cal"] is not None else None
+
+    balance = (cal_total - total_exp) if (
+        total_exp is not None and cal_total is not None
+    ) else None
+
+    return {
+        "bmr_kcal": bmr,
+        "total_expenditure": total_exp,
+        "calorie_balance": balance,
+        "calories_goal": calories_goal,
+        "steps_goal": steps_goal,
+    }
+
+
+def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
+    """集計ページのコピー用エンリッチメントデータ（日別BMR等）を返す。
+    戻り値: {dates, calories_goal, steps_goal, bmr_kcal[], total_expenditure[], calorie_balance[]}
+    """
+    calories_goal = int(get_setting("daily_calorie_goal") or 1500)
+    steps_goal = int(get_setting("daily_steps_goal") or 8000)
+    height_str = get_setting("user_height_cm")
+    gender = get_setting("user_gender") or ""
+    birthdate = get_setting("user_birthdate") or ""
+    height_cm = float(height_str) if height_str else None
+
+    start = _date.fromisoformat(from_date)
+    end = _date.fromisoformat(to_date)
+    dates = [
+        (start + timedelta(days=i)).isoformat()
+        for i in range((end - start).days + 1)
+    ]
+
+    with get_conn() as conn:
+        weight_rows = conn.execute(
+            "SELECT log_date, time_of_day, weight_kg FROM weight_logs"
+            " WHERE log_date >= ? AND log_date <= ?",
+            (from_date, to_date),
+        ).fetchall()
+
+    known: dict = {}
+    for r in weight_rows:
+        if r["time_of_day"] == "morning":
+            known[r["log_date"]] = r["weight_kg"]
+        elif r["log_date"] not in known:
+            known[r["log_date"]] = r["weight_kg"]
+
+    def nearest_weight(d: str) -> Optional[float]:
+        if d in known:
+            return known[d]
+        if not known:
+            return None
+        best = min(known.keys(), key=lambda k: abs(
+            (_date.fromisoformat(k) - _date.fromisoformat(d)).days
+        ))
+        return known[best]
+
+    ex_totals = get_daily_exercise_totals(from_date, to_date)
+
+    with get_conn() as conn:
+        cal_rows = conn.execute(
+            "SELECT meal_date, SUM(calories) AS cal FROM meals"
+            " WHERE meal_date >= ? AND meal_date <= ? GROUP BY meal_date",
+            (from_date, to_date),
+        ).fetchall()
+    cal_map = {r["meal_date"]: int(r["cal"]) for r in cal_rows if r["cal"] is not None}
+
+    bmr_list: list = []
+    total_exp_list: list = []
+    balance_list: list = []
+
+    for d in dates:
+        w = nearest_weight(d)
+        age = _calc_age_at_date(birthdate, d) if birthdate else None
+        bmr = _calc_bmr_mifflin(w, height_cm, age, gender) if (
+            w and height_cm and age is not None and gender in ("male", "female")
+        ) else None
+        ex_cal = ex_totals.get(d) or 0
+        total_exp = (bmr + ex_cal) if bmr is not None else None
+        cal = cal_map.get(d)
+        balance = (cal - total_exp) if (
+            total_exp is not None and cal is not None
+        ) else None
+        bmr_list.append(bmr)
+        total_exp_list.append(total_exp)
+        balance_list.append(balance)
+
+    return {
+        "dates": dates,
+        "calories_goal": calories_goal,
+        "steps_goal": steps_goal,
+        "bmr_kcal": bmr_list,
+        "total_expenditure": total_exp_list,
+        "calorie_balance": balance_list,
+    }
