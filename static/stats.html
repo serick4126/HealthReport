@@ -296,6 +296,172 @@
       return rows.join('\n');
     }
 
+    function buildStatsJson(data) {
+      var calGoal   = data.calories_goal;
+      var stepsGoal = pageState.stepsGoal;
+      var from      = pageState.dateRange.start || data.dates[0];
+      var to        = pageState.dateRange.end   || data.dates[data.dates.length - 1];
+      var weightMap = buildWeightMap(data);
+      var weekdays  = ['日','月','火','水','木','金','土'];
+
+      function roundN(v, n) {
+        if (v == null) return null;
+        var f = Math.pow(10, n);
+        return Math.round(v * f) / f;
+      }
+      function avgArr(arr) {
+        var valid = arr.filter(function(v) { return v !== null && v !== undefined; });
+        if (!valid.length) return null;
+        return roundN(valid.reduce(function(s, v) { return s + v; }, 0) / valid.length, 1);
+      }
+
+      var daily = data.dates.map(function(date, i) {
+        var cal   = data.calories[i];
+        var wm    = data.weights_morning[i];
+        var we    = data.weights_evening[i];
+        var steps = data.steps[i];
+        var exCal = data.exercise_calories[i];
+        var bf    = data.body_fat[i];
+        var sodium = data.sodium ? data.sodium[i] : null;
+        var bpMs  = data.blood_pressure.morning_systolic[i];
+        var bpMd  = data.blood_pressure.morning_diastolic[i];
+        var bpEs  = data.blood_pressure.evening_systolic[i];
+        var bpEd  = data.blood_pressure.evening_diastolic[i];
+
+        var bmr      = calcBmrForDay(weightMap[date], date);
+        var totalExp = bmr !== null ? bmr + (exCal || 0) : null;
+        var balance  = totalExp !== null && cal !== null ? cal - totalExp : null;
+
+        var dateObj = new Date(date + 'T00:00:00');
+        return {
+          date:              date,
+          weekday:           weekdays[dateObj.getDay()],
+          calories:          cal,
+          calories_diff:     cal !== null ? cal - calGoal : null,
+          protein:           data.protein[i],
+          fat:               data.fat[i],
+          carbs:             data.carbs[i],
+          sodium:            sodium,
+          weight_morning:    wm ?? null,
+          weight_evening:    we ?? null,
+          steps:             steps ?? null,
+          steps_diff:        steps !== null ? steps - stepsGoal : null,
+          exercise_calories: exCal ?? null,
+          bmr_kcal:          bmr,
+          total_expenditure: totalExp,
+          calorie_balance:   balance,
+          bp_morning:        bpMs !== null && bpMs !== undefined ? { systolic: bpMs, diastolic: bpMd } : null,
+          bp_evening:        bpEs !== null && bpEs !== undefined ? { systolic: bpEs, diastolic: bpEd } : null,
+          body_fat_pct:      bf ?? null
+        };
+      });
+
+      // summary 計算
+      function validArr(key) { return daily.filter(function(d) { return d[key] !== null; }).map(function(d) { return d[key]; }); }
+      var validCals    = validArr('calories');
+      var validBal     = validArr('calorie_balance');
+      var validBmr     = validArr('bmr_kcal');
+      var validExp     = validArr('total_expenditure');
+      var validWm      = validArr('weight_morning');
+      var validSteps   = validArr('steps');
+      var validExCal   = validArr('exercise_calories');
+      var validSodium  = validArr('sodium');
+
+      var wDates   = daily.filter(function(d) { return d.weight_morning !== null; });
+      var wStart   = wDates.length ? wDates[0].weight_morning : null;
+      var wEnd     = wDates.length ? wDates[wDates.length - 1].weight_morning : null;
+      var wChange  = wStart !== null && wEnd !== null ? roundN(wEnd - wStart, 1) : null;
+
+      var validBpMs = daily.filter(function(d) { return d.bp_morning !== null; }).map(function(d) { return d.bp_morning.systolic; });
+      var validBpMd = daily.filter(function(d) { return d.bp_morning !== null; }).map(function(d) { return d.bp_morning.diastolic; });
+      var validBpEs = daily.filter(function(d) { return d.bp_evening !== null; }).map(function(d) { return d.bp_evening.systolic; });
+      var validBpEd = daily.filter(function(d) { return d.bp_evening !== null; }).map(function(d) { return d.bp_evening.diastolic; });
+
+      return JSON.stringify({
+        meta: {
+          from: from, to: to,
+          days: data.dates.length,
+          generated_at: new Date().toISOString().slice(0, 19)
+        },
+        profile: {
+          calories_goal: calGoal,
+          steps_goal:    stepsGoal
+        },
+        summary: {
+          calories_avg:             roundN(avgArr(validCals), 0),
+          days_over_calories_goal:  validCals.filter(function(v) { return v > calGoal; }).length,
+          protein_avg:              avgArr(validArr('protein')),
+          fat_avg:                  avgArr(validArr('fat')),
+          carbs_avg:                avgArr(validArr('carbs')),
+          sodium_avg:               roundN(avgArr(validSodium), 2),
+          weight_morning_avg:       avgArr(validWm),
+          weight_morning_start:     wStart,
+          weight_morning_end:       wEnd,
+          weight_morning_change:    wChange,
+          steps_avg:                roundN(avgArr(validSteps), 0),
+          days_over_steps_goal:     validSteps.filter(function(v) { return v >= stepsGoal; }).length,
+          exercise_calories_avg:    roundN(avgArr(validExCal), 0),
+          bmr_kcal_avg:             roundN(avgArr(validBmr), 0),
+          total_expenditure_avg:    roundN(avgArr(validExp), 0),
+          calorie_balance_avg:      roundN(avgArr(validBal), 0),
+          days_positive_balance:    validBal.filter(function(v) { return v > 0; }).length,
+          days_negative_balance:    validBal.filter(function(v) { return v < 0; }).length,
+          bp_morning_avg:           validBpMs.length ? { systolic: Math.round(avgArr(validBpMs)), diastolic: Math.round(avgArr(validBpMd)) } : null,
+          bp_evening_avg:           validBpEs.length ? { systolic: Math.round(avgArr(validBpEs)), diastolic: Math.round(avgArr(validBpEd)) } : null
+        },
+        daily: daily
+      }, null, 2);
+    }
+
+    function closeCopyMenu() {
+      if (pageState.activeCopyMenu) {
+        pageState.activeCopyMenu.style.display = 'none';
+        pageState.activeCopyMenu = null;
+      }
+    }
+
+    function initStatsCopyHandlers() {
+      var copyBtn  = document.getElementById('statsCopyBtn');
+      var popup    = document.getElementById('statsCopyPopup');
+      var tsvBtn   = document.getElementById('statsCopyTsv');
+      var jsonBtn  = document.getElementById('statsCopyJson');
+
+      copyBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (pageState.activeCopyMenu === popup) {
+          closeCopyMenu();
+        } else {
+          closeCopyMenu();
+          popup.style.display = '';
+          pageState.activeCopyMenu = popup;
+        }
+      });
+
+      function doCopy(format) {
+        if (!pageState.statsData) { closeCopyMenu(); return; }
+        var text = format === 'tsv'
+          ? buildStatsTsv(pageState.statsData)
+          : buildStatsJson(pageState.statsData);
+        closeCopyMenu();
+        navigator.clipboard.writeText(text).then(function() {
+          copyBtn.textContent = '✓ コピー済';
+          setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+        }).catch(function() {
+          copyBtn.textContent = '✗ 失敗';
+          setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+        });
+      }
+
+      tsvBtn.addEventListener('click',  function(e) { e.stopPropagation(); doCopy('tsv');  });
+      jsonBtn.addEventListener('click', function(e) { e.stopPropagation(); doCopy('json'); });
+
+      document.addEventListener('click', function(e) {
+        if (pageState.activeCopyMenu && !pageState.activeCopyMenu.contains(e.target)) {
+          closeCopyMenu();
+        }
+      });
+    }
+
     const pageState = {
       dateRange: { start: null, end: null },
       dates: [],
@@ -1870,6 +2036,7 @@
       t._timer = setTimeout(function() { t.classList.remove('show'); }, type === 'error' ? 5000 : 3000);
     }
 
+    initStatsCopyHandlers();
     fetchLastActivityDate().then(function() { load(7, null, null); });
   </script>
   <script src="/static/common.js"></script>
