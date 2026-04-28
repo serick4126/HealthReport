@@ -209,6 +209,93 @@
     let charts = {};
     var _touchDragState = { srcEl: null };
     var _touchCleanups = [];
+
+    function calcAgeAt(birthdate, dateStr) {
+      if (!birthdate || !dateStr) return null;
+      var b = new Date(birthdate + 'T00:00:00');
+      var d = new Date(dateStr  + 'T00:00:00');
+      var age = d.getFullYear() - b.getFullYear();
+      var m = d.getMonth() - b.getMonth();
+      if (m < 0 || (m === 0 && d.getDate() < b.getDate())) age--;
+      return age < 0 ? null : age;
+    }
+
+    function calcBmrForDay(weightKg, dateStr) {
+      if (!weightKg || !pageState.heightCm || !pageState.gender || !pageState.birthdate) return null;
+      var age = calcAgeAt(pageState.birthdate, dateStr);
+      if (age === null) return null;
+      var base = 10 * weightKg + 6.25 * pageState.heightCm - 5 * age;
+      return Math.round(pageState.gender === 'male' ? base + 5 : base - 161);
+    }
+
+    function buildWeightMap(data) {
+      var known = {};
+      data.dates.forEach(function(date, i) {
+        var wm = data.weights_morning[i];
+        var we = data.weights_evening[i];
+        if (wm !== null && wm !== undefined) known[date] = wm;
+        else if (we !== null && we !== undefined) known[date] = we;
+      });
+      var result = {};
+      data.dates.forEach(function(date) {
+        if (known[date] !== undefined) { result[date] = known[date]; return; }
+        var best = null, bestDiff = Infinity;
+        Object.keys(known).forEach(function(d) {
+          var diff = Math.abs(new Date(d) - new Date(date));
+          if (diff < bestDiff) { bestDiff = diff; best = known[d]; }
+        });
+        result[date] = best;
+      });
+      return result;
+    }
+
+    function buildStatsTsv(data) {
+      var header = [
+        '日付','摂取kcal','目標kcal','差分kcal',
+        'P(g)','F(g)','C(g)',
+        '体重朝(kg)','体重夜(kg)',
+        '歩数','目標歩数','歩数差分',
+        '運動消費kcal','基礎代謝kcal','総消費kcal','収支kcal',
+        '収縮期朝','拡張期朝','収縮期夜','拡張期夜',
+        '体脂肪(%)'
+      ].join('\t');
+
+      var calGoal   = data.calories_goal;
+      var stepsGoal = pageState.stepsGoal;
+      var weightMap = buildWeightMap(data);
+      var rows = [header];
+
+      data.dates.forEach(function(date, i) {
+        var cal   = data.calories[i];
+        var wm    = data.weights_morning[i];
+        var we    = data.weights_evening[i];
+        var steps = data.steps[i];
+        var exCal = data.exercise_calories[i];
+        var bf    = data.body_fat[i];
+        var bpMs  = data.blood_pressure.morning_systolic[i];
+        var bpMd  = data.blood_pressure.morning_diastolic[i];
+        var bpEs  = data.blood_pressure.evening_systolic[i];
+        var bpEd  = data.blood_pressure.evening_diastolic[i];
+
+        var bmr      = calcBmrForDay(weightMap[date], date);
+        var totalExp = bmr !== null ? bmr + (exCal || 0) : null;
+        var balance  = totalExp !== null && cal !== null ? cal - totalExp : null;
+
+        rows.push([
+          date,
+          cal    ?? '', calGoal, cal    !== null ? cal    - calGoal   : '',
+          data.protein[i] ?? '', data.fat[i] ?? '', data.carbs[i] ?? '',
+          wm ?? '', we ?? '',
+          steps  ?? '', stepsGoal, steps  !== null ? steps  - stepsGoal : '',
+          exCal  ?? '', bmr ?? '', totalExp ?? '', balance ?? '',
+          bpMs   ?? '', bpMd ?? '', bpEs ?? '', bpEd ?? '',
+          bf     ?? ''
+        ].map(function(v) { return v == null ? '' : String(v); }).join('\t'));
+      });
+
+      return rows.join('\n');
+    }
+
     const pageState = {
       dateRange: { start: null, end: null },
       dates: [],
