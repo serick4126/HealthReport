@@ -151,6 +151,26 @@
       .day-meta { flex-wrap: wrap; gap: 4px; }
       .toast { top: 12px; font-size: 13px; padding: 8px 16px; }
     }
+    .copy-menu-wrap { position: relative; display: inline-flex; align-items: center; }
+    .copy-btn {
+      background: var(--bg); border: 1px solid var(--border);
+      cursor: pointer; font-size: 11px; color: var(--text-secondary);
+      padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+      font-family: inherit; margin-left: 4px;
+    }
+    .copy-btn:hover { background: var(--card-bg); color: var(--text-primary); }
+    .copy-popup {
+      position: absolute; right: 0; top: calc(100% + 4px); z-index: 102;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15); overflow: hidden; white-space: nowrap; min-width: 180px;
+    }
+    .copy-popup button {
+      display: block; width: 100%; padding: 9px 16px; background: none; border: none;
+      border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer;
+      text-align: left; font-family: inherit; color: var(--text-primary);
+    }
+    .copy-popup button:last-child { border-bottom: none; }
+    .copy-popup button:hover { background: var(--card-bg); }
   </style>
 </head>
 <body>
@@ -752,11 +772,17 @@
         ? `<span style="color:var(--text-secondary);font-size:11px">残り ${remaining}kcal</span>`
         : `<span style="color:var(--danger);font-size:11px">+${Math.abs(remaining)}kcal超過</span>`;
 
+      var copyBtnHtml = '<span class="copy-menu-wrap">'
+        + '<button class="copy-btn" data-date="' + day.date + '" aria-label="' + label + ' のデータをコピー">コピー▾</button>'
+        + '<div class="copy-popup" style="display:none">'
+        + '<button data-copy="tsv" data-date="' + day.date + '">📊 タブ区切りでコピー</button>'
+        + '<button data-copy="json" data-date="' + day.date + '">🤖 JSONでコピー</button>'
+        + '</div></span>';
       return `
         <div class="day-section">
           <div class="day-header">
             <span class="day-date">${label}</span>
-            <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g${infoBtn}</span>
+            <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g${infoBtn}${copyBtnHtml}</span>
             ${breakdownHtml}
           </div>
           <div style="display:flex;align-items:center;gap:8px">
