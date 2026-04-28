@@ -326,3 +326,33 @@ def test_compress_history_savings_mode_instruction_minimal():
     """節約モードの圧縮指示が変更されていないこと（数値のみの方針）"""
     source = inspect.getsource(cc._compress_history)
     assert "数値のみ残してください" in source
+
+
+from report_generator import _build_comment_prompt
+import report_generator
+
+
+def test_build_comment_prompt_all_off_weekly_returns_dynamic():
+    """フォーカス全OFFの週次で動的プロンプトを返すこと（固定プロンプトへのフォールバックなし）"""
+    result = _build_comment_prompt([], is_monthly=False)
+    assert "■ 前回比較" in result
+    assert "300文字以内" in result
+
+
+def test_build_comment_prompt_all_off_weekly_not_fixed_prompt():
+    """フォーカス全OFFの週次で固定プロンプト（400文字制限・糖尿病科表記）が返らないこと"""
+    result = _build_comment_prompt([], is_monthly=False)
+    assert "400文字以内" not in result
+    assert "糖尿病・代謝・内分泌科" not in result
+
+
+def test_comment_prompt_module_has_no_fixed_prompt_constant():
+    """`_COMMENT_PROMPT` 定数が report_generator に存在しないこと"""
+    assert not hasattr(report_generator, "_COMMENT_PROMPT")
+
+
+def test_build_comment_prompt_all_off_monthly_returns_dynamic():
+    """フォーカス全OFFの月次でも動的プロンプトを返すこと"""
+    result = _build_comment_prompt([], is_monthly=True)
+    assert "1ヶ月" in result
+    assert "■ 前回比較" in result

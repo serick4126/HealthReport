@@ -908,48 +908,15 @@ def _build_comment_summary(data: dict) -> dict:
     return summary
 
 
-_COMMENT_PROMPT = """\
-以下の1週間分の健康データを分析し、主治医（糖尿病・代謝・内分泌科）への\
-提出レポートに添付する補足コメントを生成してください。
-
-【出力形式】
-セクションごとに見出しをつけ、各セクション1〜3項目の箇条書き（「・」始め）。
-不要なセクションは省略可。
-
-■ 前週比較（前週データがある場合のみ）
-  - 体重・カロリー・PFC・歩数の前週比変化
-■ パターン分析
-  - 曜日別の傾向（週末の過食傾向、平日の欠食等）
-  - PFCバランスの偏り傾向
-  - 食事時刻と体重変動の相関
-■ 臨床的所見
-  - 目標カロリーとの乖離度
-  - 塩分摂取傾向
-  - 体重トレンド（増加/減少/横ばい）
-  - BMI推移
-
-【ルール】
-- 医師が読むことを前提とした簡潔な医療向け日本語で記載
-- 患者への励まし・アドバイス・提案は不要（医師向けデータ分析のみ）
-- 特記事項がない場合は空文字のみを返す
-- 客観的なデータに基づくコメントのみ
-- 全体で400文字以内に収めること（印刷レイアウト制約）
-"""
-
-
 def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> str:
     """フォーカス設定に基づいてAIコメントプロンプトを動的生成。
-    週次で全項目OFFの場合のみ既存の _COMMENT_PROMPT（固定プロンプト）にフォールバック。
-    月次で全項目OFFの場合は全項目ON相当のデフォルトで構築（月次専用プロンプトを必ず生成）。
+    全項目OFFの場合は全項目ON相当のデフォルトで構築（週次・月次ともに動的プロンプトを生成）。
     """
     enabled = {item["id"] for item in focus_items if item.get("enabled")}
 
     if not enabled:
-        if is_monthly:
-            enabled = {"meal_content", "calories", "pfc", "sodium", "expenditure",
-                       "exercise", "weight", "steps", "blood_pressure", "body_fat"}
-        else:
-            return _COMMENT_PROMPT
+        enabled = {"meal_content", "calories", "pfc", "sodium", "expenditure",
+                   "exercise", "weight", "steps", "blood_pressure", "body_fat"}
 
     period_label = "1ヶ月（途中経過を含む）" if is_monthly else "1週間"
     report_type = "月次" if is_monthly else "週次"
