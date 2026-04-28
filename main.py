@@ -478,20 +478,17 @@ async def stats_api(request: Request, days: int = 7, start: str = None, end: str
 @app.get("/api/copy/history/{date}")
 async def get_copy_history(request: Request, date: str):
     require_auth(request)
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        raise HTTPException(status_code=400, detail="日付はYYYY-MM-DD形式で指定してください")
+    _validate_date(date)
     return database.get_copy_enrichment_day(date)
 
 
 @app.get("/api/copy/stats")
 async def get_copy_stats(request: Request, from_date: str, to_date: str):
     require_auth(request)
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", from_date):
-        raise HTTPException(status_code=400, detail="from_dateはYYYY-MM-DD形式で指定してください")
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", to_date):
-        raise HTTPException(status_code=400, detail="to_dateはYYYY-MM-DD形式で指定してください")
+    _validate_date(from_date)
+    _validate_date(to_date)
     if from_date > to_date:
-        raise HTTPException(status_code=400, detail="from_dateはto_date以前の日付を指定してください")
+        raise HTTPException(status_code=422, detail="from_dateはto_date以前の日付を指定してください")
     return database.get_copy_enrichment_stats(from_date, to_date)
 
 
