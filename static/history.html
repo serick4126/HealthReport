@@ -391,6 +391,11 @@
     const PAGE_SIZE = 10;
     const pageState = {
       calorieGoal: 1500,
+      stepsGoal: 8000,
+      heightCm: null,
+      gender: null,
+      birthdate: null,
+      activeCopyMenu: null,
       allDays: [],
       currentPage: 0,
       currentPeriod: { days: 7, start: null, end: null },
@@ -437,6 +442,21 @@
         + '<span class="breakdown-f">F:' + Math.round(totalF) + 'g</span>'
         + '<span class="breakdown-c">C:' + Math.round(totalC) + 'g</span>'
         + '</span></div>';
+    }
+
+    async function fetchSettings() {
+      try {
+        var res = await fetch('/api/settings');
+        if (res.status === 401) { location.href = '/'; return; }
+        if (!res.ok) return;
+        var sett = await res.json();
+        pageState.stepsGoal   = parseInt(sett.daily_steps_goal) || 8000;
+        pageState.heightCm    = parseFloat(sett.user_height_cm) || null;
+        pageState.gender      = sett.user_gender || null;
+        pageState.birthdate   = sett.user_birthdate || null;
+      } catch(e) {
+        console.warn('[fetchSettings] 設定ロード失敗（BMR計算無効）', e);
+      }
     }
 
     async function fetchLastActivityDate() {
@@ -1549,7 +1569,8 @@
       }
     })();
 
-    fetchLastActivityDate().then(function() { load(7, null, null); });
+    Promise.all([fetchLastActivityDate(), fetchSettings()])
+      .then(function() { load(7, null, null); });
   </script>
   <script src="/static/common.js"></script>
   <script>
