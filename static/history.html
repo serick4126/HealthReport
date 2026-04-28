@@ -760,6 +760,13 @@
       }
     }
 
+    function closeCopyMenu() {
+      if (pageState.activeCopyMenu) {
+        pageState.activeCopyMenu.style.display = 'none';
+        pageState.activeCopyMenu = null;
+      }
+    }
+
     function initPopupEvents() {
       var isCoarse = window.matchMedia('(pointer: coarse)').matches;
       var closeTimer = null;
@@ -775,7 +782,47 @@
           if (!popup) return;
           if (pageState.activePopup === popup) { hidePopup(); } else { showPopup(popup); }
         });
+        content.addEventListener('click', function(e) {
+          // コピーボタン開閉
+          var copyBtn = e.target.closest('.copy-btn');
+          if (copyBtn) {
+            e.stopPropagation();
+            var popup = copyBtn.parentElement.querySelector('.copy-popup');
+            if (!popup) return;
+            if (pageState.activeCopyMenu === popup) {
+              closeCopyMenu();
+            } else {
+              closeCopyMenu();
+              hidePopup();
+              popup.style.display = '';
+              pageState.activeCopyMenu = popup;
+            }
+            return;
+          }
+          // コピーメニュー項目クリック
+          var copyItem = e.target.closest('[data-copy]');
+          if (copyItem) {
+            e.stopPropagation();
+            var format = copyItem.dataset.copy;
+            var date   = copyItem.dataset.date;
+            var dayData = pageState.allDays.find(function(d) { return d.date === date; });
+            if (!dayData) { closeCopyMenu(); return; }
+            var text = format === 'tsv' ? buildHistoryTsv(dayData) : buildHistoryJson(dayData);
+            var triggerBtn = copyItem.closest('.copy-menu-wrap').querySelector('.copy-btn');
+            closeCopyMenu();
+            navigator.clipboard.writeText(text).then(function() {
+              triggerBtn.textContent = '✓ コピー済';
+              setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+            }).catch(function() {
+              triggerBtn.textContent = '✗ 失敗';
+              setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+            });
+          }
+        });
         document.addEventListener('click', function(e) {
+          if (pageState.activeCopyMenu && !pageState.activeCopyMenu.contains(e.target)) {
+            closeCopyMenu();
+          }
           if (!pageState.activePopup) return;
           if (!e.target.closest('.meal-breakdown-popup') && !e.target.closest('.info-btn')) hidePopup();
         });
