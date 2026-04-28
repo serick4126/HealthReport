@@ -458,6 +458,72 @@
       return best;
     }
 
+    const MEAL_TYPE_JA = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '間食', late_night: '夜食' };
+    const TSV_HEADER = ['日付','種別','区分','内容','時刻','kcal','P(g)','F(g)','C(g)','Na(g)','数値1','数値2'].join('\t');
+
+    function tsvRow(cells) {
+      return cells.map(function(v) { return v == null ? '' : String(v); }).join('\t');
+    }
+
+    function buildHistoryTsv(day) {
+      var rows = [TSV_HEADER];
+      var d = day.date;
+      var t = day.totals;
+      var mealOrder = ['breakfast', 'lunch', 'dinner', 'snack', 'late_night'];
+
+      mealOrder.forEach(function(type) {
+        day.meals.filter(function(m) { return m.meal_type === type; })
+          .forEach(function(m) {
+            rows.push(tsvRow([
+              d, '食事', MEAL_TYPE_JA[type] || type, m.description,
+              m.meal_time ? m.meal_time.slice(0, 5) : '',
+              m.calories, m.protein, m.fat, m.carbs, m.sodium, '', ''
+            ]));
+          });
+      });
+
+      var weight  = getWeightForBmr(day);
+      var bmr     = calcBmrForDay(weight, d);
+      var exCal   = day.exercise.reduce(function(s, e) { return s + (e.calories_burned || 0); }, 0);
+      var totalExp = bmr !== null ? bmr + exCal : null;
+      var balance  = totalExp !== null && t.calories != null ? t.calories - totalExp : null;
+      var balStr   = balance !== null ? (balance >= 0 ? '+' : '') + balance : '';
+      var noteStr  = 'ゴール:' + pageState.calorieGoal
+        + (bmr      !== null ? ' / 基礎代謝:' + bmr      : '')
+        + (totalExp !== null ? ' / 総消費:'   + totalExp  : '')
+        + (balStr            ? ' / 収支:'     + balStr    : '');
+      rows.push(tsvRow([d, '食事合計', '', noteStr, '', t.calories, t.protein, t.fat, t.carbs, t.sodium, '', '']));
+
+      ['morning', 'evening'].forEach(function(tod) {
+        var label = tod === 'morning' ? '朝' : '夜';
+        if (day.weight && day.weight[tod]) {
+          rows.push(tsvRow([d, '体重', label, '', '', '', '', '', '', '', day.weight[tod].weight_kg, '']));
+        }
+      });
+
+      if (day.steps !== null) {
+        rows.push(tsvRow([d, '歩数', '', 'ゴール:' + pageState.stepsGoal, '', '', '', '', '', '', day.steps, '']));
+      }
+
+      day.exercise.forEach(function(ex) {
+        rows.push(tsvRow([d, '運動', '', ex.description || '', '', ex.calories_burned || '', '', '', '', '', '', '']));
+      });
+
+      ['morning', 'evening'].forEach(function(tod) {
+        var label = tod === 'morning' ? '朝' : '夜';
+        if (day.blood_pressure && day.blood_pressure[tod]) {
+          var bp = day.blood_pressure[tod];
+          rows.push(tsvRow([d, '血圧', label, '', '', '', '', '', '', '', bp.systolic, bp.diastolic]));
+        }
+      });
+
+      if (day.body_fat !== null && day.body_fat !== undefined) {
+        rows.push(tsvRow([d, '体脂肪', '', '', '', '', '', '', '', '', day.body_fat, '']));
+      }
+
+      return rows.join('\n');
+    }
+
     function buildMealBreakdown(meals) {
       if (!meals || !meals.length) return '';
       var rows = '';
