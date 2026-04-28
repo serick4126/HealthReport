@@ -576,6 +576,16 @@ MEAL_TYPE_JA = {
     "late_night": "夜食",
 }
 
+_WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
+
+_MEAL_CONTEXT_ORDER = [
+    ("breakfast", "朝食"),
+    ("lunch",     "昼食"),
+    ("dinner",    "夕食"),
+    ("snack",     "間食"),
+    ("late_night", "夜食"),
+]
+
 
 def _tool_record_meal(inp: dict) -> dict:
     # meal_time: 明示なし × 当日 → 送信時刻(HH:MM)、過去日 → None のまま
@@ -993,6 +1003,82 @@ def _prepare_user_content(
         })
     user_content.append({"type": "text", "text": user_message})
     return user_content, pending_images
+
+
+def _build_send_context(logical_date: str, send_time: str, calorie_goal: int) -> str:
+    """送信コンテキストブロックを構築する（DBには保存しない）"""
+    summary = database.get_daily_summary(logical_date)
+    exercises = database.get_exercise_logs(logical_date, logical_date)
+
+    logical_dt = datetime.strptime(logical_date, "%Y-%m-%d")
+    weekday = _WEEKDAYS_JA[logical_dt.weekday()]
+
+    header = (
+        f"【送信コンテキスト】\n"
+        f"論理日付: {logical_date}（{weekday}）\t送信時刻: {send_time}（day_start_hour設定反映済み）\n"
+        f"日付未指定の記録は必ずこの論理日付を使用すること。"
+    )
+
+    meals = summary["meals"]
+    skipped = set(summary["skipped_meal_types"])
+    totals = summary["totals"]
+    weight = summary["weight"]
+
+    has_records = (
+        meals or skipped or weight
+        or summary["steps"] is not None
+        or summary["body_fat"] is not None
+        or exercises
+    )
+    if not has_records:
+        return header + "\n\n＜本日の記録（DB最新・修正反映済）＞\n記録なし"
+
+    meal_kcal: dict = {}
+    for m in meals:
+        mt = m["meal_type"]
+        meal_kcal[mt] = meal_kcal.get(mt, 0) + (m["calories"] or 0)
+
+    meal_parts = []
+    for mt, label in _MEAL_CONTEXT_ORDER:
+        if mt in meal_kcal:
+            meal_parts.append(f"{label}: {meal_kcal[mt]}kcal")
+        elif mt in skipped:
+            meal_parts.append(f"{label}: スキップ")
+        else:
+            meal_parts.append(f"{label}: 未記録")
+
+    remaining = calorie_goal - totals["calories"]
+    total_line = (
+        f"摂取合計: {totals['calories']}kcal / "
+        f"P:{totals['protein']}g F:{totals['fat']}g C:{totals['carbs']}g 塩:{totals['sodium']}g / "
+        f"目標 {calorie_goal}kcal 残り {remaining}kcal"
+    )
+
+    vitals_parts = []
+    if weight.get("morning") is not None:
+        w_str = f"朝 {weight['morning']}kg"
+        if weight.get("evening") is not None:
+            w_str += f" 夜 {weight['evening']}kg"
+        vitals_parts.append(f"体重: {w_str}")
+    elif weight.get("evening") is not None:
+        vitals_parts.append(f"体重: 夜 {weight['evening']}kg")
+    if summary["steps"] is not None:
+        vitals_parts.append(f"歩数: {summary['steps']:,}歩")
+    if summary["body_fat"] is not None:
+        vitals_parts.append(f"体脂肪率: {summary['body_fat']}%")
+    if exercises:
+        total_burned = sum(e["calories_burned"] for e in exercises)
+        vitals_parts.append(f"運動消費: {total_burned}kcal")
+
+    lines = [
+        "＜本日の記録（DB最新・修正反映済）＞",
+        "\t".join(meal_parts),
+        total_line,
+    ]
+    if vitals_parts:
+        lines.append("\t".join(vitals_parts))
+
+    return header + "\n\n" + "\n".join(lines)
 
 
 def _inject_food_hints(conversation_history: list[dict], user_message: str) -> None:

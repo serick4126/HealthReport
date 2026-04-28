@@ -1,0 +1,130 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest
+from unittest.mock import patch
+from datetime import datetime as real_datetime
+
+from claude_client import _build_send_context
+
+
+def _make_summary(meals=None, weight=None, steps=None, body_fat=None,
+                  skipped=None, totals=None):
+    return {
+        "date": "2026-04-28",
+        "meals": meals or [],
+        "weight": weight or {},
+        "steps": steps,
+        "body_fat": body_fat,
+        "skipped_meal_types": skipped or [],
+        "totals": totals or {
+            "calories": 0, "protein": 0.0, "fat": 0.0,
+            "carbs": 0.0, "sodium": 0.0,
+        },
+    }
+
+
+# ── 記録なし ────────────────────────────────────────────────────────────────
+
+def test_build_send_context_no_records_shows_no_record():
+    """記録が一切ない場合に「記録なし」が表示されること"""
+    with patch("claude_client.database.get_daily_summary", return_value=_make_summary()), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "09:00", 1800)
+    assert "記録なし" in result
+
+
+def test_build_send_context_header_contains_date_and_time():
+    """ヘッダーに論理日付と送信時刻が含まれること"""
+    with patch("claude_client.database.get_daily_summary", return_value=_make_summary()), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "23:45", 1800)
+    assert "論理日付: 2026-04-28" in result
+    assert "23:45" in result
+    assert "day_start_hour設定反映済み" in result
+
+
+# ── 食事区分の3状態 ──────────────────────────────────────────────────────────
+
+def test_build_send_context_meal_recorded_shows_kcal():
+    """食事記録がある区分に XXXkcal が表示されること"""
+    meals = [{"meal_type": "lunch", "calories": 500,
+              "protein": 20.0, "fat": 15.0, "carbs": 70.0, "sodium": 1.5}]
+    totals = {"calories": 500, "protein": 20.0, "fat": 15.0,
+              "carbs": 70.0, "sodium": 1.5}
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(meals=meals, totals=totals)), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "13:00", 1800)
+    assert "昼食: 500kcal" in result
+
+
+def test_build_send_context_skipped_meal_shows_skip():
+    """スキップ登録がある区分に「スキップ」が表示されること"""
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(skipped=["breakfast"])), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "09:00", 1800)
+    assert "朝食: スキップ" in result
+
+
+def test_build_send_context_unrecorded_meal_shows_unrecorded():
+    """記録もスキップもない区分に「未記録」が表示されること"""
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(skipped=["breakfast"])), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "09:00", 1800)
+    assert "夕食: 未記録" in result
+
+
+# ── カロリー計算 ──────────────────────────────────────────────────────────────
+
+def test_build_send_context_remaining_calories():
+    """残りカロリーが 目標 - 摂取合計 で計算されること"""
+    meals = [{"meal_type": "breakfast", "calories": 500,
+              "protein": 10.0, "fat": 5.0, "carbs": 80.0, "sodium": 1.0}]
+    totals = {"calories": 500, "protein": 10.0, "fat": 5.0,
+              "carbs": 80.0, "sodium": 1.0}
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(meals=meals, totals=totals)), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "08:00", 1800)
+    assert "残り 1300kcal" in result
+
+
+# ── バイタル行 ────────────────────────────────────────────────────────────────
+
+def test_build_send_context_vitals_omitted_when_no_records():
+    """体重・歩数等が全て未記録の場合にバイタル行が省略されること"""
+    meals = [{"meal_type": "lunch", "calories": 400,
+              "protein": 20.0, "fat": 10.0, "carbs": 60.0, "sodium": 1.0}]
+    totals = {"calories": 400, "protein": 20.0, "fat": 10.0,
+              "carbs": 60.0, "sodium": 1.0}
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(meals=meals, totals=totals)), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "12:00", 1800)
+    assert "体重:" not in result
+    assert "歩数:" not in result
+
+
+def test_build_send_context_exercise_summed():
+    """複数運動記録がある場合に calories_burned の合計が表示されること"""
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary()), \
+         patch("claude_client.database.get_exercise_logs", return_value=[
+             {"calories_burned": 150, "description": "ランニング"},
+             {"calories_burned": 80, "description": "筋トレ"},
+         ]):
+        result = _build_send_context("2026-04-28", "20:00", 1800)
+    assert "運動消費: 230kcal" in result
+
+
+def test_build_send_context_weight_morning_only():
+    """朝体重のみ記録の場合の表示を確認"""
+    with patch("claude_client.database.get_daily_summary",
+               return_value=_make_summary(weight={"morning": 65.2})), \
+         patch("claude_client.database.get_exercise_logs", return_value=[]):
+        result = _build_send_context("2026-04-28", "07:00", 1800)
+    assert "体重: 朝 65.2kg" in result
