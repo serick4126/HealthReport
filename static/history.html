@@ -757,20 +757,29 @@
             triggerBtn.textContent = '…';
             fetch('/api/copy/history/' + date)
               .then(function(res) {
-                if (!res.ok) throw new Error('api error');
+                if (res.status === 401) { location.href = '/'; return null; }
+                if (!res.ok) { return null; }
                 return res.json();
               })
               .then(function(enrichment) {
+                if (!enrichment) {
+                  triggerBtn.textContent = '✗ 失敗';
+                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+                  return;
+                }
                 var text = format === 'tsv'
                   ? buildHistoryTsv(dayData, enrichment)
                   : buildHistoryJson(dayData, enrichment);
-                return navigator.clipboard.writeText(text);
+                navigator.clipboard.writeText(text).then(function() {
+                  triggerBtn.textContent = '✓ コピー済';
+                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+                }).catch(function() {
+                  triggerBtn.textContent = '✗ 失敗';
+                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+                });
               })
-              .then(function() {
-                triggerBtn.textContent = '✓ コピー済';
-                setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-              })
-              .catch(function() {
+              .catch(function(e) {
+                console.warn('[copyHandler]', e);
                 triggerBtn.textContent = '✗ 失敗';
                 setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
               });

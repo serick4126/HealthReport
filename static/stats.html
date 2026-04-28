@@ -405,20 +405,29 @@
         copyBtn.textContent = '…';
         fetch('/api/copy/stats?from_date=' + from + '&to_date=' + to)
           .then(function(res) {
-            if (!res.ok) throw new Error('api error');
+            if (res.status === 401) { location.href = '/'; return null; }
+            if (!res.ok) { return null; }
             return res.json();
           })
           .then(function(enrichment) {
+            if (!enrichment) {
+              copyBtn.textContent = '✗ 失敗';
+              setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+              return;
+            }
             var text = format === 'tsv'
               ? buildStatsTsv(data, enrichment)
               : buildStatsJson(data, enrichment);
-            return navigator.clipboard.writeText(text);
+            navigator.clipboard.writeText(text).then(function() {
+              copyBtn.textContent = '✓ コピー済';
+              setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+            }).catch(function() {
+              copyBtn.textContent = '✗ 失敗';
+              setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+            });
           })
-          .then(function() {
-            copyBtn.textContent = '✓ コピー済';
-            setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-          })
-          .catch(function() {
+          .catch(function(e) {
+            console.warn('[copyHandler]', e);
             copyBtn.textContent = '✗ 失敗';
             setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
           });
