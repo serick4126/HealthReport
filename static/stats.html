@@ -105,6 +105,26 @@
       .summary-card-combined { display: block; text-align: left; }
       .summary-card-combined .summary-label { margin-top: 6px; }
     }
+    .copy-menu-wrap { position: relative; display: inline-flex; align-items: center; }
+    .copy-btn {
+      background: var(--bg); border: 1px solid var(--border);
+      cursor: pointer; font-size: 11px; color: var(--text-secondary);
+      padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+      font-family: inherit;
+    }
+    .copy-btn:hover { background: var(--card-bg); color: var(--text-primary); }
+    .copy-popup {
+      position: absolute; right: 0; top: calc(100% + 4px); z-index: 102;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15); overflow: hidden; white-space: nowrap; min-width: 180px;
+    }
+    .copy-popup button {
+      display: block; width: 100%; padding: 9px 16px; background: none; border: none;
+      border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer;
+      text-align: left; font-family: inherit; color: var(--text-primary);
+    }
+    .copy-popup button:last-child { border-bottom: none; }
+    .copy-popup button:hover { background: var(--card-bg); }
   </style>
 </head>
 <body>
@@ -118,9 +138,16 @@
     <button class="period-btn" id="customBtn" onclick="openDateModal()">📅 期間指定</button>
     <button class="period-btn" id="widgetSettingsBtn" onclick="openWidgetSettings()">⚙️ 表示設定</button>
     <button class="period-btn" id="summarySettingsBtn" onclick="openSummarySettings()">📋 サマリー設定</button>
-    <div style="display:flex;gap:6px;margin-left:auto">
+    <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
       <button class="period-shift-btn" id="prevBtn" onclick="shiftPeriod(-1)" title="前の期間（最大1年前まで）">◀ 前</button>
       <button class="period-shift-btn" id="nextBtn" onclick="shiftPeriod(1)" disabled>次 ▶</button>
+      <span class="copy-menu-wrap">
+        <button class="copy-btn" id="statsCopyBtn" aria-label="集計データをコピー">コピー▾</button>
+        <div class="copy-popup" id="statsCopyPopup" style="display:none">
+          <button id="statsCopyTsv">📊 タブ区切りでコピー</button>
+          <button id="statsCopyJson">🤖 JSONでコピー</button>
+        </div>
+      </span>
     </div>
   </div>
   <div class="content" id="content">
@@ -195,6 +222,12 @@
       summaryConfig: [],       // [{id, visible}, ...] サマリーアイテム設定
       modalSummaryConfig: [],  // サマリーモーダル編集中の一時状態
       _lastStatsData: null,    // 最後のstatsレスポンス（サマリー再描画用）
+      statsData: null,
+      stepsGoal: 8000,
+      heightCm: null,
+      gender: null,
+      birthdate: null,
+      activeCopyMenu: null,
     };
 
     // ── ウィジェットヘルパー ──────────────────────────────────────────────────
@@ -922,6 +955,10 @@
           if (!settRes.ok) throw settRes;
           if (!regRes.ok) throw regRes;
           const sett = await settRes.json();
+          pageState.stepsGoal  = parseInt(sett.daily_steps_goal) || 8000;
+          pageState.heightCm   = parseFloat(sett.user_height_cm) || null;
+          pageState.gender     = sett.user_gender || null;
+          pageState.birthdate  = sett.user_birthdate || null;
           const reg = await regRes.json();
           pageState.widgetRegistry = reg.widgets || [];
           var savedRaw = sett.stats_widgets || '[]';
@@ -972,6 +1009,7 @@
     }
 
     function render(data) {
+      pageState.statsData = data;
       const labels = data.dates.map(shortDate);
       const goal = data.calories_goal;
       const mealSkips = data.meal_skips || {};
