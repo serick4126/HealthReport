@@ -210,46 +210,7 @@
     var _touchDragState = { srcEl: null };
     var _touchCleanups = [];
 
-    function calcAgeAt(birthdate, dateStr) {
-      if (!birthdate || !dateStr) return null;
-      var b = new Date(birthdate + 'T00:00:00');
-      var d = new Date(dateStr  + 'T00:00:00');
-      var age = d.getFullYear() - b.getFullYear();
-      var m = d.getMonth() - b.getMonth();
-      if (m < 0 || (m === 0 && d.getDate() < b.getDate())) age--;
-      return age < 0 ? null : age;
-    }
-
-    function calcBmrForDay(weightKg, dateStr) {
-      if (!weightKg || !pageState.heightCm || !pageState.gender || !pageState.birthdate) return null;
-      var age = calcAgeAt(pageState.birthdate, dateStr);
-      if (age === null) return null;
-      var base = 10 * weightKg + 6.25 * pageState.heightCm - 5 * age;
-      return Math.round(pageState.gender === 'male' ? base + 5 : base - 161);
-    }
-
-    function buildWeightMap(data) {
-      var known = {};
-      data.dates.forEach(function(date, i) {
-        var wm = data.weights_morning[i];
-        var we = data.weights_evening[i];
-        if (wm !== null && wm !== undefined) known[date] = wm;
-        else if (we !== null && we !== undefined) known[date] = we;
-      });
-      var result = {};
-      data.dates.forEach(function(date) {
-        if (known[date] !== undefined) { result[date] = known[date]; return; }
-        var best = null, bestDiff = Infinity;
-        Object.keys(known).forEach(function(d) {
-          var diff = Math.abs(new Date(d) - new Date(date));
-          if (diff < bestDiff) { bestDiff = diff; best = known[d]; }
-        });
-        result[date] = best;
-      });
-      return result;
-    }
-
-    function buildStatsTsv(data) {
+    function buildStatsTsv(data, enrichment) {
       var header = [
         '日付','摂取kcal','目標kcal','差分kcal',
         'P(g)','F(g)','C(g)',
@@ -260,9 +221,8 @@
         '体脂肪(%)'
       ].join('\t');
 
-      var calGoal   = data.calories_goal;
-      var stepsGoal = pageState.stepsGoal;
-      var weightMap = buildWeightMap(data);
+      var calGoal   = enrichment.calories_goal;
+      var stepsGoal = enrichment.steps_goal;
       var rows = [header];
 
       data.dates.forEach(function(date, i) {
@@ -277,9 +237,9 @@
         var bpEs  = data.blood_pressure.evening_systolic[i];
         var bpEd  = data.blood_pressure.evening_diastolic[i];
 
-        var bmr      = calcBmrForDay(weightMap[date], date);
-        var totalExp = bmr !== null ? bmr + (exCal || 0) : null;
-        var balance  = totalExp !== null && cal !== null ? cal - totalExp : null;
+        var bmr      = enrichment.bmr_kcal[i];
+        var totalExp = enrichment.total_expenditure[i];
+        var balance  = enrichment.calorie_balance[i];
 
         rows.push([
           date,
@@ -296,12 +256,11 @@
       return rows.join('\n');
     }
 
-    function buildStatsJson(data) {
-      var calGoal   = data.calories_goal;
-      var stepsGoal = pageState.stepsGoal;
-      var from      = pageState.dateRange.start || data.dates[0];
-      var to        = pageState.dateRange.end   || data.dates[data.dates.length - 1];
-      var weightMap = buildWeightMap(data);
+    function buildStatsJson(data, enrichment) {
+      var calGoal   = enrichment.calories_goal;
+      var stepsGoal = enrichment.steps_goal;
+      var from      = enrichment.dates[0];
+      var to        = enrichment.dates[enrichment.dates.length - 1];
       var weekdays  = ['日','月','火','水','木','金','土'];
 
       function roundN(v, n) {
@@ -328,9 +287,9 @@
         var bpEs  = data.blood_pressure.evening_systolic[i];
         var bpEd  = data.blood_pressure.evening_diastolic[i];
 
-        var bmr      = calcBmrForDay(weightMap[date], date);
-        var totalExp = bmr !== null ? bmr + (exCal || 0) : null;
-        var balance  = totalExp !== null && cal !== null ? cal - totalExp : null;
+        var bmr      = enrichment.bmr_kcal[i];
+        var totalExp = enrichment.total_expenditure[i];
+        var balance  = enrichment.calorie_balance[i];
 
         var dateObj = new Date(date + 'T00:00:00');
         return {
@@ -439,17 +398,30 @@
 
       function doCopy(format) {
         if (!pageState.statsData) { closeCopyMenu(); return; }
-        var text = format === 'tsv'
-          ? buildStatsTsv(pageState.statsData)
-          : buildStatsJson(pageState.statsData);
+        var data = pageState.statsData;
+        var from = data.dates[0];
+        var to   = data.dates[data.dates.length - 1];
         closeCopyMenu();
-        navigator.clipboard.writeText(text).then(function() {
-          copyBtn.textContent = '✓ コピー済';
-          setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-        }).catch(function() {
-          copyBtn.textContent = '✗ 失敗';
-          setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-        });
+        copyBtn.textContent = '…';
+        fetch('/api/copy/stats?from_date=' + from + '&to_date=' + to)
+          .then(function(res) {
+            if (!res.ok) throw new Error('api error');
+            return res.json();
+          })
+          .then(function(enrichment) {
+            var text = format === 'tsv'
+              ? buildStatsTsv(data, enrichment)
+              : buildStatsJson(data, enrichment);
+            return navigator.clipboard.writeText(text);
+          })
+          .then(function() {
+            copyBtn.textContent = '✓ コピー済';
+            setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+          })
+          .catch(function() {
+            copyBtn.textContent = '✗ 失敗';
+            setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
+          });
       }
 
       tsvBtn.addEventListener('click',  function(e) { e.stopPropagation(); doCopy('tsv');  });
@@ -476,10 +448,6 @@
       modalSummaryConfig: [],  // サマリーモーダル編集中の一時状態
       _lastStatsData: null,    // 最後のstatsレスポンス（サマリー再描画用）
       statsData: null,
-      stepsGoal: 8000,
-      heightCm: null,
-      gender: null,
-      birthdate: null,
       activeCopyMenu: null,
     };
 
@@ -1208,10 +1176,6 @@
           if (!settRes.ok) throw settRes;
           if (!regRes.ok) throw regRes;
           const sett = await settRes.json();
-          pageState.stepsGoal  = parseInt(sett.daily_steps_goal) || 8000;
-          pageState.heightCm   = parseFloat(sett.user_height_cm) || null;
-          pageState.gender     = sett.user_gender || null;
-          pageState.birthdate  = sett.user_birthdate || null;
           const reg = await regRes.json();
           pageState.widgetRegistry = reg.widgets || [];
           var savedRaw = sett.stats_widgets || '[]';
