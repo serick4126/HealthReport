@@ -421,7 +421,7 @@
       lastActivityDate: null,
     };
 
-    const MEAL_TYPE_JA = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '間食', late_night: '夜食' };
+    const TSV_MEAL_JA = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '間食', late_night: '夜食' };
     const TSV_HEADER = ['日付','種別','区分','内容','時刻','kcal','P(g)','F(g)','C(g)','Na(g)','数値1','数値2'].join('\t');
 
     function tsvRow(cells) {
@@ -438,7 +438,7 @@
         day.meals.filter(function(m) { return m.meal_type === type; })
           .forEach(function(m) {
             rows.push(tsvRow([
-              d, '食事', MEAL_TYPE_JA[type] || type, m.description,
+              d, '食事', TSV_MEAL_JA[type] || type, m.description,
               m.meal_time ? m.meal_time.slice(0, 5) : '',
               m.calories, m.protein, m.fat, m.carbs, m.sodium, '', ''
             ]));
