@@ -421,6 +421,24 @@
       lastActivityDate: null,
     };
 
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise(function(resolve, reject) {
+        var el = document.createElement('textarea');
+        el.value = text;
+        el.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+        document.body.removeChild(el);
+        ok ? resolve() : reject(new Error('copy failed'));
+      });
+    }
+
     const TSV_MEAL_JA = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '間食', late_night: '夜食' };
     const TSV_HEADER = ['日付','種別','区分','内容','時刻','kcal','P(g)','F(g)','C(g)','Na(g)','数値1','数値2'].join('\t');
 

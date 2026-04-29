@@ -210,6 +210,24 @@
     var _touchDragState = { srcEl: null };
     var _touchCleanups = [];
 
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise(function(resolve, reject) {
+        var el = document.createElement('textarea');
+        el.value = text;
+        el.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+        document.body.removeChild(el);
+        ok ? resolve() : reject(new Error('copy failed'));
+      });
+    }
+
     function buildStatsTsv(data, enrichment) {
       var header = [
         '日付','摂取kcal','目標kcal','差分kcal',
