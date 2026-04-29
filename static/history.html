@@ -811,6 +811,68 @@
           if (rel && rel.closest('.info-btn, .meal-breakdown-popup')) return;
           closeTimer = setTimeout(hidePopup, 150);
         });
+        // PC: コピーボタン開閉（クリック）
+        content.addEventListener('click', function(e) {
+          var copyBtn = e.target.closest('.copy-btn');
+          if (copyBtn) {
+            e.stopPropagation();
+            var popup = copyBtn.parentElement.querySelector('.copy-popup');
+            if (!popup) return;
+            if (pageState.activeCopyMenu === popup) {
+              closeCopyMenu();
+            } else {
+              closeCopyMenu();
+              hidePopup();
+              popup.style.display = '';
+              pageState.activeCopyMenu = popup;
+            }
+            return;
+          }
+          var copyItem = e.target.closest('[data-copy]');
+          if (copyItem) {
+            e.stopPropagation();
+            var format = copyItem.dataset.copy;
+            var date   = copyItem.dataset.date;
+            var dayData = pageState.allDays.find(function(d) { return d.date === date; });
+            if (!dayData) { closeCopyMenu(); return; }
+            var triggerBtn = copyItem.closest('.copy-menu-wrap').querySelector('.copy-btn');
+            closeCopyMenu();
+            triggerBtn.textContent = '…';
+            fetch('/api/copy/history/' + date)
+              .then(function(res) {
+                if (res.status === 401) { location.href = '/'; return null; }
+                if (!res.ok) { return null; }
+                return res.json();
+              })
+              .then(function(enrichment) {
+                if (!enrichment) {
+                  triggerBtn.textContent = '✗ 失敗';
+                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+                  return;
+                }
+                var text = format === 'tsv'
+                  ? buildHistoryTsv(dayData, enrichment)
+                  : buildHistoryJson(dayData, enrichment);
+                navigator.clipboard.writeText(text).then(function() {
+                  triggerBtn.textContent = '✓ コピー済';
+                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+                }).catch(function() {
+                  triggerBtn.textContent = '✗ 失敗';
+                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+                });
+              })
+              .catch(function(e) {
+                console.warn('[copyHandler]', e);
+                triggerBtn.textContent = '✗ 失敗';
+                setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
+              });
+          }
+        });
+        document.addEventListener('click', function(e) {
+          if (pageState.activeCopyMenu && !pageState.activeCopyMenu.contains(e.target)) {
+            closeCopyMenu();
+          }
+        });
       }
     }
 
