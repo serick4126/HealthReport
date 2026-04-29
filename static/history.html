@@ -587,7 +587,8 @@
         },
         profile: {
           calories_goal: enrichment.calories_goal,
-          steps_goal:    enrichment.steps_goal
+          steps_goal:    enrichment.steps_goal,
+          weight_kg:     enrichment.profile_weight_kg !== undefined ? enrichment.profile_weight_kg : null
         },
         summary: {
           calories_total:    t.calories,

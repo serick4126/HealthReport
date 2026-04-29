@@ -2017,6 +2017,25 @@ def _get_weight_for_copy_date(date_str: str) -> Optional[float]:
     return row["weight_kg"] if row else None
 
 
+def _get_profile_weight_for_date(date_str: str) -> Optional[float]:
+    """プロフィール用体重: 当日記録の平均 → 当日以前の直近記録 → None."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT weight_kg FROM weight_logs WHERE log_date = ?",
+            (date_str,),
+        ).fetchall()
+    if rows:
+        avg = sum(r["weight_kg"] for r in rows) / len(rows)
+        return round(avg, 2)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT weight_kg FROM weight_logs WHERE log_date <= ?"
+            " ORDER BY log_date DESC, id DESC LIMIT 1",
+            (date_str,),
+        ).fetchone()
+    return row["weight_kg"] if row else None
+
+
 def get_copy_enrichment_day(date_str: str) -> dict:
     """履歴ページのコピー用エンリッチメントデータを返す。
     戻り値: {bmr_kcal, total_expenditure, calorie_balance, calories_goal, steps_goal}
@@ -2059,6 +2078,7 @@ def get_copy_enrichment_day(date_str: str) -> dict:
         "calorie_balance": balance,
         "calories_goal": calories_goal,
         "steps_goal": steps_goal,
+        "profile_weight_kg": _get_profile_weight_for_date(date_str),
     }
 
 
