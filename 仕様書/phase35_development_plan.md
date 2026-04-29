@@ -1188,3 +1188,18 @@ Phase35 Step1〜10 実装後、履歴ページの読み込みが著しく遅く�
 - `calculate_bmr()` (Harris-Benedict) と `_calc_bmr_mifflin()` (Mifflin-St Jeor) が並存する状態。コピー機能はMifflin式を使用し、既存のBMI情報表示はHarris-Benedict式のまま。
 - コピーボタンクリック時にAPIコールが発生するため、オフライン環境ではコピー不可（エラー時は「✗ 失敗」表示）。
 - `daily_calorie_goal` フォールバック値（1500）とDBデフォルト（1800）の乖離は既存コードベース全体の技術的負債（今回スコープ外）。
+
+---
+
+## ユーザーテスト修正（Phase35-Fix）
+
+**修正日:** 2026-04-29
+
+| コミット | 内容 |
+|---------|------|
+| `38e6b0f` Phase35-Fix | history.html — `const MEAL_TYPE_JA` 重複宣言によりスクリプト全体が実行不能だったバグ修正（`TSV_MEAL_JA` にリネーム） |
+| `5c59b46` Phase35-Fix2 | history.html — PC ブラウザでコピーメニューが開かないバグ修正（`initPopupEvents` の `else` 分岐にクリックハンドラ追加） |
+| `545a079` Phase35-Fix3 | common.js, history.html, stats.html — LAN IP（HTTP）アクセス時に `navigator.clipboard` が undefined になるバグ修正（`copyToClipboard` 共通関数追加） |
+| `504c7d2` Phase35-Fix4 | history.html, stats.html — `copyToClipboard` を各ページスクリプト内に直接定義（common.js キャッシュ問題回避） |
+
+**ユーザーテスト結果:** 履歴ページ・集計ページともにコピー機能正常動作確認済み（2026-04-29）

@@ -228,6 +228,45 @@
       });
     }
 
+    // iOS Safari ではfetch().then()内でclipboard APIを呼ぶとジェスチャー権限が切れる。
+    // ClipboardItem にPromiseを渡すことでwrite()をユーザージェスチャー内で同期呼び出しする（iOS 16+対応）。
+    function copyWithClipboardItem(fetchUrl, buildTextFn, btn, resetLabel) {
+      btn.textContent = '…';
+      function onOk() {
+        btn.textContent = '✓ コピー済';
+        setTimeout(function() { btn.textContent = resetLabel; }, 1500);
+      }
+      function onErr(e) {
+        if (e === '401') return;
+        console.warn('[copyHandler]', e);
+        btn.textContent = '✗ 失敗';
+        setTimeout(function() { btn.textContent = resetLabel; }, 1500);
+      }
+      var fetchPromise = fetch(fetchUrl)
+        .then(function(res) {
+          if (res.status === 401) { location.href = '/'; return Promise.reject('401'); }
+          if (!res.ok) { return Promise.reject('fetch_error'); }
+          return res.json();
+        });
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/plain': fetchPromise.then(function(data) {
+            var text = buildTextFn(data);
+            if (!text) return Promise.reject('no_text');
+            return new Blob([text], { type: 'text/plain' });
+          })
+        })]).then(onOk).catch(onErr);
+        return;
+      }
+      fetchPromise
+        .then(function(data) {
+          var text = buildTextFn(data);
+          if (!text) return Promise.reject('no_text');
+          return copyToClipboard(text);
+        })
+        .then(onOk).catch(onErr);
+    }
+
     function buildStatsTsv(data, enrichment) {
       var header = [
         '日付','摂取kcal','目標kcal','差分kcal',
@@ -420,35 +459,16 @@
         var from = data.dates[0];
         var to   = data.dates[data.dates.length - 1];
         closeCopyMenu();
-        copyBtn.textContent = '…';
-        fetch('/api/copy/stats?from_date=' + from + '&to_date=' + to)
-          .then(function(res) {
-            if (res.status === 401) { location.href = '/'; return null; }
-            if (!res.ok) { return null; }
-            return res.json();
-          })
-          .then(function(enrichment) {
-            if (!enrichment) {
-              copyBtn.textContent = '✗ 失敗';
-              setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-              return;
-            }
-            var text = format === 'tsv'
+        var _fmt = format;
+        copyWithClipboardItem(
+          '/api/copy/stats?from_date=' + from + '&to_date=' + to,
+          function(enrichment) {
+            return _fmt === 'tsv'
               ? buildStatsTsv(data, enrichment)
               : buildStatsJson(data, enrichment);
-            copyToClipboard(text).then(function() {
-              copyBtn.textContent = '✓ コピー済';
-              setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-            }).catch(function() {
-              copyBtn.textContent = '✗ 失敗';
-              setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-            });
-          })
-          .catch(function(e) {
-            console.warn('[copyHandler]', e);
-            copyBtn.textContent = '✗ 失敗';
-            setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
-          });
+          },
+          copyBtn, 'コピー▾'
+        );
       }
 
       tsvBtn.addEventListener('click',  function(e) { e.stopPropagation(); doCopy('tsv');  });

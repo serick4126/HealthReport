@@ -439,6 +439,47 @@
       });
     }
 
+    // iOS Safari ではfetch().then()内でclipboard APIを呼ぶとジェスチャー権限が切れる。
+    // ClipboardItem にPromiseを渡すことでwrite()をユーザージェスチャー内で同期呼び出しする（iOS 16+対応）。
+    function copyWithClipboardItem(fetchUrl, buildTextFn, btn, resetLabel) {
+      btn.textContent = '…';
+      function onOk() {
+        btn.textContent = '✓ コピー済';
+        setTimeout(function() { btn.textContent = resetLabel; }, 1500);
+      }
+      function onErr(e) {
+        if (e === '401') return;
+        console.warn('[copyHandler]', e);
+        btn.textContent = '✗ 失敗';
+        setTimeout(function() { btn.textContent = resetLabel; }, 1500);
+      }
+      var fetchPromise = fetch(fetchUrl)
+        .then(function(res) {
+          if (res.status === 401) { location.href = '/'; return Promise.reject('401'); }
+          if (!res.ok) { return Promise.reject('fetch_error'); }
+          return res.json();
+        });
+      // iOS 16+: write()をユーザージェスチャー内で同期呼び出し、Blobは非同期解決
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/plain': fetchPromise.then(function(data) {
+            var text = buildTextFn(data);
+            if (!text) return Promise.reject('no_text');
+            return new Blob([text], { type: 'text/plain' });
+          })
+        })]).then(onOk).catch(onErr);
+        return;
+      }
+      // フォールバック: PC/Androidで動作、iOS HTTP環境では失敗する場合あり
+      fetchPromise
+        .then(function(data) {
+          var text = buildTextFn(data);
+          if (!text) return Promise.reject('no_text');
+          return copyToClipboard(text);
+        })
+        .then(onOk).catch(onErr);
+    }
+
     const TSV_MEAL_JA = { breakfast: '朝', lunch: '昼', dinner: '夜', snack: '間食', late_night: '夜食' };
     const TSV_HEADER = ['日付','種別','区分','内容','時刻','kcal','P(g)','F(g)','C(g)','Na(g)','数値1','数値2'].join('\t');
 
@@ -772,35 +813,17 @@
             if (!dayData) { closeCopyMenu(); return; }
             var triggerBtn = copyItem.closest('.copy-menu-wrap').querySelector('.copy-btn');
             closeCopyMenu();
-            triggerBtn.textContent = '…';
-            fetch('/api/copy/history/' + date)
-              .then(function(res) {
-                if (res.status === 401) { location.href = '/'; return null; }
-                if (!res.ok) { return null; }
-                return res.json();
-              })
-              .then(function(enrichment) {
-                if (!enrichment) {
-                  triggerBtn.textContent = '✗ 失敗';
-                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-                  return;
-                }
-                var text = format === 'tsv'
-                  ? buildHistoryTsv(dayData, enrichment)
-                  : buildHistoryJson(dayData, enrichment);
-                copyToClipboard(text).then(function() {
-                  triggerBtn.textContent = '✓ コピー済';
-                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-                }).catch(function() {
-                  triggerBtn.textContent = '✗ 失敗';
-                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-                });
-              })
-              .catch(function(e) {
-                console.warn('[copyHandler]', e);
-                triggerBtn.textContent = '✗ 失敗';
-                setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-              });
+            var _fmt = format;
+            var _day = dayData;
+            copyWithClipboardItem(
+              '/api/copy/history/' + date,
+              function(enrichment) {
+                return _fmt === 'tsv'
+                  ? buildHistoryTsv(_day, enrichment)
+                  : buildHistoryJson(_day, enrichment);
+              },
+              triggerBtn, 'コピー▾'
+            );
           }
         });
         document.addEventListener('click', function(e) {
@@ -855,35 +878,17 @@
             if (!dayData) { closeCopyMenu(); return; }
             var triggerBtn = copyItem.closest('.copy-menu-wrap').querySelector('.copy-btn');
             closeCopyMenu();
-            triggerBtn.textContent = '…';
-            fetch('/api/copy/history/' + date)
-              .then(function(res) {
-                if (res.status === 401) { location.href = '/'; return null; }
-                if (!res.ok) { return null; }
-                return res.json();
-              })
-              .then(function(enrichment) {
-                if (!enrichment) {
-                  triggerBtn.textContent = '✗ 失敗';
-                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-                  return;
-                }
-                var text = format === 'tsv'
-                  ? buildHistoryTsv(dayData, enrichment)
-                  : buildHistoryJson(dayData, enrichment);
-                copyToClipboard(text).then(function() {
-                  triggerBtn.textContent = '✓ コピー済';
-                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-                }).catch(function() {
-                  triggerBtn.textContent = '✗ 失敗';
-                  setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-                });
-              })
-              .catch(function(e) {
-                console.warn('[copyHandler]', e);
-                triggerBtn.textContent = '✗ 失敗';
-                setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
-              });
+            var _fmt = format;
+            var _day = dayData;
+            copyWithClipboardItem(
+              '/api/copy/history/' + date,
+              function(enrichment) {
+                return _fmt === 'tsv'
+                  ? buildHistoryTsv(_day, enrichment)
+                  : buildHistoryJson(_day, enrichment);
+              },
+              triggerBtn, 'コピー▾'
+            );
           }
         });
         document.addEventListener('click', function(e) {
