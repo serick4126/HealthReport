@@ -418,7 +418,7 @@
             var text = format === 'tsv'
               ? buildStatsTsv(data, enrichment)
               : buildStatsJson(data, enrichment);
-            navigator.clipboard.writeText(text).then(function() {
+            copyToClipboard(text).then(function() {
               copyBtn.textContent = '✓ コピー済';
               setTimeout(function() { copyBtn.textContent = 'コピー▾'; }, 1500);
             }).catch(function() {

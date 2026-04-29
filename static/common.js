@@ -219,3 +219,28 @@ function handleFetchError(container, e) {
     container.innerHTML = '<p class="error-msg">' + escHtml(msg) + '</p>';
   }
 }
+
+/**
+ * クリップボードにテキストを書き込む。
+ * HTTPS/localhost では navigator.clipboard を使用し、
+ * HTTP の LAN アクセス等では execCommand フォールバックを使用する。
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function(resolve, reject) {
+    var el = document.createElement('textarea');
+    el.value = text;
+    el.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+    document.body.removeChild(el);
+    ok ? resolve() : reject(new Error('execCommand copy failed'));
+  });
+}

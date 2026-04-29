@@ -770,7 +770,7 @@
                 var text = format === 'tsv'
                   ? buildHistoryTsv(dayData, enrichment)
                   : buildHistoryJson(dayData, enrichment);
-                navigator.clipboard.writeText(text).then(function() {
+                copyToClipboard(text).then(function() {
                   triggerBtn.textContent = '✓ コピー済';
                   setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
                 }).catch(function() {
@@ -853,7 +853,7 @@
                 var text = format === 'tsv'
                   ? buildHistoryTsv(dayData, enrichment)
                   : buildHistoryJson(dayData, enrichment);
-                navigator.clipboard.writeText(text).then(function() {
+                copyToClipboard(text).then(function() {
                   triggerBtn.textContent = '✓ コピー済';
                   setTimeout(function() { triggerBtn.textContent = 'コピー▾'; }, 1500);
                 }).catch(function() {
