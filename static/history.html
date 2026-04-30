@@ -1922,14 +1922,15 @@
         var result = await resp.json();
 
         if (result.status === 'updated') {
+          showToast('天気を更新しました', 'success');
           weatherMap[dateStr] = result.weather;
           renderPage();
         } else {
           var msg = result.message || '天気の取得に失敗しました';
-          alert(msg);
+          showToast(msg, 'error');
         }
       } catch (_) {
-        alert('天気の取得に失敗しました');
+        showToast('天気の取得に失敗しました', 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = '\u21BA 天気リロード';
