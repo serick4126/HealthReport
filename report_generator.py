@@ -261,7 +261,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         base = f"{d.month}/{d.day}<br/>({WEEKDAYS_JA[d.weekday()]})"
         weather = day_data.get("weather")
         if weather:
-            base += f"<br/><span style=\"font-size:0.75em;font-weight:normal\">{weather}</span>"
+            base += f" <span style=\"font-size:0.75em;font-weight:normal\">{weather}</span>"
         return base
 
     def meals_cell(meal_list: list, is_skipped: bool = False, css_class: str = "meal-cell") -> str:
