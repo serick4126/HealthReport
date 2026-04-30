@@ -287,7 +287,7 @@ WIDGET_REGISTRY = [
 
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -296,7 +296,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -324,6 +324,16 @@ def _validate_json_array_setting(key: str, value: str):
 @app.post("/api/settings")
 async def save_settings(request: Request, body: SettingsBatchRequest):
     require_auth(request)
+    # prefecture_code 変更時に lat/lng/tz を自動導出
+    prefecture = body.settings.get("prefecture_code")
+    if prefecture and prefecture != database.get_setting("prefecture_code"):
+        try:
+            lat, lng, tz = weather_module.get_coords_for_prefecture(prefecture)
+            body.settings["latitude"] = str(lat)
+            body.settings["longitude"] = str(lng)
+            body.settings["timezone"] = tz
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"不明な都道府県コードです: {prefecture}")
     for key, value in body.settings.items():
         if key not in EDITABLE_SETTINGS:
             raise HTTPException(status_code=400, detail=f"編集不可のキーです: {key}")
@@ -709,6 +719,127 @@ async def delete_blood_pressure(request: Request, bp_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="血圧記録が見つかりません")
     return JSONResponse({"success": True})
+
+
+# ── 天気APIエンドポイント ─────────────────────────────────────────────────────
+
+import weather as weather_module
+
+
+class WeatherFetchRequest(BaseModel):
+    date: str
+
+
+@app.get("/api/weather")
+async def get_weather(request: Request, date: str):
+    """特定日の天気を返す"""
+    require_auth(request)
+    _validate_date(date)
+    row = database.get_weather_log(date)
+    if row:
+        return JSONResponse({
+            "date": date,
+            "weather": row["weather"],
+            "recorded_at": row["recorded_at"],
+        })
+    return JSONResponse({
+        "date": date,
+        "weather": None,
+        "recorded_at": None,
+    })
+
+
+@app.get("/api/weather/range")
+async def get_weather_range(request: Request, start: str, end: str):
+    """期間指定で天気一覧を返す"""
+    require_auth(request)
+    _validate_date(start)
+    _validate_date(end)
+    if start > end:
+        raise HTTPException(status_code=422, detail="startはend以前の日付を指定してください")
+    rows = database.get_weather_logs_range(start, end)
+    data = []
+    for r in rows:
+        data.append({
+            "date": r["log_date"],
+            "weather": r["weather"],
+            "recorded_at": r["recorded_at"],
+        })
+    return JSONResponse({
+        "start": start,
+        "end": end,
+        "count": len(data),
+        "data": data,
+    })
+
+
+@app.post("/api/weather/fetch")
+async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
+    """指定日の天気をOpen-Meteoから取得してDB保存する（リロードボタン用）"""
+    require_auth(request)
+    _validate_date(body.date)
+
+    # 日付範囲バリデーション
+    today = datetime.now(timezone(timedelta(hours=9))).date()
+    target = date.fromisoformat(body.date)
+    if target >= today:
+        return JSONResponse({
+            "date": body.date,
+            "status": "invalid",
+            "message": "取得対象日が範囲外です（当日または366日以前）",
+        })
+    if target < today - timedelta(days=366):
+        return JSONResponse({
+            "date": body.date,
+            "status": "invalid",
+            "message": "取得対象日が範囲外です（当日または366日以前）",
+        })
+
+    # 座標を取得
+    lat_str = database.get_setting("latitude") or "35.6895"
+    lng_str = database.get_setting("longitude") or "139.6917"
+    tz = database.get_setting("timezone") or "Asia/Tokyo"
+    try:
+        lat = float(lat_str)
+        lng = float(lng_str)
+    except ValueError:
+        return JSONResponse({
+            "date": body.date,
+            "status": "error",
+            "message": "座標設定が不正です",
+        })
+
+    # Open-Meteo APIから取得
+    result = await weather_module.fetch_weather_from_api(lat, lng, body.date, body.date, tz)
+    if not result["success"]:
+        return JSONResponse({
+            "date": body.date,
+            "weather": None,
+            "recorded_at": None,
+            "status": "error",
+            "message": result.get("error", "Open-Meteo APIの取得に失敗しました"),
+        })
+
+    data = result["data"]
+    if body.date not in data:
+        return JSONResponse({
+            "date": body.date,
+            "weather": None,
+            "recorded_at": None,
+            "status": "error",
+            "message": "天気データを抽出できませんでした",
+        })
+
+    weather_str = weather_module.compute_weather_display(data[body.date])
+    now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+    database.upsert_weather_log(body.date, weather_str, now_str)
+
+    return JSONResponse({
+        "date": body.date,
+        "weather": weather_str,
+        "recorded_at": now_str,
+        "status": "updated",
+    })
 
 
 # ── 運動ログ CRUD ──────────────────────────────────────────────────────────────

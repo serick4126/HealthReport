@@ -277,6 +277,82 @@
           </div>
         </div>
 
+        <!-- 所在地 -->
+        <div class="section">
+          <div class="section-title">所在地</div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <span class="row-label">都道府県</span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="prefecture_code">
+                  <option value="JP.01" ${s.prefecture_code === 'JP.01' ? 'selected' : ''}>北海道</option>
+                  <option value="JP.02" ${s.prefecture_code === 'JP.02' ? 'selected' : ''}>青森県</option>
+                  <option value="JP.03" ${s.prefecture_code === 'JP.03' ? 'selected' : ''}>岩手県</option>
+                  <option value="JP.04" ${s.prefecture_code === 'JP.04' ? 'selected' : ''}>宮城県</option>
+                  <option value="JP.05" ${s.prefecture_code === 'JP.05' ? 'selected' : ''}>秋田県</option>
+                  <option value="JP.06" ${s.prefecture_code === 'JP.06' ? 'selected' : ''}>山形県</option>
+                  <option value="JP.07" ${s.prefecture_code === 'JP.07' ? 'selected' : ''}>福島県</option>
+                  <option value="JP.08" ${s.prefecture_code === 'JP.08' ? 'selected' : ''}>茨城県</option>
+                  <option value="JP.09" ${s.prefecture_code === 'JP.09' ? 'selected' : ''}>栃木県</option>
+                  <option value="JP.10" ${s.prefecture_code === 'JP.10' ? 'selected' : ''}>群馬県</option>
+                  <option value="JP.11" ${s.prefecture_code === 'JP.11' ? 'selected' : ''}>埼玉県</option>
+                  <option value="JP.12" ${s.prefecture_code === 'JP.12' ? 'selected' : ''}>千葉県</option>
+                  <option value="JP.13" ${s.prefecture_code === 'JP.13' ? 'selected' : ''}>東京都</option>
+                  <option value="JP.14" ${s.prefecture_code === 'JP.14' ? 'selected' : ''}>神奈川県</option>
+                  <option value="JP.15" ${s.prefecture_code === 'JP.15' ? 'selected' : ''}>新潟県</option>
+                  <option value="JP.16" ${s.prefecture_code === 'JP.16' ? 'selected' : ''}>富山県</option>
+                  <option value="JP.17" ${s.prefecture_code === 'JP.17' ? 'selected' : ''}>石川県</option>
+                  <option value="JP.18" ${s.prefecture_code === 'JP.18' ? 'selected' : ''}>福井県</option>
+                  <option value="JP.19" ${s.prefecture_code === 'JP.19' ? 'selected' : ''}>山梨県</option>
+                  <option value="JP.20" ${s.prefecture_code === 'JP.20' ? 'selected' : ''}>長野県</option>
+                  <option value="JP.21" ${s.prefecture_code === 'JP.21' ? 'selected' : ''}>岐阜県</option>
+                  <option value="JP.22" ${s.prefecture_code === 'JP.22' ? 'selected' : ''}>静岡県</option>
+                  <option value="JP.23" ${s.prefecture_code === 'JP.23' ? 'selected' : ''}>愛知県</option>
+                  <option value="JP.24" ${s.prefecture_code === 'JP.24' ? 'selected' : ''}>三重県</option>
+                  <option value="JP.25" ${s.prefecture_code === 'JP.25' ? 'selected' : ''}>滋賀県</option>
+                  <option value="JP.26" ${s.prefecture_code === 'JP.26' ? 'selected' : ''}>京都府</option>
+                  <option value="JP.27" ${s.prefecture_code === 'JP.27' ? 'selected' : ''}>大阪府</option>
+                  <option value="JP.28" ${s.prefecture_code === 'JP.28' ? 'selected' : ''}>兵庫県</option>
+                  <option value="JP.29" ${s.prefecture_code === 'JP.29' ? 'selected' : ''}>奈良県</option>
+                  <option value="JP.30" ${s.prefecture_code === 'JP.30' ? 'selected' : ''}>和歌山県</option>
+                  <option value="JP.31" ${s.prefecture_code === 'JP.31' ? 'selected' : ''}>鳥取県</option>
+                  <option value="JP.32" ${s.prefecture_code === 'JP.32' ? 'selected' : ''}>島根県</option>
+                  <option value="JP.33" ${s.prefecture_code === 'JP.33' ? 'selected' : ''}>岡山県</option>
+                  <option value="JP.34" ${s.prefecture_code === 'JP.34' ? 'selected' : ''}>広島県</option>
+                  <option value="JP.35" ${s.prefecture_code === 'JP.35' ? 'selected' : ''}>山口県</option>
+                  <option value="JP.36" ${s.prefecture_code === 'JP.36' ? 'selected' : ''}>徳島県</option>
+                  <option value="JP.37" ${s.prefecture_code === 'JP.37' ? 'selected' : ''}>香川県</option>
+                  <option value="JP.38" ${s.prefecture_code === 'JP.38' ? 'selected' : ''}>愛媛県</option>
+                  <option value="JP.39" ${s.prefecture_code === 'JP.39' ? 'selected' : ''}>高知県</option>
+                  <option value="JP.40" ${s.prefecture_code === 'JP.40' ? 'selected' : ''}>福岡県</option>
+                  <option value="JP.41" ${s.prefecture_code === 'JP.41' ? 'selected' : ''}>佐賀県</option>
+                  <option value="JP.42" ${s.prefecture_code === 'JP.42' ? 'selected' : ''}>長崎県</option>
+                  <option value="JP.43" ${s.prefecture_code === 'JP.43' ? 'selected' : ''}>熊本県</option>
+                  <option value="JP.44" ${s.prefecture_code === 'JP.44' ? 'selected' : ''}>大分県</option>
+                  <option value="JP.45" ${s.prefecture_code === 'JP.45' ? 'selected' : ''}>宮崎県</option>
+                  <option value="JP.46" ${s.prefecture_code === 'JP.46' ? 'selected' : ''}>鹿児島県</option>
+                  <option value="JP.47" ${s.prefecture_code === 'JP.47' ? 'selected' : ''}>沖縄県</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <div class="row-label" style="font-size:15px">天気APIから情報を取得する</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">
+                  <a href="https://open-meteo.com/en/docs/historical-weather-api" target="_blank" rel="noopener" style="color:var(--accent-color)">Open-Meteo Historical Weather API</a>
+                  を使用して、あなたの所在地の過去の天気情報を自動取得します
+                </div>
+              </div>
+              <div class="toggle-wrap">
+                <label class="toggle">
+                  <input type="checkbox" id="weather_api_enabled" ${s.weather_api_enabled === 'true' ? 'checked' : ''} />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- テーマ -->
         <div class="section">
           <div class="section-title">テーマ</div>
@@ -771,6 +847,8 @@
         auto_save_food_defaults: document.getElementById('auto_save_food_defaults').checked ? 'true' : 'false',
         split_multiple_items:    document.getElementById('split_multiple_items').checked ? 'true' : 'false',
       };
+      settings.prefecture_code = document.getElementById('prefecture_code').value;
+      settings.weather_api_enabled = document.getElementById('weather_api_enabled').checked ? 'true' : 'false';
       settings.report_focus_items = collectFocusItems();
       if (!settings.user_name) { showToast('ユーザー名を入力してください', 'error'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
