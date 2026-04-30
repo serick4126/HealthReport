@@ -110,6 +110,8 @@ def _sanitize_loaded_history(messages: list[dict]) -> list[dict]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.init_db()
+    # ── 起動時 天気一括取得 ────────────────────────────────────────────
+    await _fetch_missing_weather_on_startup()
     # サーバー起動時：DBから直近履歴とサマリーを復元し、無効な先頭メッセージを除去
     saved = database.load_recent_conversation(HISTORY_KEEP_ON_SESSION_END)
     saved = _sanitize_loaded_history(saved)
@@ -208,6 +210,9 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat(request: Request, body: ChatRequest):
     require_auth(request)
+
+    # ── 前日天気補完（チャット送信時） ─────────────────────────────────
+    await _fetch_yesterday_weather()
 
     return StreamingResponse(
         claude_client.stream_chat(body.message, body.images, conversation_history),
@@ -845,6 +850,105 @@ async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
 # ── 運動ログ CRUD ──────────────────────────────────────────────────────────────
 
 _JST = timezone(timedelta(hours=9))
+
+
+# ── 天気一括取得・チャット時補完ヘルパー ──────────────────────────────────────
+
+def _group_consecutive_dates(dates: list[str]) -> list[list[str]]:
+    """日付文字列のリストを連続日ごとにグループ化する。"""
+    if not dates:
+        return []
+    groups = [[dates[0]]]
+    for i in range(1, len(dates)):
+        prev = date.fromisoformat(dates[i - 1])
+        curr = date.fromisoformat(dates[i])
+        if (curr - prev).days == 1:
+            groups[-1].append(dates[i])
+        else:
+            groups.append([dates[i]])
+    return groups
+
+
+async def _fetch_missing_weather_on_startup():
+    """サーバー起動時に欠落日付の天気を一括取得する。
+    天気取得トグルがOFFの場合は何もしない。
+    """
+    if database.get_setting("weather_api_enabled") != "true":
+        logger.info("天気取得トグルがOFFのため、一括取得をスキップします")
+        return
+
+    missing_dates = database.get_missing_weather_dates()
+    if not missing_dates:
+        logger.info("欠落日付がないため、天気一括取得をスキップします")
+        return
+
+    lat_str = database.get_setting("latitude") or "35.6895"
+    lng_str = database.get_setting("longitude") or "139.6917"
+    tz = database.get_setting("timezone") or "Asia/Tokyo"
+    try:
+        lat = float(lat_str)
+        lng = float(lng_str)
+    except ValueError:
+        logger.warning("座標設定が不正です: lat=%s lng=%s", lat_str, lng_str)
+        return
+
+    groups = _group_consecutive_dates(missing_dates)
+
+    for group in groups:
+        start = group[0]
+        end = group[-1]
+        logger.info("天気一括取得: %s 〜 %s (%d日)", start, end, len(group))
+
+        result = await weather_module.fetch_weather_from_api(lat, lng, start, end, tz)
+        if not result["success"]:
+            logger.error("天気一括取得失敗: %s 〜 %s: %s", start, end, result.get("error", ""))
+            continue
+
+        data = result.get("data", {})
+        for date_str, categories in data.items():
+            weather_str = weather_module.compute_weather_display(categories)
+            now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+            database.upsert_weather_log(date_str, weather_str, now_str)
+            logger.debug("天気保存: %s → %s", date_str, weather_str)
+
+    logger.info("天気一括取得 完了（%dグループ）", len(groups))
+
+
+async def _fetch_yesterday_weather():
+    """チャット送信時に前日（暦日ベース）の天気を補完する。
+    天気取得トグルがOFFまたは前日データ既存の場合はスキップ。
+    天気取得失敗はチャット処理をブロックしない。
+    """
+    if database.get_setting("weather_api_enabled") != "true":
+        return
+
+    yesterday = (datetime.now(timezone(timedelta(hours=9))).date() - timedelta(days=1)).isoformat()
+
+    existing = database.get_weather_log(yesterday)
+    if existing is not None:
+        return
+
+    lat_str = database.get_setting("latitude") or "35.6895"
+    lng_str = database.get_setting("longitude") or "139.6917"
+    tz = database.get_setting("timezone") or "Asia/Tokyo"
+    try:
+        lat = float(lat_str)
+        lng = float(lng_str)
+    except ValueError:
+        logger.warning("チャット時天気取得: 座標設定が不正です")
+        return
+
+    result = await weather_module.fetch_weather_from_api(lat, lng, yesterday, yesterday, tz)
+    if not result["success"]:
+        logger.warning("チャット時天気取得失敗（前日=%s）: %s", yesterday, result.get("error", ""))
+        return
+
+    data = result.get("data", {})
+    if yesterday in data:
+        weather_str = weather_module.compute_weather_display(data[yesterday])
+        now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+        database.upsert_weather_log(yesterday, weather_str, now_str)
+        logger.info("チャット時天気保存: %s → %s", yesterday, weather_str)
 
 
 class ExerciseRequest(BaseModel):
