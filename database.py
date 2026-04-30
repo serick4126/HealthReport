@@ -120,7 +120,7 @@ def init_db():
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 log_date    TEXT    NOT NULL UNIQUE,
                 weather     TEXT    NOT NULL,
-                recorded_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+                recorded_at TEXT    NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS meal_skips (
