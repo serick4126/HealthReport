@@ -269,7 +269,7 @@
 
     function buildStatsTsv(data, enrichment) {
       var header = [
-        '日付','摂取kcal','目標kcal','差分kcal',
+        '日付','天気','摂取kcal','目標kcal','差分kcal',
         'P(g)','F(g)','C(g)',
         '体重朝(kg)','体重夜(kg)',
         '歩数','目標歩数','歩数差分',
@@ -300,6 +300,7 @@
 
         rows.push([
           date,
+          enrichment.weather ? (enrichment.weather[i] || '-') : '-',
           cal    ?? '', calGoal, cal    !== null ? cal    - calGoal   : '',
           data.protein[i] ?? '', data.fat[i] ?? '', data.carbs[i] ?? '',
           wm ?? '', we ?? '',
@@ -352,6 +353,7 @@
         return {
           date:              date,
           weekday:           weekdays[dateObj.getDay()],
+          weather:           enrichment.weather ? (enrichment.weather[i] || null) : null,
           calories:          cal,
           calories_diff:     cal !== null ? cal - calGoal : null,
           protein:           data.protein[i],
