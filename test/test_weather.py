@@ -124,38 +124,20 @@ class TestHOUR_INDICES:
 class TestValidateDateRange:
     """日付範囲バリデーション"""
 
-    def test_past_date_valid(self, monkeypatch):
+    def test_past_date_valid(self):
         """昨日は有効"""
         import datetime as _dt
         yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
-
-        class MockDate:
-            @staticmethod
-            def today():
-                return _dt.date.today()
-        monkeypatch.setattr(_dt, "date", MockDate)
         assert validate_date_range(yesterday, yesterday) == True
 
-    def test_today_invalid(self, monkeypatch):
+    def test_today_invalid(self):
         """当日は常に無効"""
         import datetime as _dt
         today = _dt.date.today().isoformat()
-
-        class MockDate:
-            @staticmethod
-            def today():
-                return _dt.date.today()
-        monkeypatch.setattr(_dt, "date", MockDate)
         assert validate_date_range(today, today) == False
 
-    def test_too_old_invalid(self, monkeypatch):
+    def test_too_old_invalid(self):
         """367日前は無効"""
         import datetime as _dt
         too_old = (_dt.date.today() - _dt.timedelta(days=367)).isoformat()
-
-        class MockDate:
-            @staticmethod
-            def today():
-                return _dt.date.today()
-        monkeypatch.setattr(_dt, "date", MockDate)
         assert validate_date_range(too_old, too_old) == False
