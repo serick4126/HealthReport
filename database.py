@@ -116,6 +116,13 @@ def init_db():
                 recorded_at     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS weather_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_date    TEXT    NOT NULL UNIQUE,
+                weather     TEXT    NOT NULL,
+                recorded_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+
             CREATE TABLE IF NOT EXISTS meal_skips (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -222,6 +229,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_exercise_date     ON exercise_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_bp_date           ON blood_pressure_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_body_fat_date     ON body_fat_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_weather_logs_log_date ON weather_logs(log_date);
         """)
 
         # 既存DBへのカラム追加マイグレーション
@@ -263,6 +271,12 @@ def init_db():
                 ("stats_summary_items", '[{"id":"avg_calories","visible":true},{"id":"latest_weight","visible":true},{"id":"avg_steps","visible":true},{"id":"latest_body_fat","visible":true},{"id":"avg_body_fat","visible":true}]'),
                 ("available_models", "[]"),
                 ("report_focus_items", '[{"id":"meal_content","label":"食事内容","group":"common","enabled":true},{"id":"calories","label":"カロリー","group":"common","enabled":true},{"id":"pfc","label":"PFC","group":"common","enabled":true},{"id":"weight","label":"体重","group":"common","enabled":true},{"id":"sodium","label":"塩分","group":"medical","enabled":true},{"id":"blood_pressure","label":"血圧","group":"medical","enabled":true},{"id":"body_fat","label":"体脂肪率","group":"medical","enabled":true},{"id":"expenditure","label":"消費カロリー","group":"trainer","enabled":true},{"id":"exercise","label":"運動","group":"trainer","enabled":true},{"id":"steps","label":"歩数","group":"trainer","enabled":true}]'),
+                ("country_code", "JP"),
+                ("prefecture_code", "JP.13"),
+                ("latitude", "35.6895"),
+                ("longitude", "139.6917"),
+                ("timezone", "Asia/Tokyo"),
+                ("weather_api_enabled", "false"),
             ],
         )
 
@@ -1942,6 +1956,85 @@ def get_vital_logs(
                 (start_date, end_date),
             ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── 天気ログ ───────────────────────────────────────────────────────────────────
+
+def get_weather_log(log_date: str) -> Optional[dict]:
+    """指定日の天気レコードを1件取得する。存在しない場合は None。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, weather, recorded_at FROM weather_logs WHERE log_date = ?",
+            (log_date,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_weather_log(log_date: str, weather: str, recorded_at: str) -> None:
+    """天気レコードを登録または上書きする（INSERT OR REPLACE）。"""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO weather_logs (log_date, weather, recorded_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(log_date) DO UPDATE SET
+                weather = excluded.weather,
+                recorded_at = excluded.recorded_at
+            """,
+            (log_date, weather, recorded_at),
+        )
+
+
+def get_weather_logs_range(start_date: str, end_date: str) -> list[dict]:
+    """期間内の天気レコード一覧を日付昇順で返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, log_date, weather, recorded_at FROM weather_logs "
+            "WHERE log_date >= ? AND log_date <= ? ORDER BY log_date",
+            (start_date, end_date),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_missing_weather_dates() -> list[str]:
+    """天気データが存在しない記録日付の一覧を取得する（当日を除く）。
+    全テーブル（blood_pressure_logs, body_fat_logs, meal_skips,
+    meals, steps_logs, vitals_logs, sleep_logs, weight_logs,
+    exercise_logs）の
+    日付をUNIONし、weather_logsに存在しない日付を返す。
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT date_value
+            FROM (
+                SELECT log_date  AS date_value FROM blood_pressure_logs
+                UNION
+                SELECT log_date  AS date_value FROM body_fat_logs
+                UNION
+                SELECT meal_date AS date_value FROM meal_skips
+                UNION
+                SELECT meal_date AS date_value FROM meals
+                UNION
+                SELECT log_date  AS date_value FROM steps_logs
+                UNION
+                SELECT date      AS date_value FROM vitals_logs
+                UNION
+                SELECT date      AS date_value FROM sleep_logs
+                UNION
+                SELECT log_date  AS date_value FROM weight_logs
+                UNION
+                SELECT log_date  AS date_value FROM exercise_logs
+            )
+            WHERE date_value IS NOT NULL
+              AND date_value <= DATE('now', '-1 day')
+              AND date_value NOT IN (
+                  SELECT log_date FROM weather_logs
+              )
+            ORDER BY date_value
+            """
+        ).fetchall()
+    return [r["date_value"] for r in rows]
 
 
 def get_last_activity_date() -> Optional[str]:
