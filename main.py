@@ -24,6 +24,7 @@ import claude_client
 import database
 import report_generator
 from image_utils import _UPLOAD_DIR as UPLOAD_DIR, save_image_to_fs
+import weather as weather_module
 
 # ── セッション管理（シングルユーザー・インメモリ） ────────────────────────────
 
@@ -726,9 +727,18 @@ async def delete_blood_pressure(request: Request, bp_id: int):
     return JSONResponse({"success": True})
 
 
-# ── 天気APIエンドポイント ─────────────────────────────────────────────────────
+_JST = timezone(timedelta(hours=9))
 
-import weather as weather_module
+
+def _jst_now() -> datetime:
+    return datetime.now(_JST)
+
+
+def _jst_now_str() -> str:
+    return _jst_now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ── 天気APIエンドポイント ─────────────────────────────────────────────────────
 
 
 class WeatherFetchRequest(BaseModel):
@@ -784,16 +794,7 @@ async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
     require_auth(request)
     _validate_date(body.date)
 
-    # 日付範囲バリデーション
-    today = datetime.now(timezone(timedelta(hours=9))).date()
-    target = date.fromisoformat(body.date)
-    if target >= today:
-        return JSONResponse({
-            "date": body.date,
-            "status": "invalid",
-            "message": "取得対象日が範囲外です（当日または366日以前）",
-        })
-    if target < today - timedelta(days=366):
+    if not weather_module.validate_date_range(body.date, body.date):
         return JSONResponse({
             "date": body.date,
             "status": "invalid",
@@ -836,7 +837,7 @@ async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
         })
 
     weather_str = weather_module.compute_weather_display(data[body.date])
-    now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+    now_str = _jst_now_str()
     database.upsert_weather_log(body.date, weather_str, now_str)
 
     return JSONResponse({
@@ -849,7 +850,6 @@ async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
 
 # ── 運動ログ CRUD ──────────────────────────────────────────────────────────────
 
-_JST = timezone(timedelta(hours=9))
 
 
 # ── 天気一括取得・チャット時補完ヘルパー ──────────────────────────────────────
@@ -907,7 +907,7 @@ async def _fetch_missing_weather_on_startup():
         data = result.get("data", {})
         for date_str, categories in data.items():
             weather_str = weather_module.compute_weather_display(categories)
-            now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+            now_str = _jst_now_str()
             database.upsert_weather_log(date_str, weather_str, now_str)
             logger.debug("天気保存: %s → %s", date_str, weather_str)
 
@@ -922,7 +922,7 @@ async def _fetch_yesterday_weather():
     if database.get_setting("weather_api_enabled") != "true":
         return
 
-    yesterday = (datetime.now(timezone(timedelta(hours=9))).date() - timedelta(days=1)).isoformat()
+    yesterday = (_jst_now().date() - timedelta(days=1)).isoformat()
 
     existing = database.get_weather_log(yesterday)
     if existing is not None:
@@ -946,7 +946,7 @@ async def _fetch_yesterday_weather():
     data = result.get("data", {})
     if yesterday in data:
         weather_str = weather_module.compute_weather_display(data[yesterday])
-        now_str = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+        now_str = _jst_now_str()
         database.upsert_weather_log(yesterday, weather_str, now_str)
         logger.info("チャット時天気保存: %s → %s", yesterday, weather_str)
 
