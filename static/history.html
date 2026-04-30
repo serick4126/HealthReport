@@ -420,6 +420,7 @@
       activePopup: null,
       lastActivityDate: null,
     };
+    var weatherMap = {};
 
     function copyToClipboard(text) {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -541,6 +542,9 @@
         rows.push(tsvRow([d, '体脂肪', '', '', '', '', '', '', '', '', day.body_fat, '']));
       }
 
+      var weatherVal = enrichment.weather ? enrichment.weather[0] : null;
+      rows.push(tsvRow([d, '天気', '', weatherVal || '-', '', '', '', '', '', '', '', '', '']));
+
       return rows.join('\n');
     }
 
@@ -583,7 +587,8 @@
         meta: {
           date:         d,
           weekday:      weekdays[dateObj.getDay()],
-          generated_at: new Date().toISOString().slice(0, 19)
+          generated_at: new Date().toISOString().slice(0, 19),
+          weather:      enrichment.weather ? enrichment.weather[0] || null : null,
         },
         profile: {
           calories_goal: enrichment.calories_goal,
@@ -680,6 +685,7 @@
       if (start && end) {
         url = `/api/history?start=${start}&end=${end}`;
         statsUrl = `/api/stats?start=${start}&end=${end}`;
+        pageState.dateRange = { start: start, end: end };
       } else {
         var baseDate = pageState.lastActivityDate;
         if (!baseDate) {
@@ -691,6 +697,7 @@
         pageState.currentPeriod._shiftedEnd = baseDate;
         url = `/api/history?start=${baseStart}&end=${baseDate}`;
         statsUrl = `/api/stats?start=${baseStart}&end=${baseDate}`;
+        pageState.dateRange = { start: baseStart, end: baseDate };
         const _today = new Date(); _today.setHours(0, 0, 0, 0);
         if (baseDate !== toLocalDateStr(_today)) {
           document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -712,6 +719,18 @@
           pageState.savedPage = null;
         } else {
           pageState.currentPage = 0;
+        }
+        weatherMap = {};
+        try {
+          var weatherResp = await fetch('/api/weather/range?start=' + pageState.dateRange.start + '&end=' + pageState.dateRange.end);
+          if (weatherResp.ok) {
+            var weatherData = await weatherResp.json();
+            (weatherData.data || []).forEach(function(w) {
+              weatherMap[w.date] = w.weather;
+            });
+          }
+        } catch (_) {
+          // 天気取得失敗は無視
         }
         renderPage();
         updateShiftButtons();
@@ -1015,10 +1034,28 @@
         + '<button data-copy="tsv" data-date="' + day.date + '">📊 タブ区切りでコピー</button>'
         + '<button data-copy="json" data-date="' + day.date + '">🤖 JSONでコピー</button>'
         + '</div></span>';
+
+      var weatherText = weatherMap[day.date] || null;
+      var weatherEmoji = '';
+      if (weatherText === '晴れ')          weatherEmoji = '\u2600\uFE0F ';
+      else if (weatherText === 'くもり')   weatherEmoji = '\u2601\uFE0F ';
+      else if (weatherText && weatherText.indexOf('\u96E8') !== -1) weatherEmoji = '\uD83C\uDF27\uFE0F ';
+      else if (weatherText && weatherText.indexOf('\u96EA') !== -1) weatherEmoji = '\u2744\uFE0F ';
+      var weatherDisplay = weatherText ? weatherEmoji + weatherText : '-';
+
+      var isToday = (day.date === new Date().toISOString().slice(0, 10));
+      var reloadBtnHtml = '<span class="meta-item">'
+        + '<button class="weather-reload-btn action-btn"'
+        + (isToday ? ' disabled style="opacity:0.4;cursor:not-allowed;padding:2px 6px;font-size:11px"' : ' style="padding:2px 6px;font-size:11px"')
+        + ' data-date="' + day.date + '"'
+        + ' title="天気データを再取得"'
+        + '>\u21BA 天気リロード</button>'
+        + '</span>';
+
       return `
         <div class="day-section">
           <div class="day-header">
-            <span class="day-date">${label}</span>
+            <span class="day-date">${label}  <span style="font-weight:normal;font-size:0.9em">${weatherDisplay}</span></span>
             <span class="day-totals">${t.calories} kcal / P:${t.protein}g F:${t.fat}g C:${t.carbs}g 塩:${t.sodium}g${infoBtn}${copyBtnHtml}</span>
             ${breakdownHtml}
           </div>
@@ -1026,7 +1063,7 @@
             <div class="calorie-bar-wrap" style="flex:1"><div class="calorie-bar ${over ? 'over' : ''}" style="width:${pct}%"></div></div>
             ${remainingText}
           </div>
-          <div class="day-meta">${weightHtml}${stepsHtml}${bodyFatHtml}${bpHtml}${vitalsEditBtn}${exerciseHtml}</div>
+          <div class="day-meta">${weightHtml}${stepsHtml}${bodyFatHtml}${bpHtml}${vitalsEditBtn}${reloadBtnHtml}${exerciseHtml}</div>
           ${skipSectionHtml}
           ${mealsHtml}
         </div>`;
@@ -1864,6 +1901,40 @@
         sel.appendChild(opt);
       }
     })();
+
+    document.addEventListener('click', async function(e) {
+      var btn = e.target.closest('.weather-reload-btn');
+      if (!btn || btn.disabled) return;
+      var dateStr = btn.getAttribute('data-date');
+      if (!dateStr) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.textContent = '\u21BA 取得中...';
+
+      try {
+        var resp = await fetch('/api/weather/fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: dateStr }),
+        });
+        var result = await resp.json();
+
+        if (result.status === 'updated') {
+          weatherMap[dateStr] = result.weather;
+          renderPage();
+        } else {
+          var msg = result.message || '天気の取得に失敗しました';
+          alert(msg);
+        }
+      } catch (_) {
+        alert('天気の取得に失敗しました');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '\u21BA 天気リロード';
+      }
+    });
 
     fetchLastActivityDate().then(function() { load(7, null, null); });
   </script>

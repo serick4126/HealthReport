@@ -2165,6 +2165,9 @@ def get_copy_enrichment_day(date_str: str) -> dict:
         total_exp is not None and cal_total is not None
     ) else None
 
+    weather_rows = get_weather_logs_range(date_str, date_str)
+    weather_val = weather_rows[0]["weather"] if weather_rows else None
+
     return {
         "bmr_kcal": bmr,
         "total_expenditure": total_exp,
@@ -2172,6 +2175,7 @@ def get_copy_enrichment_day(date_str: str) -> dict:
         "calories_goal": calories_goal,
         "steps_goal": steps_goal,
         "profile_weight_kg": _get_profile_weight_for_date(date_str),
+        "weather": [weather_val],
     }
 
 
@@ -2255,6 +2259,10 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
         total_exp_list.append(total_exp)
         balance_list.append(balance)
 
+    weather_rows = get_weather_logs_range(from_date, to_date)
+    weather_map = {r["log_date"]: r["weather"] for r in weather_rows}
+    weather_list = [weather_map.get(d) for d in dates]
+
     return {
         "dates": dates,
         "calories_goal": calories_goal,
@@ -2262,4 +2270,5 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
         "bmr_kcal": bmr_list,
         "total_expenditure": total_exp_list,
         "calorie_balance": balance_list,
+        "weather": weather_list,
     }
