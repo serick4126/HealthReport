@@ -256,9 +256,13 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     start = _date.fromisoformat(data["start"])
     end   = _date.fromisoformat(data["end"])
 
-    def fmt_header(iso: str) -> str:
-        d = _date.fromisoformat(iso)
-        return f"{d.month}/{d.day}<br/>({WEEKDAYS_JA[d.weekday()]})"
+    def fmt_header(day_data: dict) -> str:
+        d = _date.fromisoformat(day_data["date"])
+        base = f"{d.month}/{d.day}<br/>({WEEKDAYS_JA[d.weekday()]})"
+        weather = day_data.get("weather")
+        if weather:
+            base += f"<br/><span style=\"font-size:0.75em;font-weight:normal\">{weather}</span>"
+        return base
 
     def meals_cell(meal_list: list, is_skipped: bool = False, css_class: str = "meal-cell") -> str:
         if meal_list:
@@ -275,7 +279,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     MAIN_MEAL_LABELS = {"breakfast": "朝食", "lunch": "昼食", "dinner": "夕食"}
     MAIN_MEAL_BADGE = {"breakfast": "badge-breakfast", "lunch": "badge-lunch", "dinner": "badge-dinner"}
 
-    date_headers = "".join(f"<th>{fmt_header(d['date'])}</th>" for d in days)
+    date_headers = "".join(f"<th>{fmt_header(d)}</th>" for d in days)
 
     meal_rows = ""
     for mt in MAIN_MEAL_TYPES:
