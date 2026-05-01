@@ -2182,6 +2182,13 @@ def get_copy_enrichment_day(date_str: str) -> dict:
     weather_rows = get_weather_logs_range(date_str, date_str)
     weather_val = weather_rows[0]["weather"] if weather_rows else None
 
+    with get_conn() as conn:
+        memo_row = conn.execute(
+            "SELECT memo_text FROM memos WHERE log_date = ?",
+            (date_str,),
+        ).fetchone()
+    memo_val = memo_row["memo_text"] if memo_row else None
+
     return {
         "bmr_kcal": bmr,
         "total_expenditure": total_exp,
@@ -2190,6 +2197,7 @@ def get_copy_enrichment_day(date_str: str) -> dict:
         "steps_goal": steps_goal,
         "profile_weight_kg": _get_profile_weight_for_date(date_str),
         "weather": [weather_val],
+        "memo": [memo_val],
     }
 
 
@@ -2277,6 +2285,14 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
     weather_map = {r["log_date"]: r["weather"] for r in weather_rows}
     weather_list = [weather_map.get(d) for d in dates]
 
+    with get_conn() as conn:
+        memo_rows = conn.execute(
+            "SELECT log_date, memo_text FROM memos"
+            " WHERE log_date >= ? AND log_date <= ?",
+            (from_date, to_date),
+        ).fetchall()
+    memo_map = {r["log_date"]: r["memo_text"] for r in memo_rows}
+
     return {
         "dates": dates,
         "calories_goal": calories_goal,
@@ -2285,6 +2301,7 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
         "total_expenditure": total_exp_list,
         "calorie_balance": balance_list,
         "weather": weather_list,
+        "memo": [memo_map.get(d) for d in dates],
     }
 
 
