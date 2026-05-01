@@ -3,6 +3,7 @@ import base64
 import inspect
 import json
 import logging
+import re
 import os
 from datetime import datetime, timezone, timedelta
 from typing import AsyncGenerator
@@ -883,8 +884,6 @@ def _tool_record_blood_pressure(inp: dict) -> dict:
 
 
 def _tool_record_memo(inp: dict) -> dict:
-    import re
-    from datetime import datetime
     log_date = inp.get("log_date") or database.get_logical_today_jst()
     try:
         datetime.strptime(log_date, "%Y-%m-%d")
