@@ -532,7 +532,7 @@
           autocomplete="off"
           enterkeyhint="enter"
           spellcheck="true"
-          placeholder="今日のメモを入力（1回あたり500字、合計2000字まで）"
+          placeholder="今日のメモを入力（合計2000字まで）"
           aria-label="メモ本文"
         ></textarea>
         <div id="memoCharCounter" class="memo-char-counter">0 / 2000</div>
@@ -947,6 +947,15 @@
           <button class="page-btn" onclick="changePage(1)" ${pageState.currentPage >= totalPages - 1 ? 'disabled' : ''}>次へ →</button>
         </div>` : '';
       content.innerHTML = paginationHtml + pageDays.map(d => renderDay(d)).join('') + paginationHtml;
+      pageDays.forEach(function(day) {
+        var body = content.querySelector('.memo-card-body[data-date="' + day.date + '"]');
+        var btn  = document.getElementById('memo-expand-' + day.date);
+        if (body && btn) {
+          if (body.scrollHeight <= body.clientHeight) {
+            btn.style.display = 'none';
+          }
+        }
+      });
       if (pageState.savedScrollY > 0) {
         const y = pageState.savedScrollY;
         pageState.savedScrollY = 0;
@@ -1200,7 +1209,7 @@
           + '<div class="memo-card-body' + (isExpanded ? ' expanded' : '') + '" data-date="' + day.date + '" data-collapsed="' + (!isExpanded) + '">'
           + memoBody
           + '</div>'
-          + '<button class="memo-expand-btn" data-date="' + day.date + '">' + (isExpanded ? '折りたたむ' : '続きを読む') + '</button>'
+          + '<button class="memo-expand-btn" data-date="' + day.date + '" id="memo-expand-' + day.date + '">' + (isExpanded ? '折りたたむ' : '続きを読む') + '</button>'
           + '<div class="memo-card-actions">'
           + '<button class="memo-edit-btn action-btn" data-date="' + day.date + '" aria-label="' + day.date + ' のメモを編集">✏️</button>'
           + '<button class="memo-delete-btn action-btn" data-date="' + day.date + '" aria-label="' + day.date + ' のメモを削除">🗑️</button>'
