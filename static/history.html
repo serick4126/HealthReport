@@ -173,7 +173,7 @@
     .copy-popup button:hover { background: var(--card-bg); }
     /* ── メモカード (Phase37) ── */
     .memo-card {
-      background: var(--surface);
+      background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 10px 12px;
@@ -188,7 +188,7 @@
       font-size: 0.9em;
     }
     .memo-icon { font-size: 1.1em; }
-    .memo-label { color: var(--text); }
+    .memo-label { color: var(--text-primary); }
     .memo-card-body {
       font-size: 0.9em;
       line-height: 1.5;
@@ -229,21 +229,36 @@
       padding: 8px;
       margin: 6px 0;
       font-size: 0.9em;
-      color: var(--accent);
-      background: var(--surface);
+       color: var(--accent);
+       background: var(--card-bg);
       border: 1px dashed var(--border);
       border-radius: 8px;
       cursor: pointer;
     }
-    .memo-add-btn:hover { background: var(--hover); }
+    .memo-add-btn:hover { background: var(--bg); }
     .memo-add-btn:disabled {
-      color: var(--muted);
-      cursor: not-allowed;
+       color: var(--text-secondary);
+       cursor: not-allowed;
       opacity: 0.6;
     }
     .memo-modal-content {
       max-width: 520px;
       width: 95vw;
+    }
+    .memo-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .memo-modal-header .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5em;
+      cursor: pointer;
+      color: var(--text-secondary);
+      padding: 0 4px;
+      line-height: 1;
     }
     .memo-modal-body {
       display: flex;
@@ -259,15 +274,16 @@
       border: 1px solid var(--border);
       border-radius: 4px;
       background: var(--bg);
-      color: var(--text);
-    }
-    .memo-char-counter {
+       color: var(--text-primary);
+     }
+     .memo-char-counter {
       text-align: right;
       font-size: 0.8em;
-      color: var(--muted);
-      margin-top: 2px;
+       color: var(--text-secondary);
+       margin-top: 2px;
     }
     @media (max-width: 480px) {
+      #memoModal { padding: 0; }
       .memo-modal-content {
         width: 100vw;
         height: 100vh;
@@ -523,8 +539,8 @@
         <small id="memoError" class="err-memo" style="display:none;color:var(--danger);"></small>
       </div>
       <div class="modal-actions memo-modal-footer">
-        <button id="memoCancelBtn" class="btn-secondary">キャンセル</button>
-        <button id="memoSaveBtn" class="btn-primary">保存</button>
+        <button id="memoCancelBtn" class="secondary">キャンセル</button>
+        <button id="memoSaveBtn" class="primary">保存</button>
       </div>
     </div>
   </div>
