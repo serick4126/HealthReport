@@ -1565,8 +1565,13 @@ def get_report_data(start_date: str, end_date: str) -> dict:
             "SELECT log_date, weather FROM weather_logs WHERE log_date >= ? AND log_date <= ?",
             (start_date, end_date),
         ).fetchall()
+        memo_rows = conn.execute(
+            "SELECT log_date, memo_text FROM memos WHERE log_date >= ? AND log_date <= ?",
+            (start_date, end_date),
+        ).fetchall()
 
     weather_report_map = {r["log_date"]: r["weather"] for r in weather_report_rows}
+    memo_map = {r["log_date"]: r["memo_text"] for r in memo_rows}
     meal_map: dict = {}
     for m in meals:
         meal_map.setdefault((m["meal_date"], m["meal_type"]), []).append(dict(m))
@@ -1600,6 +1605,7 @@ def get_report_data(start_date: str, end_date: str) -> dict:
             "steps": s_map.get(d),
             "skipped": {mt: (mt in skip_map_report.get(d, set())) for mt in MEAL_TYPES},
             "weather": weather_report_map.get(d),
+            "memo": memo_map.get(d),
         })
 
     return {

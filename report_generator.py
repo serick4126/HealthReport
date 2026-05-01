@@ -905,6 +905,8 @@ def _build_comment_summary(data: dict) -> dict:
             "BMI": bmi,
             "歩数": d["steps"],
             "食事時刻": meal_times if meal_times else None,
+            "天気": d.get("weather"),
+            "メモ": d.get("memo"),
         })
 
     if skip_counts:
@@ -970,8 +972,17 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
             "- 記録日数が1ヶ月分に満たない場合（月途中の集計など）も、利用可能な日数のデータから所見を出力すること\n"
             "- セクション見出しは必ず「■」で始めること。Markdown記法（`#`・`##`等）、タイトル行、装飾記号は一切使用しない"
         )
+        memo_weather_guidance = ""
     else:
         rule_no_special = "- 特記事項がない場合は空文字のみを返す"
+        memo_weather_guidance = (
+            "- 日別データに「メモ」「天気」フィールドが含まれる場合、ユーザーが記録した"
+            "当日のコンテキスト情報です。観測結果（体重・カロリー・歩数等）の背景や"
+            "原因として注釈に組み入れてください。直接コピーするのではなく、関連する"
+            "場合のみ言及してください。null は「データなし」として扱ってください。\n"
+            "- メモは断片的な情報の場合があります。確証が持てない解釈はせず、メモが"
+            "注釈と関連する場合のみ言及してください。"
+        )
 
     return f"""\
 以下の{period_label}分の健康データを分析し、{report_type}レポートに添付する補足コメントを生成してください。
@@ -987,6 +998,7 @@ def _build_comment_prompt(focus_items: list[dict], is_monthly: bool = False) -> 
 - 医師・トレーナーが読むことを前提とした簡潔な日本語で記載
 - 患者への励まし・アドバイス・提案は不要（データ分析のみ）
 {rule_no_special}
+{memo_weather_guidance}
 - 客観的なデータに基づくコメントのみ
 - 全体で300文字以内に収めること（印刷レイアウト制約）
 """
