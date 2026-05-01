@@ -383,6 +383,24 @@ TOOLS: list[anthropic.types.ToolParam] = [
             "required": ["log_date", "time_of_day", "systolic", "diastolic"],
         },
     },
+    {
+        "name": "record_memo",
+        "description": "ユーザーが明示的に『メモ』として残すよう指示した内容を、その日の日次メモとして追記保存する。既存メモがある日は末尾に改行で結合される。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "log_date": {
+                    "type": "string",
+                    "description": "対象日（YYYY-MM-DD）。省略時は現在のアプリ日付（day_start_hour=4 を反映した論理日付）。",
+                },
+                "memo_text": {
+                    "type": "string",
+                    "description": "メモ本文。500字以内（Unicodeコードポイント単位）。命令キーワード（『メモ』『記録して』等）は除外して抽出する。",
+                },
+            },
+            "required": ["memo_text"],
+        },
+    },
 ]
 
 
@@ -514,7 +532,39 @@ get_daily_summary で当日の記録を取得し、残りカロリーに基づ�
 ユーザーメッセージに「【関連食品情報（ユーザー登録済み）】」セクションが含まれる場合、その情報はユーザーが事前登録した食品データです。
 入力内容と関連すると判断した場合のみ使用してください。関連しない場合は無視して構いません。
 
-すべての返答を日本語で行うこと。"""
+すべての返答を日本語で行うこと。
+
+# メモ記録ルール
+
+- ユーザー発話に『メモ』『memo』『記録して』『書いておいて』『日記』『忘備録』『ログ』
+  等の明示キーワードが含まれる場合のみ record_memo を呼ぶ。
+- キーワードが無い通常会話・食事報告では呼ばない。
+- 食品名や料理名としての言及（例：『メモ風ロールケーキを食べた』『ログハウス御膳』）は
+  食事報告と判断し、record_meal を呼ぶ。文末/独立した命令形（『メモに記録して』
+  『メモ：〇〇』『これメモ』『忘備録に書いて』）の場合のみ record_memo を呼ぶ。
+- 判断に迷う場合はメモ命令を優先（追記方式のためデータ損失リスクなし、誤記録時は
+  ユーザーが履歴で削除可能）。
+- 同一発話で record_meal と record_memo の両方の意図が読み取れる場合は両方の
+  ツールを順次呼ぶ。メモ命令を絶対に省略しない。
+  例: 『昼食 塩焼きそば1人前。メモに記録して、海鮮入りの塩焼きそばを友達と
+       一緒に食べた』
+  → record_meal(meal_type="lunch", description="塩焼きそば", amount="1人前")
+   + record_memo(memo_text="海鮮入りの塩焼きそばを友達と一緒に食べた")
+- メモ本文は命令キーワードを除外して抽出（『メモに記録して、〇〇』
+  → memo_text="〇〇"）。
+- 同一ターン内で複数のメモ要求がある場合は1つのツール呼び出しに \\n 結合して
+  まとめる。複数回呼ばない。
+- 単発入力が500字を超える場合は record_memo を呼ばず、ユーザーに『500字を超える
+  メモは履歴ページから直接記録してください』と案内する。
+- メモ削除をチャットで指示された場合は record_memo を呼ばず、ユーザーに
+  『メモの削除は履歴ページの🗑️ボタンから行ってください』と案内する。
+- 『昨日』『昨夜』等の指示があれば log_date = logical_today - 1 を明示指定する。
+- ツール戻り値の reason フィールドに応じてユーザーへの応答を分岐する:
+  - reason="saved_new" → 「メモを記録しました📝（{{log_date}}）」
+  - reason="appended" → 「既存メモに追記しました📝（{{log_date}}、累積 {{current_total_chars}} 字）」
+  - reason="limit_exceeded" → 「メモが累積上限（2000字）に達したため記録できませんでした。履歴ページで整理してから再送してください」
+  - reason="db_error" → 「保存に失敗しました。しばらくしてから再度お試しください」
+  - reason="invalid_date" → 「日付の指定が不正です（{{log_date}}）。YYYY-MM-DD 形式で指定してください」"""
 
 
 def build_system_prompt(savings_mode: bool = False, summary: str | None = None) -> list[dict]:
@@ -832,6 +882,30 @@ def _tool_record_blood_pressure(inp: dict) -> dict:
     }
 
 
+def _tool_record_memo(inp: dict) -> dict:
+    import re
+    from datetime import datetime
+    log_date = inp.get("log_date") or database.get_logical_today_jst()
+    try:
+        datetime.strptime(log_date, "%Y-%m-%d")
+    except ValueError:
+        return {"success": False, "reason": "invalid_date", "log_date": log_date, "current_total_chars": 0}
+    memo_text = inp["memo_text"]
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\t]", "", memo_text).strip()
+    if not cleaned or len(cleaned) > 500:
+        return {"success": False, "reason": "limit_exceeded", "log_date": log_date, "current_total_chars": 0}
+    existing = database.get_memo(log_date)
+    if existing:
+        if len(existing["memo_text"]) + len(cleaned) > 2000:
+            return {"success": False, "reason": "limit_exceeded", "log_date": log_date, "current_total_chars": 0}
+    try:
+        result = database.append_memo(log_date, cleaned)
+        return {"success": True, "reason": result["status"], "log_date": log_date, "current_total_chars": result["current_total_chars"]}
+    except Exception:
+        logger.error("_tool_record_memo: DB error", exc_info=True)
+        return {"success": False, "reason": "db_error", "log_date": log_date, "current_total_chars": 0}
+
+
 _TOOL_DISPATCH: dict = {
     "record_meal":           _tool_record_meal,
     "record_weight":         _tool_record_weight,
@@ -851,6 +925,7 @@ _TOOL_DISPATCH: dict = {
     "get_bmi_info":          _tool_get_bmi_info,
     "record_exercise":       _tool_record_exercise,
     "record_blood_pressure": _tool_record_blood_pressure,
+    "record_memo":           _tool_record_memo,
 }
 
 
