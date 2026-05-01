@@ -517,7 +517,7 @@
   </div>
 
   <!-- ── メモモーダル (Phase37) ── -->
-  <div id="memoModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="memoModalTitle" hidden>
+  <div id="memoModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="memoModalTitle" style="display:none">
     <div class="modal-box memo-modal-content">
       <div class="modal-header memo-modal-header">
         <h3 id="memoModalTitle">メモを編集</h3>
@@ -2079,12 +2079,12 @@
       document.getElementById('memoModalTitle').textContent = dateStr + ' メモを編集';
       updateMemoCharCounter();
       hideMemoError();
-      document.getElementById('memoModal').hidden = false;
+      document.getElementById('memoModal').style.display = '';
       document.getElementById('memoTextInput').focus();
     }
 
     function closeMemoModal() {
-      document.getElementById('memoModal').hidden = true;
+      document.getElementById('memoModal').style.display = 'none';
       currentMemoDate = null;
       document.getElementById('memoTextInput').value = '';
     }
