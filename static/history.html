@@ -171,6 +171,127 @@
     }
     .copy-popup button:last-child { border-bottom: none; }
     .copy-popup button:hover { background: var(--card-bg); }
+    /* ── メモカード (Phase37) ── */
+    .memo-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 6px 0;
+    }
+    .memo-card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-weight: 600;
+      font-size: 0.9em;
+    }
+    .memo-icon { font-size: 1.1em; }
+    .memo-label { color: var(--text); }
+    .memo-card-body {
+      font-size: 0.9em;
+      line-height: 1.5;
+      max-height: 4.5em;
+      overflow: hidden;
+      white-space: pre-wrap;
+      word-break: break-word;
+      transition: max-height 0.3s ease;
+    }
+    .memo-card-body.expanded { max-height: none; }
+    .memo-expand-btn {
+      display: block;
+      margin: 4px 0 6px;
+      font-size: 0.8em;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .memo-card-actions {
+      display: flex;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+    .memo-card-actions .action-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: 0.85em;
+    }
+    .memo-add-btn {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      margin: 6px 0;
+      font-size: 0.9em;
+      color: var(--accent);
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .memo-add-btn:hover { background: var(--hover); }
+    .memo-add-btn:disabled {
+      color: var(--muted);
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .memo-modal-content {
+      max-width: 520px;
+      width: 95vw;
+    }
+    .memo-modal-body {
+      display: flex;
+      flex-direction: column;
+    }
+    #memoTextInput {
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      font-family: inherit;
+      font-size: 0.95em;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .memo-char-counter {
+      text-align: right;
+      font-size: 0.8em;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    @media (max-width: 480px) {
+      .memo-modal-content {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        max-height: none;
+        margin: 0;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .memo-modal-body { flex: 1; overflow-y: auto; padding: 12px; }
+      #memoTextInput {
+        flex: 1;
+        min-height: 120px;
+        font-size: 16px;
+      }
+      .memo-modal-footer {
+        position: sticky;
+        bottom: 0;
+        background: var(--bg);
+        padding: 8px 12px;
+        border-top: 1px solid var(--border);
+      }
+    }
   </style>
 </head>
 <body>
@@ -379,6 +500,35 @@
     </div>
   </div>
 
+  <!-- ── メモモーダル (Phase37) ── -->
+  <div id="memoModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="memoModalTitle" hidden>
+    <div class="modal-box memo-modal-content">
+      <div class="modal-header memo-modal-header">
+        <h3 id="memoModalTitle">メモを編集</h3>
+        <button id="memoModalCloseBtn" class="close-btn" aria-label="閉じる">&times;</button>
+      </div>
+      <div class="modal-body memo-modal-body">
+        <textarea
+          id="memoTextInput"
+          rows="6"
+          maxlength="2000"
+          autocapitalize="sentences"
+          autocomplete="off"
+          enterkeyhint="enter"
+          spellcheck="true"
+          placeholder="今日のメモを入力（1回あたり500字、合計2000字まで）"
+          aria-label="メモ本文"
+        ></textarea>
+        <div id="memoCharCounter" class="memo-char-counter">0 / 2000</div>
+        <small id="memoError" class="err-memo" style="display:none;color:var(--danger);"></small>
+      </div>
+      <div class="modal-actions memo-modal-footer">
+        <button id="memoCancelBtn" class="btn-secondary">キャンセル</button>
+        <button id="memoSaveBtn" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 保存中オーバーレイ ── -->
   <div class="saving-overlay" id="savingOverlay" style="display:none">
     <div class="saving-box">保存中...</div>
@@ -419,6 +569,8 @@
       vitalsData: null,
       activePopup: null,
       lastActivityDate: null,
+      memoMap: {},
+      expandedMemos: {},
     };
     var weatherMap = {};
 
@@ -732,6 +884,18 @@
         } catch (_) {
           // 天気取得失敗は無視
         }
+        pageState.memoMap = {};
+        try {
+          var memoResp = await fetch('/api/memos/range?start=' + pageState.dateRange.start + '&end=' + pageState.dateRange.end);
+          if (memoResp.ok) {
+            var memoData = await memoResp.json();
+            (memoData.data || []).forEach(function(m) {
+              pageState.memoMap[m.log_date] = m.memo_text;
+            });
+          }
+        } catch (_) {
+          // メモ取得失敗は無視
+        }
         renderPage();
         updateShiftButtons();
       } catch(e) {
@@ -1001,6 +1165,32 @@
         ? day.meals.map(m => renderMeal(m)).join('')
         : '<div class="meal-card" style="color:var(--text-secondary);font-size:13px">記録なし</div>';
 
+      // メモカード (Phase37)
+      var memoText = pageState.memoMap[day.date] || null;
+      var memoHtml = '';
+      var addMemoBtnHtml = '';
+      if (memoText !== null) {
+        var memoBody = escHtml(memoText).replace(/\n/g, '<br>');
+        var isExpanded = pageState.expandedMemos[day.date] === true;
+        memoHtml = '<div class="memo-card" data-date="' + day.date + '">'
+          + '<div class="memo-card-header">'
+          + '<span class="memo-icon">📝</span>'
+          + '<span class="memo-label">メモ</span>'
+          + '</div>'
+          + '<div class="memo-card-body' + (isExpanded ? ' expanded' : '') + '" data-date="' + day.date + '" data-collapsed="' + (!isExpanded) + '">'
+          + memoBody
+          + '</div>'
+          + '<button class="memo-expand-btn" data-date="' + day.date + '">' + (isExpanded ? '折りたたむ' : '続きを読む') + '</button>'
+          + '<div class="memo-card-actions">'
+          + '<button class="memo-edit-btn action-btn" data-date="' + day.date + '" aria-label="' + day.date + ' のメモを編集">✏️</button>'
+          + '<button class="memo-delete-btn action-btn" data-date="' + day.date + '" aria-label="' + day.date + ' のメモを削除">🗑️</button>'
+          + '</div>'
+          + '</div>';
+      }
+      addMemoBtnHtml = '<button class="memo-add-btn" data-date="' + day.date + '"'
+        + (memoText !== null ? ' disabled title="すでにメモが登録されています"' : '')
+        + '>+ メモを追加</button>';
+
       // スキップセクション（朝食・昼食・夕食のみ、食事記録がないタイプのみ）
       const mealsByType = {};
       day.meals.forEach(function(m) {
@@ -1066,6 +1256,8 @@
           <div class="day-meta">${weightHtml}${stepsHtml}${bodyFatHtml}${bpHtml}${vitalsEditBtn}${reloadBtnHtml}${exerciseHtml}</div>
           ${skipSectionHtml}
           ${mealsHtml}
+          ${memoHtml}
+          ${addMemoBtnHtml}
         </div>`;
     }
 
@@ -1843,6 +2035,56 @@
       }
     }
 
+    // ── メモモーダル (Phase37) ────────────────────────────────────────────────────
+    var currentMemoDate = null;
+
+    function openMemoModal(dateStr, existingText) {
+      currentMemoDate = dateStr;
+      document.getElementById('memoTextInput').value = existingText;
+      document.getElementById('memoModalTitle').textContent = dateStr + ' メモを編集';
+      updateMemoCharCounter();
+      hideMemoError();
+      document.getElementById('memoModal').hidden = false;
+      document.getElementById('memoTextInput').focus();
+    }
+
+    function closeMemoModal() {
+      document.getElementById('memoModal').hidden = true;
+      currentMemoDate = null;
+      document.getElementById('memoTextInput').value = '';
+    }
+
+    function updateMemoCharCounter() {
+      var len = document.getElementById('memoTextInput').value.length;
+      document.getElementById('memoCharCounter').textContent = len + ' / 2000';
+    }
+
+    function showMemoError(msg) {
+      var el = document.getElementById('memoError');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideMemoError() {
+      document.getElementById('memoError').style.display = 'none';
+    }
+
+    async function deleteMemo(dateStr) {
+      try {
+        var resp = await fetch('/api/memos/' + dateStr, { method: 'DELETE' });
+        if (!resp.ok) {
+          showToast('メモが見つかりません');
+          return;
+        }
+        delete pageState.memoMap[dateStr];
+        delete pageState.expandedMemos[dateStr];
+        showToast('メモを削除しました');
+        renderPage();
+      } catch (e) {
+        showToast('通信エラーが発生しました');
+      }
+    }
+
     // スキップ・バイタル編集ボタンのイベント委譲（コンテンツ再描画後も有効）
     document.getElementById('content').addEventListener('click', function(e) {
       var addBtn = e.target.closest('.history-skip-add-btn');
@@ -1850,7 +2092,32 @@
       var undoBtn = e.target.closest('.history-skip-undo-btn');
       if (undoBtn) { historyRemoveSkip(undoBtn.dataset.mealType, undoBtn.dataset.mealDate, undoBtn); return; }
       var vitalsBtn = e.target.closest('.vitals-edit-btn');
-      if (vitalsBtn) { openVitalsModal(vitalsBtn.dataset.date); }
+      if (vitalsBtn) { openVitalsModal(vitalsBtn.dataset.date); return; }
+      // メモカード (Phase37)
+      var memoAddBtn = e.target.closest('.memo-add-btn');
+      if (memoAddBtn && !memoAddBtn.disabled) { openMemoModal(memoAddBtn.dataset.date, ''); return; }
+      var memoEditBtn = e.target.closest('.memo-edit-btn');
+      if (memoEditBtn) {
+        var existingText = pageState.memoMap[memoEditBtn.dataset.date] || '';
+        openMemoModal(memoEditBtn.dataset.date, existingText);
+        return;
+      }
+      var memoDelBtn = e.target.closest('.memo-delete-btn');
+      if (memoDelBtn) {
+        if (confirm('このメモを削除しますか？')) deleteMemo(memoDelBtn.dataset.date);
+        return;
+      }
+      var memoExpandBtn = e.target.closest('.memo-expand-btn');
+      if (memoExpandBtn) {
+        var expandDate = memoExpandBtn.dataset.date;
+        var body = document.querySelector('.memo-card-body[data-date="' + expandDate + '"]');
+        if (body) {
+          var isNowExpanded = body.classList.toggle('expanded');
+          pageState.expandedMemos[expandDate] = isNowExpanded;
+          memoExpandBtn.textContent = isNowExpanded ? '折りたたむ' : '続きを読む';
+        }
+        return;
+      }
     });
 
     // 運動ログボタンのイベント委譲（data-* 属性経由でデータを受け取る）
@@ -1874,6 +2141,49 @@
     // 運動モーダルボタン（C-5: 静的HTMLの onclick をイベントリスナーに移動）
     document.getElementById('cancelExerciseBtn').addEventListener('click', closeExerciseModal);
     document.getElementById('saveExerciseBtn').addEventListener('click', saveExercise);
+
+    // メモモーダルイベント (Phase37)
+    document.getElementById('memoTextInput').addEventListener('input', function() {
+      updateMemoCharCounter();
+      hideMemoError();
+    });
+
+    document.getElementById('memoSaveBtn').addEventListener('click', async function() {
+      if (!currentMemoDate) return;
+      var text = document.getElementById('memoTextInput').value;
+      if (!text.trim()) {
+        showMemoError('メモを入力してください');
+        return;
+      }
+      var saveBtn = document.getElementById('memoSaveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = '保存中…';
+      try {
+        var resp = await fetch('/api/memos/' + currentMemoDate, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memo_text: text }),
+        });
+        if (!resp.ok) {
+          var errData = await resp.json();
+          if (errData.detail) showMemoError(errData.detail);
+          return;
+        }
+        var data = await resp.json();
+        pageState.memoMap[currentMemoDate] = data.memo_text;
+        closeMemoModal();
+        renderPage();
+        showToast('メモを保存しました');
+      } catch (e) {
+        showMemoError('通信エラーが発生しました');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '保存';
+      }
+    });
+
+    document.getElementById('memoCancelBtn').addEventListener('click', closeMemoModal);
+    document.getElementById('memoModalCloseBtn').addEventListener('click', closeMemoModal);
 
     // ── renderPage後に画像Observerをセット ────────────────────────────────────
     const _origRenderPage = renderPage;
