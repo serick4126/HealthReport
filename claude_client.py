@@ -891,8 +891,8 @@ def _tool_record_memo(inp: dict) -> dict:
     except ValueError:
         return {"success": False, "reason": "invalid_date", "log_date": log_date, "current_total_chars": 0}
     memo_text = inp["memo_text"]
-    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\t]", "", memo_text).strip()
-    if not cleaned or len(cleaned) > 500:
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\t]", "", memo_text)
+    if not cleaned.strip() or len(cleaned) > 500:
         return {"success": False, "reason": "limit_exceeded", "log_date": log_date, "current_total_chars": 0}
     existing = database.get_memo(log_date)
     if existing:

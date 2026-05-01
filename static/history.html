@@ -1902,6 +1902,8 @@
     function setPeriod(days, btn) {
       document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      pageState.memoMap = {};
+      pageState.expandedMemos = {};
       load(days, null, null);
       updateShiftButtons();
     }
@@ -1964,6 +1966,8 @@
         '\u{1f4c5} ' + startStr.slice(5).replace('-','/') + ' \u301c ' + endStr.slice(5).replace('-','/');
 
       pageState.currentPeriod._shiftedEnd = endStr;
+      pageState.memoMap = {};
+      pageState.expandedMemos = {};
       load(null, startStr, endStr);
       updateShiftButtons();
     }
@@ -2016,6 +2020,8 @@
       document.getElementById('customBtn').classList.add('active');
       document.getElementById('customBtn').textContent =
         `📅 ${start.slice(5).replace('-','/')} 〜 ${end.slice(5).replace('-','/')}`;
+      pageState.memoMap = {};
+      pageState.expandedMemos = {};
       load(null, start, end);
       updateShiftButtons();
     }
