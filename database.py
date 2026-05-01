@@ -199,6 +199,13 @@ def init_db():
                 log_date     DATE NOT NULL UNIQUE,
                 body_fat_pct REAL NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS memos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_date    TEXT    NOT NULL UNIQUE,
+                memo_text   TEXT    NOT NULL,
+                recorded_at TEXT    NOT NULL
+            );
         """)
 
         conn.executescript("""
@@ -230,6 +237,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_bp_date           ON blood_pressure_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_body_fat_date     ON body_fat_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_weather_logs_log_date ON weather_logs(log_date);
+            CREATE INDEX IF NOT EXISTS idx_memos_log_date ON memos (log_date);
         """)
 
         # 既存DBへのカラム追加マイグレーション
@@ -2278,3 +2286,99 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
         "calorie_balance": balance_list,
         "weather": weather_list,
     }
+
+
+# ── メモ (Phase 37) ────────────────────────────────────────────────────────────────
+
+def upsert_memo(log_date: str, memo_text: str) -> dict:
+    """メモを全文置換でUPSERT。INSERT ON CONFLICT DO UPDATE。
+    Returns:
+        {"status": "created"|"updated", "recorded_at": str}
+    """
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM memos WHERE log_date = ?", (log_date,)
+        ).fetchone()
+        status = "created" if existing is None else "updated"
+        conn.execute(
+            """
+            INSERT INTO memos (log_date, memo_text, recorded_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(log_date) DO UPDATE SET
+                memo_text = excluded.memo_text,
+                recorded_at = excluded.recorded_at
+            """,
+            (log_date, memo_text, now),
+        )
+        return {"status": status, "recorded_at": now}
+
+
+def append_memo(log_date: str, append_text: str) -> dict:
+    """メモ末尾に追記。既存なしの場合は新規作成。
+    Returns:
+        {"status": "saved_new"|"appended", "memo_text": str,
+         "current_total_chars": int, "recorded_at": str}
+    """
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT memo_text FROM memos WHERE log_date = ?", (log_date,)
+        ).fetchone()
+        if existing:
+            new_text = existing["memo_text"] + "\n" + append_text
+            total_chars = len(new_text)
+            conn.execute(
+                "UPDATE memos SET memo_text = ?, recorded_at = ? WHERE log_date = ?",
+                (new_text, now, log_date),
+            )
+            return {
+                "status": "appended",
+                "memo_text": new_text,
+                "current_total_chars": total_chars,
+                "recorded_at": now,
+            }
+        else:
+            total_chars = len(append_text)
+            conn.execute(
+                "INSERT INTO memos (log_date, memo_text, recorded_at) VALUES (?, ?, ?)",
+                (log_date, append_text, now),
+            )
+            return {
+                "status": "saved_new",
+                "memo_text": append_text,
+                "current_total_chars": total_chars,
+                "recorded_at": now,
+            }
+
+
+def get_memo(log_date: str) -> dict | None:
+    """指定日のメモを取得。なければ None。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT log_date, memo_text, recorded_at FROM memos WHERE log_date = ?",
+            (log_date,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"log_date": row["log_date"], "memo_text": row["memo_text"], "recorded_at": row["recorded_at"]}
+
+
+def get_memos_range(start_date: str, end_date: str) -> list[dict]:
+    """期間指定でメモ一覧を取得。メモが存在する日のみ返す。log_date 昇順。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT log_date, memo_text, recorded_at FROM memos WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_date, end_date),
+        ).fetchall()
+    return [
+        {"log_date": r["log_date"], "memo_text": r["memo_text"], "recorded_at": r["recorded_at"]}
+        for r in rows
+    ]
+
+
+def delete_memo(log_date: str) -> bool:
+    """指定日のメモを削除。削除成功で True、対象なしで False。"""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM memos WHERE log_date = ?", (log_date,))
+    return cur.rowcount > 0
