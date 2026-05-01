@@ -697,6 +697,9 @@
       var weatherVal = enrichment.weather ? enrichment.weather[0] : null;
       rows.push(tsvRow([d, '天気', '', weatherVal || '-', '', '', '', '', '', '', '', '', '']));
 
+      var memoVal = (pageState.memoMap && pageState.memoMap[d]) ? pageState.memoMap[d].replace(/\n/g, ' ') : '';
+      rows.push(tsvRow([d, 'メモ', '', memoVal, '', '', '', '', '', '', '', '']));
+
       return rows.join('\n');
     }
 
@@ -741,6 +744,7 @@
           weekday:      weekdays[dateObj.getDay()],
           generated_at: new Date().toISOString().slice(0, 19),
           weather:      enrichment.weather ? enrichment.weather[0] || null : null,
+          memo:         (pageState.memoMap && pageState.memoMap[day.date]) ? pageState.memoMap[day.date] : null,
         },
         profile: {
           calories_goal: enrichment.calories_goal,
