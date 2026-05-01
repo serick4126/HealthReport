@@ -79,6 +79,20 @@ def _validate_time(time_str: str) -> None:
         raise HTTPException(status_code=422, detail="timeの時・分が範囲外です（時: 0-23, 分: 0-59）")
 
 
+def _validate_memo_text(text: str, mode: str) -> str:
+    """メモテキストをサニタイズ・検証。制御文字を除去し長さをチェックする。
+    mode="put" は2000字、mode="patch" は500字上限。
+    """
+    sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\t]", "", text)
+    if sanitized.strip() == "":
+        raise HTTPException(status_code=422, detail="メモを入力してください")
+    if mode == "put" and len(sanitized) > 2000:
+        raise HTTPException(status_code=422, detail="memo_text が2000字を超えています")
+    if mode == "patch" and len(sanitized) > 500:
+        raise HTTPException(status_code=422, detail="1回の追記は500字以内にしてください")
+    return sanitized
+
+
 # ── アプリ初期化 ───────────────────────────────────────────────────────────────
 
 HISTORY_KEEP_ON_SESSION_END = 10  # セッション切れ時に保持する件数
@@ -568,6 +582,10 @@ async def delete_meal(request: Request, meal_id: int):
 
 class WeightUpdateRequest(BaseModel):
     weight_kg: float
+
+
+class MemoRequest(BaseModel):
+    memo_text: str
 
 
 class WeightCreateRequest(BaseModel):
@@ -1769,6 +1787,85 @@ async def report_monthly_preview(request: Request, month: str):
 @app.get("/report")
 async def report_page():
     return FileResponse(STATIC_DIR / "report.html")
+
+
+# ── メモ API ────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/memos")
+async def get_memo(request: Request, date: str):
+    require_auth(request)
+    _validate_date(date)
+    memo = database.get_memo(date)
+    if memo:
+        return JSONResponse({
+            "log_date": memo["log_date"],
+            "memo_text": memo["memo_text"],
+            "recorded_at": memo["recorded_at"],
+        })
+    return JSONResponse({
+        "log_date": date,
+        "memo_text": None,
+        "recorded_at": None,
+    })
+
+
+@app.get("/api/memos/range")
+async def get_memo_range(request: Request, start: str, end: str):
+    require_auth(request)
+    _validate_date(start)
+    _validate_date(end)
+    data = database.get_memos_range(start, end)
+    return JSONResponse({
+        "start": start,
+        "end": end,
+        "count": len(data),
+        "data": data,
+    })
+
+
+@app.put("/api/memos/{log_date}")
+async def put_memo(log_date: str, body: MemoRequest, request: Request):
+    require_auth(request)
+    _validate_date(log_date)
+    validated = _validate_memo_text(body.memo_text, "put")
+    result = database.upsert_memo(log_date, validated)
+    return JSONResponse({
+        "log_date": log_date,
+        "memo_text": validated,
+        "recorded_at": result["recorded_at"],
+        "status": result["status"],
+    })
+
+
+@app.patch("/api/memos/{log_date}/append")
+async def patch_memo_append(log_date: str, body: MemoRequest, request: Request):
+    require_auth(request)
+    _validate_date(log_date)
+    validated = _validate_memo_text(body.memo_text, "patch")
+    existing = database.get_memo(log_date)
+    if existing and len(existing["memo_text"]) + len(validated) > 2000:
+        raise HTTPException(
+            status_code=422, detail="累積2000字を超えるため追記できません"
+        )
+    result = database.append_memo(log_date, validated)
+    return JSONResponse({
+        "log_date": log_date,
+        "memo_text": result["memo_text"],
+        "recorded_at": result["recorded_at"],
+        "current_total_chars": result["current_total_chars"],
+        "status": result["status"],
+    })
+
+
+@app.delete("/api/memos/{log_date}")
+async def delete_memo(log_date: str, request: Request):
+    require_auth(request)
+    _validate_date(log_date)
+    ok = database.delete_memo(log_date)
+    if not ok:
+        raise HTTPException(status_code=404, detail="memo not found")
+    return JSONResponse({"log_date": log_date, "status": "deleted"})
 
 
 # ── 起動コマンド（参考） ───────────────────────────────────────────────────────
