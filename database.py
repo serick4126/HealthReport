@@ -1597,10 +1597,7 @@ def get_report_data(start_date: str, end_date: str) -> dict:
     height_cm = float(get_setting("user_height_cm") or 160)
     gender    = get_setting("user_gender") or ""
     birthdate = get_setting("user_birthdate") or ""
-    try:
-        age = (_date.today() - _date.fromisoformat(birthdate)).days // 365
-    except (ValueError, TypeError):
-        age = None
+    age = _calc_age_from_birthdate(birthdate) if birthdate else None
 
     meal_map: dict = {}
     for m in meals:
