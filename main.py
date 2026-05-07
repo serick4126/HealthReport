@@ -305,9 +305,30 @@ WIDGET_REGISTRY = [
     {"id": "body_fat",       "label": "体脂肪率推移", "emoji": "📊", "widget_type": "chart", "canvas_id": "chartBodyFat",       "wrap_style": None},
 ]
 
+# ── レポート列レジストリ ────────────────────────────────────────────────────────
+# 唯一の真実源。レポート表の列定義。新列追加時はここに1行追加する。
+
+REPORT_COLUMN_REGISTRY = [
+    # --- 食事グループ ---
+    {"id": "meal_time",    "label": "食事時刻",  "group": "meal",     "default_visible": True},
+    {"id": "calories",     "label": "Cal(kcal)", "group": "meal",     "default_visible": True},
+    {"id": "calorie_diff", "label": "目標差分",  "group": "meal",     "default_visible": True},
+    {"id": "pfc",          "label": "PFC",       "group": "meal",     "default_visible": True},
+    {"id": "sodium",       "label": "塩分(g)",   "group": "meal",     "default_visible": True},
+    {"id": "expenditure",  "label": "消費/収支", "group": "meal",     "default_visible": True},
+    # --- 体重・体組成グループ ---
+    {"id": "weight_morning","label": "体重・朝", "group": "weight",   "default_visible": True},
+    {"id": "weight_evening","label": "体重・夜", "group": "weight",   "default_visible": True},
+    {"id": "bmi",          "label": "BMI",       "group": "weight",   "default_visible": True},
+    {"id": "body_fat",     "label": "体脂肪率",  "group": "weight",   "default_visible": False},
+    # --- 活動・バイタルグループ ---
+    {"id": "steps",        "label": "歩数",      "group": "activity", "default_visible": True},
+    {"id": "blood_pressure","label": "血圧",     "group": "activity", "default_visible": False},
+]
+
 # ── 設定エンドポイント ─────────────────────────────────────────────────────────
 
-EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone"}
+EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone", "report_columns"}
 
 
 SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
@@ -316,7 +337,7 @@ SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
-    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone"]
+    plain_keys = ["user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone", "report_columns"]
     result = {k: database.get_setting(k) or "" for k in plain_keys}
     # 機密項目は値の有無のみ返す（平文は返さない）
     for k in SENSITIVE_KEYS:
@@ -364,7 +385,7 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
                 raise HTTPException(status_code=422, detail="day_start_hourは整数で指定してください")
             if not (0 <= hour <= 23):
                 raise HTTPException(status_code=422, detail="day_start_hourは0〜23の範囲で指定してください")
-        if key in ("stats_widgets", "stats_summary_items", "report_focus_items"):
+        if key in ("stats_widgets", "stats_summary_items", "report_focus_items", "report_columns"):
             _validate_json_array_setting(key, value)
         if key == "user_gender":
             if value not in ("male", "female", ""):
@@ -393,6 +414,14 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
 async def get_widget_registry(request: Request):
     require_auth(request)
     return JSONResponse({"widgets": WIDGET_REGISTRY})
+
+
+# ── レポート列レジストリ endpoint ──────────────────────────────────────────────
+
+@app.get("/api/report/columns")
+async def get_report_columns(request: Request):
+    require_auth(request)
+    return JSONResponse({"columns": REPORT_COLUMN_REGISTRY})
 
 
 # ── AIモデル一覧エンドポイント ─────────────────────────────────────────────────
@@ -1747,11 +1776,19 @@ async def report_preview(request: Request, start: str):
     except (ValueError, TypeError):
         logger.warning("report_focus_items のパースに失敗しました。デフォルトにフォールバックします: %s", focus_raw)
         focus_items = []
+    # report_columns 設定を取得
+    report_columns_raw = database.get_setting("report_columns") or "[]"
+    try:
+        report_columns_parsed = json.loads(report_columns_raw)
+        if not isinstance(report_columns_parsed, list):
+            report_columns_parsed = []
+    except (ValueError, TypeError):
+        report_columns_parsed = []
     charts = report_generator.generate_charts_base64(data)
     comment = await report_generator.generate_claude_comment(
         data, prev_week=prev_week, focus_items=focus_items
     )
-    html = report_generator.generate_report_html(data, charts, comment)
+    html = report_generator.generate_report_html(data, charts, comment, report_columns=report_columns_parsed)
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
