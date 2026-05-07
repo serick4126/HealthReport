@@ -608,13 +608,11 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
     if col_visible.get("body_fat"):
         body_fat_footnote_html = (
             '* 体脂肪率は計測機器・方法により\u00b13\u301c5%程度の誤差があります。'
-            '</p>'
         )
 
     # ── PR-4: AI注釈末尾の免責事項テキスト ─────────────────────────
     ai_disclaimer_html = (
-        '<p style="font-size:6.5pt; color:#888; margin-top:4pt; font-style:italic;">'
-        '\u203b AI自動生成（Claude/Anthropic）・医療診断ではありません。'
+            '\u203b AI自動生成（Claude/Anthropic）・医療診断ではありません。'
         '</p>'
     )
 
