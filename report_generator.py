@@ -228,7 +228,7 @@ def _build_achievement_html(summary: dict) -> str:
 
     diff_str = f"+{diff} kcal" if diff > 0 else f"{diff} kcal"
     wdiff_str = f"{wdiff:+.1f} kg" if wdiff is not None else "&#8212;"
-    rate_color = "#34d399" if rate >= 70 else "#f87171"
+    rate_color = "#1A7A3A" if rate >= 70 else "#C0392B"
 
     return (
         f'<div class="achievement-summary">'
@@ -246,15 +246,116 @@ def _diff_cell(calories, goal_kcal: int) -> str:
     if calories is None:
         return '<td style="color:#8e8e93">&#8212;</td>'
     diff = calories - goal_kcal
-    color = "#34d399" if diff <= 0 else "#f87171"
+    color = "#1A7A3A" if diff <= 0 else "#C0392B"
     sign = "+" if diff > 0 else ""
     return f'<td style="color:{color}">{sign}{diff:,}</td>'
 
 
-def generate_report_html(data: dict, charts: dict, comment: str) -> str:
+# ── DR-4: 印刷向け差分色 / PR-2: WHO塩分目標 ───────────────────
+SODIUM_TARGET_G = 6.0
+
+
+def _expenditure_cell(total_exp, intake_cal) -> str:
+    """消費/収支セル: 消費kcal + 収支kcal（摂取-消費）"""
+    if total_exp is None:
+        return "&#8212;"
+    exp_str = f"{total_exp:,}"
+    if intake_cal is not None:
+        balance = intake_cal - total_exp
+        bal_color = "#C0392B" if balance > 0 else "#1A7A3A"
+        sign = "+" if balance >= 0 else ""
+        bal_str = (
+            f'<br/><span style="color:{bal_color};font-size:6pt">'
+            f'\u53ce\u652f{sign}{balance:,}</span>'
+        )
+    else:
+        bal_str = ""
+    return f"\u6d88\u8cbb{exp_str}{bal_str}"
+
+
+def _body_fat_cell(v):
+    """体脂肪率セル: round(v,1), .0 なら整数表示"""
+    if v is None:
+        return "&#8212;"
+    rounded = round(v, 1)
+    return str(int(rounded)) if rounded == int(rounded) else str(rounded)
+
+
+# ── DR-5: 血圧セル（色付きプレフィックス + 閾値アラート + 脈圧） ──
+
+def _bp_color(sys: int, dia: int) -> str:
+    """JSH2019家庭血圧基準による色分け"""
+    if sys >= 135 or dia >= 85:
+        return "#C0392B"
+    if sys >= 125 or dia >= 75:
+        return "#E67E22"
+    return "inherit"
+
+
+def _blood_pressure_cell(bp: dict) -> str:
+    """血圧セル: 朝夕2行、色付きプレフィックス + 閾値色 + 脈圧"""
+    parts = []
+    for prefix, color, key in [("\u671d", "#2BA899", "morning"), ("\u5915", "#7B9ED9", "evening")]:
+        val = bp.get(key)
+        if val:
+            sys, dia = val
+            pp = sys - dia
+            val_color = _bp_color(sys, dia)
+            parts.append(
+                f'<span style="color:{color}">{prefix}</span>'
+                f'<span style="color:{val_color}">{sys}/{dia}</span>'
+                f'<span style="color:#aaa;font-size:6pt"> PP{pp}</span>'
+            )
+    return "<br/>".join(parts) if parts else "&#8212;"
+
+
+# ── PR-2: 塩分セル（WHO目標差分付記） ──
+
+def _sodium_cell(v) -> str:
+    """塩分セル: 値 + WHO6gとの差分"""
+    if v is None:
+        return "&#8212;"
+    diff = v - SODIUM_TARGET_G
+    diff_color = "#C0392B" if diff > 0 else "#1A7A3A"
+    sign = "+" if diff >= 0 else ""
+    return (
+        f'{v:.1f}'
+        f'<br/><span style="color:{diff_color};font-size:6pt">{sign}{diff:.1f}g</span>'
+    )
+
+
+def generate_report_html(data: dict, charts: dict, comment: str, report_columns: list | None = None) -> str:
     days  = data["days"]
     start = _date.fromisoformat(data["start"])
     end   = _date.fromisoformat(data["end"])
+
+    # ── 表示列の解決 ─────────────────────────────────────────────────
+    _DEFAULT_COLUMNS = {e["id"]: e["default_visible"] for e in [
+        {"id": "meal_time",    "default_visible": True},
+        {"id": "calories",     "default_visible": True},
+        {"id": "calorie_diff", "default_visible": True},
+        {"id": "pfc",          "default_visible": True},
+        {"id": "sodium",       "default_visible": True},
+        {"id": "expenditure",  "default_visible": True},
+        {"id": "weight_morning","default_visible": True},
+        {"id": "weight_evening","default_visible": True},
+        {"id": "bmi",          "default_visible": True},
+        {"id": "body_fat",     "default_visible": False},
+        {"id": "steps",        "default_visible": True},
+        {"id": "blood_pressure","default_visible": False},
+    ]}
+
+    if report_columns:
+        col_visible = {c["id"]: c.get("visible", True) for c in report_columns if "id" in c}
+        if not any(col_visible.values()):
+            col_visible = _DEFAULT_COLUMNS
+    else:
+        col_visible = _DEFAULT_COLUMNS
+
+    REPORT_COLUMN_ORDER = [
+        "meal_time", "calories", "calorie_diff", "pfc", "sodium", "expenditure",
+        "weight_morning", "weight_evening", "bmi", "body_fat", "steps", "blood_pressure",
+    ]
 
     def fmt_header(day_data: dict) -> str:
         d = _date.fromisoformat(day_data["date"])
@@ -367,18 +468,63 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
         if height_m <= 0:
             return "&#8212;"
         bmi = avg_w / (height_m ** 2)
-        color = "#34d399" if 18.5 <= bmi < 25 else "#f87171"
+        color = "#1A7A3A" if 18.5 <= bmi < 25 else "#C0392B"
         return f'<span style="color:{color}">{bmi:.1f}</span>'
 
+    # ── 各列セルの生成 ──────────────────────────────────────────────
     meal_time_cells = "".join(f"<td class='pfc'>{_meal_time_cell(d)}</td>" for d in days)
     cal_cells   = "".join(f"<td>{dash(d['calories'])}</td>"         for d in days)
     diff_cells  = "".join(_diff_cell(d.get("calories"), goal_kcal)  for d in days)
     pfc_cells   = "".join(f"<td class='pfc'>{pfc(d)}</td>"          for d in days)
-    sod_cells   = "".join(f"<td>{dash(d['sodium'])}</td>"           for d in days)
+    sod_cells   = "".join(f"<td>{_sodium_cell(d['sodium'])}</td>"   for d in days)
     wm_cells    = "".join(f"<td>{dash(d['weight_morning'])}</td>"   for d in days)
     we_cells    = "".join(f"<td>{dash(d['weight_evening'])}</td>"   for d in days)
     bmi_cells   = "".join(f"<td>{_bmi_cell(d)}</td>"                for d in days)
     steps_cells = "".join(f'<td>{dash(d["steps"], "{:,}")}</td>'   for d in days)
+
+    # 新規: 消費/収支セル
+    exp_cells = "".join(
+        f"<td>{_expenditure_cell(d.get('total_expenditure'), d.get('calories'))}</td>"
+        for d in days
+    )
+    # 新規: 体脂肪率セル
+    bf_cells = "".join(f"<td>{_body_fat_cell(d.get('body_fat'))}</td>" for d in days)
+    # 新規: 血圧セル
+    bp_cells = "".join(
+        f"<td class='pfc'>{_blood_pressure_cell(d.get('blood_pressure', {}))}</td>"
+        for d in days
+    )
+
+    # ── DR-1: col_renderers 4タプル（label, cells, td_attrs, group） ──
+    col_renderers = {
+        "meal_time":     ("食事時刻",  meal_time_cells, "",           "meal"),
+        "calories":      ("Cal(kcal)", cal_cells,       "",           "meal"),
+        "calorie_diff":  ("目標差分",  diff_cells,      "",           "meal"),
+        "pfc":           ("PFC",       pfc_cells,       " class='pfc'", "meal"),
+        "sodium":        ("塩分(g)",   sod_cells,       "",           "meal"),
+        "expenditure":   ("消費/収支", exp_cells,       "",           "meal"),
+        "weight_morning":("体重・朝",  wm_cells,        "",           "weight"),
+        "weight_evening":("体重・夜",  we_cells,        "",           "weight"),
+        "bmi":           ("BMI",       bmi_cells,       "",           "weight"),
+        # PR-3b: 体脂肪率ラベルに注記アスタリスク付加
+        "body_fat":      ('体脂肪率<span style="font-size:6pt;color:#aaa">*</span>',
+                           bf_cells,        "",           "weight"),
+        "steps":         ("歩数",      steps_cells,     "",           "activity"),
+        "blood_pressure":("血圧",      bp_cells,        " class='pfc'", "activity"),
+    }
+
+    # グループ先頭判定付き動的行生成
+    data_rows = ""
+    current_group = None
+    for col_id in REPORT_COLUMN_ORDER:
+        if not col_visible.get(col_id, False):
+            continue
+        label, cells, td_attrs, group = col_renderers[col_id]
+        row_cls = f"grp-{group}"
+        if group != current_group:
+            row_cls += " group-start"
+            current_group = group
+        data_rows += f"<tr class='{row_cls}'><th>{label}</th>{cells}</tr>\n"
 
     if comment:
         comment_html = _format_structured_comment(comment)
@@ -417,10 +563,72 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     # AI注釈の3カラム分割
     comment_blocks = _split_comment_blocks(comment_html)
 
-    # colgroup（ラベル列6% ＋ 7日列 各13.4%）
+    # ── PR-1: 血圧週平均・最高値メトリック ──────────────────────────
+    bp_metrics_html = ""
+    if col_visible.get("blood_pressure"):
+        all_bp = [
+            v
+            for day in days
+            for v in day.get("blood_pressure", {}).values()
+        ]
+        if all_bp:
+            avg_sys = round(sum(s for s, _dia_v in all_bp) / len(all_bp))
+            avg_dia = round(sum(dia_v for _s, dia_v in all_bp) / len(all_bp))
+            max_bp = max(all_bp, key=lambda x: x[0])
+            bp_metrics_html = f"""
+<div class="metric-cards" style="margin-top:8px">
+  <div class="metric-card">
+    <div class="mc-lbl">AVG BLOOD PRESSURE</div>
+    <div class="mc-val c-teal">{avg_sys}/{avg_dia}</div>
+    <div class="mc-sub">mmHg（週平均）</div>
+  </div>
+  <div class="metric-card">
+    <div class="mc-lbl">MAX BLOOD PRESSURE</div>
+    <div class="mc-val" style="color:var(--coral)">{max_bp[0]}/{max_bp[1]}</div>
+    <div class="mc-sub">mmHg（週最高）</div>
+  </div>
+</div>"""
+
+    # ── PR-0: 消費カロリー計算式出典明記（expenditure列ON時） ─────
+    expenditure_footnote_html = ""
+    if col_visible.get("expenditure"):
+        expenditure_footnote_html = (
+            '<p style="font-size:6pt; color:#aaa; margin-top:4pt;">'
+            '\u2020 消費カロリーはMifflin-St Jeor式'
+            '（男性: 10W+6.25H\u22125A+5、女性: 10W+6.25H\u22125A\u2212161'
+            '\u30fbBMI 15\u301c40の成人向け推定式）'
+            'で算出した基礎代謝に記録された運動を加算した推定値です。'
+            '日常活動（歩行・家事等）は含まれないため実際の消費量より低い下限値となります。'
+            '収支の色（赤字\u2192緑・黒字\u2192赤）はダイエット目的の表示です。'
+            '低体重・高齢・疾患保有の方は医師の指示に従って値を解釈してください。'
+            '</p>'
+        )
+
+    # ── PR-3b: 体脂肪率計測方法注記（body_fat列ON時） ──────────────
+    body_fat_footnote_html = ""
+    if col_visible.get("body_fat"):
+        body_fat_footnote_html = (
+            '<p style="font-size:6pt; color:#aaa; margin-top:4pt;">'
+            '* 体脂肪率は計測機器・方法により\u00b13\u301c5%程度の誤差があります。'
+            '</p>'
+        )
+
+    # ── PR-4: AI注釈末尾の免責事項テキスト ─────────────────────────
+    ai_disclaimer_html = (
+        '<p style="font-size:6.5pt; color:#888; margin-top:6pt; font-style:italic;">'
+        '\u203b 上記のAI分析はClaude（Anthropic）による自動生成です。'
+        '医療診断ではありません。'
+        '本数値は推定値であり、個人の健康状態・疾患・服薬状況によって解釈が異なります。'
+        '降圧薬等を服用中の方は必ず主治医の指示に従ってください。'
+        '健康上の懸念は医師にご相談ください。'
+        '</p>'
+    )
+
+    # colgroup（ラベル列10% ＋ 6日列 各12.857% ＋ 残り1列）
     colgroup = (
-        '<col style="width:6%"/>'
-        + '<col style="width:13.4%"/>' * 7
+        '<col style="width:10%"/>'
+        + '<col style="width:12.857%"/>' * 6
+        + '<col/>'
     )
 
     return f"""<!DOCTYPE html>
@@ -522,7 +730,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   .badge-dinner    {{ background: rgba(123,158,217,.13); color: #4B72A8; }}
   .badge-snack     {{ background: rgba(155,126,212,.13); color: #6B4EA8; }}
   td {{ line-height: 1.4; }}
-  tr th:first-child {{ text-align: left; width: 6%; }}
+  tr th:first-child {{ text-align: left; width: 10%; }}
   .pfc {{ font-size: 6.5pt; }}
   .meal-cell {{ max-height: 30mm; overflow: hidden; line-height: 1.35; }}
   .meal-cell-sub {{ font-size: 6.5pt; max-height: 20mm; overflow: hidden; line-height: 1.35; }}
@@ -541,9 +749,11 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       print-color-adjust: exact;
     }}
   }}
-  .sec-hd th, .sec-hd td {{
-    background: #dde8f5; font-weight: 700;
-  }}
+
+  tr.group-start th, tr.group-start td {{ border-top: 1.2pt solid #bbb !important; }}
+  tr.grp-meal th, tr.grp-meal td {{ background: #F9F4FF; print-color-adjust: exact; -webkit-print-color-adjust: exact; }}
+  tr.grp-weight th, tr.grp-weight td {{ background: #F0F7FF; print-color-adjust: exact; -webkit-print-color-adjust: exact; }}
+  tr.grp-activity th, tr.grp-activity td {{ background: #F0FFF4; print-color-adjust: exact; -webkit-print-color-adjust: exact; }}
 
   /* レポートヘッダー（ティール背景・両ページ共通） */
   .report-header {{
@@ -573,7 +783,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
   .c-lav   {{ color: var(--lav); }}
 
   /* 2ページ目 段2: デイリーテーブル＋チャート縦積み */
-  .p2-section2 {{ display: grid; grid-template-columns: 1fr 210px; gap: 10px; flex-shrink: 0; }}
+  .p2-section2 {{ display: grid; grid-template-columns: 1fr 210px; gap: 10px; flex-shrink: 0; align-items: start; }}
   .p2-table-col {{ overflow: hidden; }}
   .p2-charts {{ display: flex; flex-direction: column; gap: 8px; }}
 
@@ -629,9 +839,21 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
     th {{ font-size: 7.5pt; }}
     .page-label {{ display: none; }}
     .skip-cell {{ color: #636366; }}
-    .sec-hd th, .sec-hd td {{
-      border-top: 1.5pt solid #666;
-      background: #e8e8e8 !important;
+    tr.group-start th, tr.group-start td {{
+      border-top: 1.5pt solid #bbb !important;
+    }}
+    tr.grp-meal th, tr.grp-meal td {{
+      background: #F9F4FF !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
+    tr.grp-weight th, tr.grp-weight td {{
+      background: #F0F7FF !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }}
+    tr.grp-activity th, tr.grp-activity td {{
+      background: #F0FFF4 !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }}
@@ -712,6 +934,8 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
 
   {achievement_html}
 
+  {bp_metrics_html}
+
   <div class="metric-cards">
     <div class="metric-card">
       <div class="mc-lbl">AVG CALORIES</div>
@@ -739,15 +963,7 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
           <tr><th></th>{date_headers}</tr>
         </thead>
         <tbody>
-          <tr class="sec-hd"><th>食事時刻</th>{meal_time_cells}</tr>
-          <tr class="sec-hd"><th>Cal(kcal)</th>{cal_cells}</tr>
-          <tr><th>目標差分</th>{diff_cells}</tr>
-          <tr><th>PFC</th>{pfc_cells}</tr>
-          <tr><th>塩分(g)</th>{sod_cells}</tr>
-          <tr class="sec-hd"><th>体重・朝</th>{wm_cells}</tr>
-          <tr><th>体重・夜</th>{we_cells}</tr>
-          <tr><th>BMI</th>{bmi_cells}</tr>
-          <tr><th>歩数</th>{steps_cells}</tr>
+          {data_rows}
         </tbody>
       </table>
     </div>
@@ -770,6 +986,10 @@ def generate_report_html(data: dict, charts: dict, comment: str) -> str:
       {_build_p2_ai_grid(comment_blocks)}
     </div>
   </div>
+
+  {expenditure_footnote_html}
+  {body_fat_footnote_html}
+  {ai_disclaimer_html}
 </div>
 
 </body>
