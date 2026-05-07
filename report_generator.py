@@ -17,6 +17,10 @@ from database import SKIP_MEAL_TYPES as SKIP_LABEL_TYPES
 
 WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
+# DR-4: 印刷向け色定数（旧 #34d399→#1A7A3A, 旧 #f87171→#C0392B）
+DIFF_GREEN = "#1A7A3A"
+DIFF_RED   = "#C0392B"
+
 
 def _date_label(iso: str) -> str:
     d = _date.fromisoformat(iso)
@@ -228,7 +232,7 @@ def _build_achievement_html(summary: dict) -> str:
 
     diff_str = f"+{diff} kcal" if diff > 0 else f"{diff} kcal"
     wdiff_str = f"{wdiff:+.1f} kg" if wdiff is not None else "&#8212;"
-    rate_color = "#1A7A3A" if rate >= 70 else "#C0392B"
+    rate_color = DIFF_GREEN if rate >= 70 else DIFF_RED
 
     return (
         f'<div class="achievement-summary">'
@@ -246,7 +250,7 @@ def _diff_cell(calories, goal_kcal: int) -> str:
     if calories is None:
         return '<td style="color:#8e8e93">&#8212;</td>'
     diff = calories - goal_kcal
-    color = "#1A7A3A" if diff <= 0 else "#C0392B"
+    color = DIFF_GREEN if diff <= 0 else DIFF_RED
     sign = "+" if diff > 0 else ""
     return f'<td style="color:{color}">{sign}{diff:,}</td>'
 
@@ -262,7 +266,7 @@ def _expenditure_cell(total_exp, intake_cal) -> str:
     exp_str = f"{total_exp:,}"
     if intake_cal is not None:
         balance = intake_cal - total_exp
-        bal_color = "#C0392B" if balance > 0 else "#1A7A3A"
+        bal_color = DIFF_RED if balance > 0 else DIFF_GREEN
         sign = "+" if balance >= 0 else ""
         bal_str = (
             f'<br/><span style="color:{bal_color};font-size:6pt">'
@@ -286,7 +290,7 @@ def _body_fat_cell(v):
 def _bp_color(sys: int, dia: int) -> str:
     """JSH2019家庭血圧基準による色分け"""
     if sys >= 135 or dia >= 85:
-        return "#C0392B"
+        return DIFF_RED
     if sys >= 125 or dia >= 75:
         return "#E67E22"
     return "inherit"
@@ -316,7 +320,7 @@ def _sodium_cell(v) -> str:
     if v is None:
         return "&#8212;"
     diff = v - SODIUM_TARGET_G
-    diff_color = "#C0392B" if diff > 0 else "#1A7A3A"
+    diff_color = DIFF_RED if diff > 0 else DIFF_GREEN
     sign = "+" if diff >= 0 else ""
     return (
         f'{v:.1f}'
@@ -468,7 +472,7 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
         if height_m <= 0:
             return "&#8212;"
         bmi = avg_w / (height_m ** 2)
-        color = "#1A7A3A" if 18.5 <= bmi < 25 else "#C0392B"
+        color = DIFF_GREEN if 18.5 <= bmi < 25 else DIFF_RED
         return f'<span style="color:{color}">{bmi:.1f}</span>'
 
     # ── 各列セルの生成 ──────────────────────────────────────────────
@@ -495,22 +499,22 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
         for d in days
     )
 
-    # ── DR-1: col_renderers 4タプル（label, cells, td_attrs, group） ──
+    # ── DR-1: col_renderers 3タプル（label, cells, group） ──
     col_renderers = {
-        "meal_time":     ("食事時刻",  meal_time_cells, "",           "meal"),
-        "calories":      ("Cal(kcal)", cal_cells,       "",           "meal"),
-        "calorie_diff":  ("目標差分",  diff_cells,      "",           "meal"),
-        "pfc":           ("PFC",       pfc_cells,       " class='pfc'", "meal"),
-        "sodium":        ("塩分(g)",   sod_cells,       "",           "meal"),
-        "expenditure":   ("消費/収支", exp_cells,       "",           "meal"),
-        "weight_morning":("体重・朝",  wm_cells,        "",           "weight"),
-        "weight_evening":("体重・夜",  we_cells,        "",           "weight"),
-        "bmi":           ("BMI",       bmi_cells,       "",           "weight"),
+        "meal_time":     ("食事時刻",  meal_time_cells, "meal"),
+        "calories":      ("Cal(kcal)", cal_cells,       "meal"),
+        "calorie_diff":  ("目標差分",  diff_cells,      "meal"),
+        "pfc":           ("PFC",       pfc_cells,       "meal"),
+        "sodium":        ("塩分(g)",   sod_cells,       "meal"),
+        "expenditure":   ("消費/収支", exp_cells,       "meal"),
+        "weight_morning":("体重・朝",  wm_cells,        "weight"),
+        "weight_evening":("体重・夜",  we_cells,        "weight"),
+        "bmi":           ("BMI",       bmi_cells,       "weight"),
         # PR-3b: 体脂肪率ラベルに注記アスタリスク付加
         "body_fat":      ('体脂肪率<span style="font-size:6pt;color:#aaa">*</span>',
-                           bf_cells,        "",           "weight"),
-        "steps":         ("歩数",      steps_cells,     "",           "activity"),
-        "blood_pressure":("血圧",      bp_cells,        " class='pfc'", "activity"),
+                           bf_cells,         "weight"),
+        "steps":         ("歩数",      steps_cells,     "activity"),
+        "blood_pressure":("血圧",      bp_cells,        "activity"),
     }
 
     # グループ先頭判定付き動的行生成
@@ -519,7 +523,7 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
     for col_id in REPORT_COLUMN_ORDER:
         if not col_visible.get(col_id, False):
             continue
-        label, cells, td_attrs, group = col_renderers[col_id]
+        label, cells, group = col_renderers[col_id]
         row_cls = f"grp-{group}"
         if group != current_group:
             row_cls += " group-start"
@@ -1348,7 +1352,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
 
     # ── カロリー推移（日別棒グラフ + 目標ライン）
     cal_vals = [d["calories"] if d["calories"] is not None else 0 for d in days]
-    bar_colors = ["#f87171" if v > goal_kcal else "#60a5fa" for v in cal_vals]
+    bar_colors = [DIFF_RED if v > goal_kcal else "#60a5fa" for v in cal_vals]
 
     fig_c, ax_c = plt.subplots(figsize=(3.5, 2.0))
     ax_c.bar(x, cal_vals, color=bar_colors, alpha=0.85)
