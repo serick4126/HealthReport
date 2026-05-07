@@ -528,7 +528,8 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
         if group != current_group:
             row_cls += " group-start"
             current_group = group
-        data_rows += f"<tr class='{row_cls}'><th>{label}</th>{cells}</tr>\n"
+        th_cls = " class='pfc'" if col_id in ("meal_time", "pfc", "blood_pressure") else ""
+        data_rows += f"<tr class='{row_cls}'><th{th_cls}>{label}</th>{cells}</tr>\n"
 
     if comment:
         comment_html = _format_structured_comment(comment)
@@ -598,13 +599,8 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
     if col_visible.get("expenditure"):
         expenditure_footnote_html = (
             '<p style="font-size:6pt; color:#aaa; margin-top:4pt;">'
-            '\u2020 消費カロリーはMifflin-St Jeor式'
-            '（男性: 10W+6.25H\u22125A+5、女性: 10W+6.25H\u22125A\u2212161'
-            '\u30fbBMI 15\u301c40の成人向け推定式）'
-            'で算出した基礎代謝に記録された運動を加算した推定値です。'
-            '日常活動（歩行・家事等）は含まれないため実際の消費量より低い下限値となります。'
-            '収支の色（赤字\u2192緑・黒字\u2192赤）はダイエット目的の表示です。'
-            '低体重・高齢・疾患保有の方は医師の指示に従って値を解釈してください。'
+            '\u2020 消費カロリーはMifflin-St Jeor式（BMR＋運動記録）による推定値。'
+            '日常活動を含まないため実際より低値です。収支色: 赤字\u2192緑・黒字\u2192赤（ダイエット目的）。'
             '</p>'
         )
 
@@ -619,12 +615,8 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
 
     # ── PR-4: AI注釈末尾の免責事項テキスト ─────────────────────────
     ai_disclaimer_html = (
-        '<p style="font-size:6.5pt; color:#888; margin-top:6pt; font-style:italic;">'
-        '\u203b 上記のAI分析はClaude（Anthropic）による自動生成です。'
-        '医療診断ではありません。'
-        '本数値は推定値であり、個人の健康状態・疾患・服薬状況によって解釈が異なります。'
-        '降圧薬等を服用中の方は必ず主治医の指示に従ってください。'
-        '健康上の懸念は医師にご相談ください。'
+        '<p style="font-size:6.5pt; color:#888; margin-top:4pt; font-style:italic;">'
+        '\u203b AI自動生成（Claude/Anthropic）・医療診断ではありません。'
         '</p>'
     )
 
