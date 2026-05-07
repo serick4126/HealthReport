@@ -240,6 +240,31 @@
         } catch(e) {
           console.error('report_focus_items パースエラー:', e);
         }
+        // report_columns レジストリの取得とレンダリング
+        try {
+          var colRes = await fetch('/api/report/columns');
+          if (colRes.ok) {
+            var colData = await colRes.json();
+            var colRegistry = colData.columns || [];
+
+            // report_columns 設定のパース
+            var savedCols = [];
+            try { savedCols = JSON.parse(settings.report_columns || '[]'); } catch(e) {}
+            var reportColumnsMap = {};
+            savedCols.forEach(function(c) {
+              if (c.id) reportColumnsMap[c.id] = !!c.visible;
+            });
+            // 未設定の場合は default_visible で初期化
+            if (!savedCols.length) {
+              colRegistry.forEach(function(c) {
+                reportColumnsMap[c.id] = c.default_visible;
+              });
+            }
+            renderReportColumns(colRegistry, reportColumnsMap);
+          }
+        } catch(e) {
+          console.error('report_columns ロードエラー:', e);
+        }
       } catch(e) {
         handleFetchError(document.getElementById('mainContent'), e);
       }
@@ -391,15 +416,6 @@
             </div>
             <div class="row" style="padding:6px 14px">
               <span style="font-size:12px;color:var(--text-secondary)">例: 4 に設定すると、0:00〜3:59 に記録した食事や体重は前日分として扱います。変更しても過去に記録済みの食事データの日付は変わりません。</span>
-            </div>
-            <div class="row">
-              <span class="row-label">一週間の開始曜日<br><small style="color:var(--text-secondary);font-size:11px">（週次レポート）</small></span>
-              <div class="model-select-wrap">
-                <select class="model-select" id="report_week_start_day">
-                  <option value="sunday" ${s.report_week_start_day !== 'monday' ? 'selected':''}>日曜日</option>
-                  <option value="monday" ${s.report_week_start_day === 'monday' ? 'selected':''}>月曜日</option>
-                </select>
-              </div>
             </div>
             <div class="row" style="align-items:flex-start">
               <span class="row-label" style="padding-top:6px">注意事項</span>
@@ -614,13 +630,30 @@
           </div>
         </details>
 
-        <!-- レポート注釈設定 -->
+        <!-- レポート出力設定 -->
         <details class="collapsible-section" open>
-          <summary>レポート注釈設定</summary>
+          <summary>レポート出力設定</summary>
           <p style="font-size:12px; color:var(--text-secondary); margin:0 4px 8px;">
             AIがレポート注釈で重点的に分析する項目を選択します。<br/>
             すべてOFFの場合はデフォルトの分析項目が使用されます。
           </p>
+          <!-- データ出力設定 -->
+          <div style="font-size:12px; font-weight:700; color:var(--text-primary); margin:0 4px 8px;">データ出力設定</div>
+          <p style="font-size:12px; color:var(--text-secondary); margin:0 4px 8px;">
+            週次レポートのデイリーサマリーテーブルに表示する項目を選択します。
+          </p>
+          <div class="card" id="reportColumnsCard">
+            <!-- JSで動的生成 -->
+          </div>
+            <div class="row">
+              <span class="row-label">一週間の開始曜日<br><small style="color:var(--text-secondary);font-size:11px">（週次レポート）</small></span>
+              <div class="model-select-wrap">
+                <select class="model-select" id="report_week_start_day">
+                  <option value="sunday" ${s.report_week_start_day !== 'monday' ? 'selected':''}>日曜日</option>
+                  <option value="monday" ${s.report_week_start_day === 'monday' ? 'selected':''}>月曜日</option>
+                </select>
+              </div>
+            </div>
           <div class="card" id="focusItemsCard">
             <!-- JSで動的生成 -->
           </div>
@@ -765,6 +798,14 @@
     };
     var FOCUS_GROUP_ORDER = ['common', 'medical', 'trainer'];
 
+    // ── レポート出力カラム設定 ───────────────────────────────────────────
+    var REPORT_COLUMN_GROUP_LABELS = {
+      meal:     '食事',
+      weight:   '体重・体組成',
+      activity: '活動・バイタル'
+    };
+    var REPORT_COLUMN_GROUP_ORDER = ['meal', 'weight', 'activity'];    
+
     function renderFocusItems(items) {
       var card = document.getElementById('focusItemsCard');
       if (!card) return;
@@ -814,6 +855,50 @@
       });
     }
 
+    function renderReportColumns(columns, savedMap) {
+      var card = document.getElementById('reportColumnsCard');
+      if (!card) return;
+      card.innerHTML = '';
+
+      var groups = {};
+      columns.forEach(function(col) {
+        var g = col.group || 'meal';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(col);
+      });
+
+      REPORT_COLUMN_GROUP_ORDER.forEach(function(groupId) {
+        var items = groups[groupId];
+        if (!items || !items.length) return;
+
+        var header = document.createElement('div');
+        header.className = 'focus-group-header';
+        header.textContent = REPORT_COLUMN_GROUP_LABELS[groupId] || groupId;
+        card.appendChild(header);
+
+        items.forEach(function(col) {
+          var row = document.createElement('div');
+          row.className = 'row';
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.setAttribute('data-col-id', col.id);
+          if (savedMap[col.id] !== false) cb.checked = true;
+          var label = document.createElement('label');
+          label.className = 'toggle';
+          var slider = document.createElement('span');
+          slider.className = 'toggle-slider';
+          label.appendChild(cb);
+          label.appendChild(slider);
+          var span = document.createElement('span');
+          span.className = 'row-label';
+          span.textContent = col.label;
+          row.appendChild(span);
+          row.appendChild(label);
+          card.appendChild(row);
+        });
+      });
+    }
+
     function collectFocusItems() {
       var items = [];
       document.querySelectorAll('[data-focus-id]').forEach(function(cb) {
@@ -825,6 +910,14 @@
         });
       });
       return JSON.stringify(items);
+    }
+
+    function collectReportColumns() {
+      var result = [];
+      document.querySelectorAll('[data-col-id]').forEach(function(cb) {
+        result.push({ id: cb.getAttribute('data-col-id'), visible: cb.checked });
+      });
+      return result;
     }
 
     async function saveSettings() {
@@ -850,6 +943,7 @@
       settings.prefecture_code = document.getElementById('prefecture_code').value;
       settings.weather_api_enabled = document.getElementById('weather_api_enabled').checked ? 'true' : 'false';
       settings.report_focus_items = collectFocusItems();
+      settings.report_columns = JSON.stringify(collectReportColumns());
       if (!settings.user_name) { showToast('ユーザー名を入力してください', 'error'); return; }
       if (!settings.daily_calorie_goal || isNaN(settings.daily_calorie_goal)) { showToast('カロリー目標を入力してください', 'error'); return; }
       if (settings.daily_steps_goal && isNaN(settings.daily_steps_goal)) { showToast('歩数目標に正しい数値を入力してください', 'error'); return; }
