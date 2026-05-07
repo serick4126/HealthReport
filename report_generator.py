@@ -427,7 +427,7 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
             c_pct = round(c_kcal / total_kcal * 100)
             return (f'<span style="color:#60a5fa">P{p_pct}%</span> {dash(p)}g<br/>'
                     f'<span style="color:#fbbf24">F{f_pct}%</span> {dash(f_)}g<br/>'
-                    f'<span style="color:#34d399">C{c_pct}%</span> {dash(c)}g')
+                    f'<span style="color:#1A7A3A">C{c_pct}%</span> {dash(c)}g')
         return f"P{dash(p)}g<br/>F{dash(f_)}g<br/>C{dash(c)}g"
 
     goal_kcal = data.get("calorie_goal", 1500)
