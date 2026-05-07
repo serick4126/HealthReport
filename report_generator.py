@@ -601,14 +601,12 @@ def generate_report_html(data: dict, charts: dict, comment: str, report_columns:
             '<p style="font-size:6pt; color:#aaa; margin-top:4pt;">'
             '\u2020 消費カロリーはMifflin-St Jeor式（BMR＋運動記録）による推定値。'
             '日常活動を含まないため実際より低値です。収支色: 赤字\u2192緑・黒字\u2192赤（ダイエット目的）。'
-            '</p>'
         )
 
     # ── PR-3b: 体脂肪率計測方法注記（body_fat列ON時） ──────────────
     body_fat_footnote_html = ""
     if col_visible.get("body_fat"):
         body_fat_footnote_html = (
-            '<p style="font-size:6pt; color:#aaa; margin-top:4pt;">'
             '* 体脂肪率は計測機器・方法により\u00b13\u301c5%程度の誤差があります。'
             '</p>'
         )
