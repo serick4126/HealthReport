@@ -1777,34 +1777,22 @@ def calculate_bmr(
     age: Optional[int] = None,
     gender: Optional[str] = None,
 ) -> dict:
-    """Harris-Benedict式（改訂版）で推定基礎代謝を計算する。
-    age: 整数年齢（None または範囲外の場合は 40 でフォールバック）
-    gender: "male" | "female"（None または不正値の場合は男性でフォールバック）
-    戻り値: {"bmr_kcal": int, "bmr_note": str}
+    """Mifflin-St Jeor式で推定基礎代謝を計算する。
+    male:   BMR = 10W + 6.25H - 5A + 5
+    female: BMR = 10W + 6.25H - 5A - 161
+    age/gender が未設定または不正の場合は bmr_kcal=None を返す（フォールバック廃止）。
+    戻り値: {"bmr_kcal": int | None, "bmr_note": str}
     """
-    if weight_kg <= 0 or height_cm <= 0:
+    if weight_kg is None or height_cm is None or weight_kg <= 0 or height_cm <= 0:
         return {"bmr_kcal": None, "bmr_note": "計算不可（値が不正）"}
 
-    is_fallback = (
-        age is None or not (1 <= age <= 120)
-        or gender not in ("male", "female")
-    )
-    effective_age = age if (age is not None and 1 <= age <= 120) else 40
-    effective_gender = gender if gender in ("male", "female") else "male"
+    if age is None or not (1 <= age <= 120) or gender not in ("male", "female"):
+        return {"bmr_kcal": None, "bmr_note": "計算不可（性別・年齢の設定が必要）"}
 
-    if effective_gender == "male":
-        bmr = 88.362 + (13.397 * weight_kg) + (4.799 * height_cm) - (5.677 * effective_age)
-        gender_label = "男性"
-    else:
-        bmr = 447.593 + (9.247 * weight_kg) + (3.098 * height_cm) - (4.330 * effective_age)
-        gender_label = "女性"
-
-    if is_fallback:
-        note = "推定値（40歳男性基準・性別/年齢未設定）"
-    else:
-        age_label = str(effective_age)
-        note = "推定値（" + age_label + "歳・" + gender_label + "）"
-
+    base = 10 * weight_kg + 6.25 * height_cm - 5 * age
+    bmr = (base + 5) if gender == "male" else (base - 161)
+    gender_label = "男性" if gender == "male" else "女性"
+    note = "推定値（" + str(age) + "歳・" + gender_label + "・Mifflin-St Jeor式）"
     return {"bmr_kcal": round(bmr), "bmr_note": note}
 
 
@@ -2094,22 +2082,6 @@ def _calc_age_at_date(birthdate_str: str, target_date_str: str) -> Optional[int]
     return age if 0 <= age <= 120 else None
 
 
-def _calc_bmr_mifflin(
-    weight_kg: float, height_cm: float, age: int, gender: str
-) -> Optional[int]:
-    """Mifflin-St Jeor式でBMRを計算する（コピー機能専用）。
-    male: 10w + 6.25h - 5a + 5
-    female: 10w + 6.25h - 5a - 161
-    """
-    if not weight_kg or not height_cm or age is None:
-        return None
-    base = 10 * weight_kg + 6.25 * height_cm - 5 * age
-    if gender == "male":
-        return round(base + 5)
-    elif gender == "female":
-        return round(base - 161)
-    return None
-
 
 def _get_weight_for_copy_date(date_str: str) -> Optional[float]:
     """指定日の体重（朝優先→夜→期間内最近傍）を返す。"""
@@ -2166,9 +2138,8 @@ def get_copy_enrichment_day(date_str: str) -> dict:
         height_cm = None
     weight_kg = _get_weight_for_copy_date(date_str)
     age = _calc_age_at_date(birthdate, date_str) if birthdate else None
-    bmr = _calc_bmr_mifflin(weight_kg, height_cm, age, gender) if (
-        weight_kg and height_cm and age is not None and gender in ("male", "female")
-    ) else None
+    bmr_info = calculate_bmr(weight_kg, height_cm, age=age, gender=gender)
+    bmr = bmr_info["bmr_kcal"]
 
     ex_totals = get_daily_exercise_totals(date_str, date_str)
     ex_cal = ex_totals.get(date_str) or 0
@@ -2274,9 +2245,8 @@ def get_copy_enrichment_stats(from_date: str, to_date: str) -> dict:
     for d in dates:
         w = nearest_weight(d)
         age = _calc_age_at_date(birthdate, d) if birthdate else None
-        bmr = _calc_bmr_mifflin(w, height_cm, age, gender) if (
-            w and height_cm and age is not None and gender in ("male", "female")
-        ) else None
+        bmr_info = calculate_bmr(w, height_cm, age=age, gender=gender)
+        bmr = bmr_info["bmr_kcal"]
         ex_cal = ex_totals.get(d) or 0
         total_exp = (bmr + ex_cal) if bmr is not None else None
         cal = cal_map.get(d)
