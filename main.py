@@ -1783,6 +1783,7 @@ async def report_preview(request: Request, start: str):
         if not isinstance(report_columns_parsed, list):
             report_columns_parsed = []
     except (ValueError, TypeError):
+        logger.warning("report_columns のパースに失敗しました。デフォルトにフォールバックします: %s", report_columns_raw)
         report_columns_parsed = []
     charts = report_generator.generate_charts_base64(data)
     comment = await report_generator.generate_claude_comment(
