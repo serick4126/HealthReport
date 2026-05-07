@@ -279,6 +279,7 @@ def init_db():
                 ("stats_summary_items", '[{"id":"avg_calories","visible":true},{"id":"latest_weight","visible":true},{"id":"avg_steps","visible":true},{"id":"latest_body_fat","visible":true},{"id":"avg_body_fat","visible":true}]'),
                 ("available_models", "[]"),
                 ("report_focus_items", '[{"id":"meal_content","label":"食事内容","group":"common","enabled":true},{"id":"calories","label":"カロリー","group":"common","enabled":true},{"id":"pfc","label":"PFC","group":"common","enabled":true},{"id":"weight","label":"体重","group":"common","enabled":true},{"id":"sodium","label":"塩分","group":"medical","enabled":true},{"id":"blood_pressure","label":"血圧","group":"medical","enabled":true},{"id":"body_fat","label":"体脂肪率","group":"medical","enabled":true},{"id":"expenditure","label":"消費カロリー","group":"trainer","enabled":true},{"id":"exercise","label":"運動","group":"trainer","enabled":true},{"id":"steps","label":"歩数","group":"trainer","enabled":true}]'),
+                ("report_columns", '[{"id":"meal_time","visible":true},{"id":"calories","visible":true},{"id":"calorie_diff","visible":true},{"id":"pfc","visible":true},{"id":"sodium","visible":true},{"id":"expenditure","visible":true},{"id":"weight_morning","visible":true},{"id":"weight_evening","visible":true},{"id":"bmi","visible":true},{"id":"body_fat","visible":false},{"id":"steps","visible":true},{"id":"blood_pressure","visible":false}]'),
                 ("country_code", "JP"),
                 ("prefecture_code", "JP.13"),
                 ("latitude", "35.6895"),
@@ -1569,9 +1570,38 @@ def get_report_data(start_date: str, end_date: str) -> dict:
             "SELECT log_date, memo_text FROM memos WHERE log_date >= ? AND log_date <= ?",
             (start_date, end_date),
         ).fetchall()
+        bp_rows = conn.execute(
+            "SELECT log_date, time_of_day, systolic, diastolic "
+            "FROM blood_pressure_logs WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_date, end_date),
+        ).fetchall()
+        bf_rows = conn.execute(
+            "SELECT log_date, body_fat_pct FROM body_fat_logs "
+            "WHERE log_date BETWEEN ? AND ? ORDER BY log_date",
+            (start_date, end_date),
+        ).fetchall()
+        ex_rows = conn.execute(
+            "SELECT log_date, SUM(calories_burned) AS ex_cal "
+            "FROM exercise_logs WHERE log_date BETWEEN ? AND ? GROUP BY log_date",
+            (start_date, end_date),
+        ).fetchall()
 
     weather_report_map = {r["log_date"]: r["weather"] for r in weather_report_rows}
     memo_map = {r["log_date"]: r["memo_text"] for r in memo_rows}
+    bp_map: dict = {}
+    for r in bp_rows:
+        bp_map.setdefault(r["log_date"], {})[r["time_of_day"]] = (r["systolic"], r["diastolic"])
+    bf_map = {r["log_date"]: r["body_fat_pct"] for r in bf_rows}
+    ex_map = {r["log_date"]: (r["ex_cal"] or 0) for r in ex_rows}
+
+    height_cm = float(get_setting("user_height_cm") or 160)
+    gender    = get_setting("user_gender") or ""
+    birthdate = get_setting("user_birthdate") or ""
+    try:
+        age = (_date.today() - _date.fromisoformat(birthdate)).days // 365
+    except (ValueError, TypeError):
+        age = None
+
     meal_map: dict = {}
     for m in meals:
         meal_map.setdefault((m["meal_date"], m["meal_type"]), []).append(dict(m))
@@ -1595,6 +1625,13 @@ def get_report_data(start_date: str, end_date: str) -> dict:
         f   = round(sum(m.get("fat")     or 0 for m in all_m), 1) if all_m else None
         c   = round(sum(m.get("carbs")   or 0 for m in all_m), 1) if all_m else None
         sod = round(sum(m.get("sodium")  or 0 for m in all_m), 2) if all_m else None
+        wm = w_map.get(d, {}).get("morning")
+        if wm is not None:
+            bmr_kcal = calculate_bmr(wm, height_cm, age=age, gender=gender)["bmr_kcal"]
+        else:
+            bmr_kcal = None
+        ex_cal = ex_map.get(d, 0)
+        total_exp = (bmr_kcal + ex_cal) if bmr_kcal is not None else None
         days.append({
             "date": d,
             "meals": day_meals,
@@ -1606,6 +1643,10 @@ def get_report_data(start_date: str, end_date: str) -> dict:
             "skipped": {mt: (mt in skip_map_report.get(d, set())) for mt in MEAL_TYPES},
             "weather": weather_report_map.get(d),
             "memo": memo_map.get(d),
+            "blood_pressure": bp_map.get(d, {}),
+            "body_fat": bf_map.get(d),
+            "total_expenditure": total_exp,
+            "exercise_calories": ex_cal,
         })
 
     return {
