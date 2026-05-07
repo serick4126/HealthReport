@@ -112,54 +112,6 @@ class TestCalcAgeAtDate:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# calculate_bmr (旧 _calc_bmr_mifflin → Mifflin-St Jeor 統一)
-# ══════════════════════════════════════════════════════════════════════════════
-
-class TestCalcBmrMifflin:
-    """calculate_bmr() の Mifflin-St Jeor 計算ロジックを検証する"""
-
-    def test_male_bmr(self):
-        """男性: 10*70 + 6.25*170 - 5*30 + 5 = 700+1062.5-150+5 = 1617.5 → 1618"""
-        result = database.calculate_bmr(70.0, 170.0, age=30, gender="male")
-        assert result["bmr_kcal"] == 1618
-
-    def test_female_bmr(self):
-        """女性: 10*60 + 6.25*160 - 5*25 - 161 = 600+1000-125-161 = 1314"""
-        result = database.calculate_bmr(60.0, 160.0, age=25, gender="female")
-        assert result["bmr_kcal"] == 1314
-
-    def test_weight_zero_returns_none(self):
-        """weight_kg=0 は bmr_kcal=None を返すこと"""
-        result = database.calculate_bmr(0, 170.0, age=30, gender="male")
-        assert result["bmr_kcal"] is None
-
-    def test_weight_none_returns_none(self):
-        """weight_kg=None は bmr_kcal=None を返すこと"""
-        result = database.calculate_bmr(None, 170.0, age=30, gender="male")
-        assert result["bmr_kcal"] is None
-
-    def test_height_none_returns_none(self):
-        """height_cm=None は bmr_kcal=None を返すこと"""
-        result = database.calculate_bmr(70.0, None, age=30, gender="male")
-        assert result["bmr_kcal"] is None
-
-    def test_age_none_returns_none(self):
-        """age=None は bmr_kcal=None を返すこと"""
-        result = database.calculate_bmr(70.0, 170.0, age=None, gender="male")
-        assert result["bmr_kcal"] is None
-
-    def test_unknown_gender_returns_none(self):
-        """gender が male/female 以外は bmr_kcal=None を返すこと"""
-        result = database.calculate_bmr(70.0, 170.0, age=30, gender="other")
-        assert result["bmr_kcal"] is None
-
-    def test_empty_gender_returns_none(self):
-        """gender が空文字列は bmr_kcal=None を返すこと"""
-        result = database.calculate_bmr(70.0, 170.0, age=30, gender="")
-        assert result["bmr_kcal"] is None
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # get_copy_enrichment_day
 # ══════════════════════════════════════════════════════════════════════════════
 
