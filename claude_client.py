@@ -21,6 +21,46 @@ MODEL = "claude-sonnet-4-6"
 MODEL_SAVINGS = "claude-haiku-4-5-20251001"
 MAX_API_RETRIES = 3  # 429エラー時の最大リトライ回数
 
+_RECORD_INTENT_RE = re.compile(
+    r"(朝食|昼食|夕食|間食|夜食|食べた|飲んだ|食った|\d+\s*kcal|\d+\s*カロリー"
+    r"|体重|歩数|ランニング|ジム|運動した|歩いた|筋トレ|血圧|体脂肪)",
+    re.IGNORECASE,
+)
+
+_MEAL_TYPE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"朝食|朝ごはん|朝飯|朝めし|モーニング"), "breakfast"),
+    (re.compile(r"昼食|昼ごはん|昼飯|昼めし|ランチ|お昼"), "lunch"),
+    (re.compile(r"夕食|夕ごはん|夕飯|夕めし|ディナー|晩ごはん|晩飯|晩めし"), "dinner"),
+    (re.compile(r"間食|おやつ|スナック"), "snack"),
+    (re.compile(r"夜食|夜ごはん"), "late_night"),
+]
+
+
+def _detect_record_intent(message: str) -> bool:
+    """ユーザーメッセージに記録意図があるか判定する"""
+    return bool(_RECORD_INTENT_RE.search(message))
+
+
+def _detect_meal_type(message: str) -> str | None:
+    """ユーザーメッセージから単一の食事区分を検出する。複数検出または未検出はNoneを返す"""
+    detected: set[str] = set()
+    for pattern, meal_type in _MEAL_TYPE_PATTERNS:
+        if pattern.search(message):
+            detected.add(meal_type)
+    return detected.pop() if len(detected) == 1 else None
+
+
+def _inject_meal_type(conversation_history: list[dict], meal_type: str) -> None:
+    """meal_type強制指示を最後のユーザーメッセージ末尾に注入する（DBには保存しない）"""
+    if not conversation_history:
+        return
+    for item in conversation_history[-1]["content"]:
+        if item["type"] == "text":
+            item["text"] += (
+                f'\n[★強制指示: meal_typeは必ず"{meal_type}"を使用すること。他の値での記録は禁止]'
+            )
+            return
+
 
 def _format_error_message(e: Exception) -> str:
     """例外を日本語のユーザー向けメッセージに変換する"""
@@ -1312,6 +1352,13 @@ async def stream_chat(
     _inject_food_hints(conversation_history, user_message)
     _inject_send_context(conversation_history, int(database.get_setting("daily_calorie_goal") or 1800))
 
+    # meal_type強制注入（単一区分かつ記録意図がある場合のみ）
+    _has_record_intent = _detect_record_intent(user_message)
+    if _has_record_intent:
+        _forced_meal_type = _detect_meal_type(user_message)
+        if _forced_meal_type:
+            _inject_meal_type(conversation_history, _forced_meal_type)
+
     # システムプロンプト / トークン超過時に会話圧縮
     system_prompt = build_system_prompt(savings_mode=savings_mode)
     estimated = _estimate_tokens(conversation_history, system_prompt)
@@ -1321,6 +1368,7 @@ async def stream_chat(
             system_prompt = build_system_prompt(savings_mode=savings_mode, summary=new_summary)
 
     max_iterations = 10
+    is_first_call = True
     for _ in range(max_iterations):
         # リトライループ（429 レート制限 / 一時的なAPIエラー対応）
         _last_error: Exception | None = None
@@ -1330,6 +1378,12 @@ async def stream_chat(
             current_tool: dict | None = None
             current_tool_json = ""
 
+            tool_choice_kwarg: dict = (
+                {"tool_choice": {"type": "any"}}
+                if is_first_call and _has_record_intent
+                else {}
+            )
+
             try:
                 async with client.messages.stream(
                     model=active_model,
@@ -1337,6 +1391,7 @@ async def stream_chat(
                     system=system_prompt,
                     messages=conversation_history,
                     tools=active_tools,
+                    **tool_choice_kwarg,
                 ) as stream:
                     async for event in stream:
                         etype = event.type
@@ -1366,6 +1421,7 @@ async def stream_chat(
                                 current_tool_json = ""
 
                 _last_error = None
+                is_first_call = False
                 break  # 成功したらリトライループを抜ける
 
             except anthropic.RateLimitError as e:
