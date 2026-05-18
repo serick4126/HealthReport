@@ -58,7 +58,24 @@ def _setup_matplotlib_font():
                 except Exception as e:
                     logger.warning("フォント登録失敗: %s %s", path, e)
 
-    # macOS / Linux: ファミリー名で検索（DejaVu へのフォールバックを除外）
+    # Linux: フォントファイルパスを直接確認して登録（apt install fonts-noto-cjk で利用可能）
+    elif platform.system() == "Linux":
+        linux_candidates = [
+            ("Noto Sans CJK JP", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+            ("Noto Sans CJK JP", "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"),
+            ("Noto Sans CJK JP", "/usr/share/fonts/opentype/noto-cjk/NotoSansCJK-Regular.ttc"),
+        ]
+        for family, path in linux_candidates:
+            if os.path.exists(path):
+                try:
+                    fm.fontManager.addfont(path)
+                    plt.rcParams["font.family"] = family
+                    font_set = True
+                    break
+                except Exception as e:
+                    logger.warning("フォント登録失敗: %s %s", path, e)
+
+    # macOS / その他: ファミリー名で検索（DejaVu へのフォールバックを除外）
     if not font_set:
         for family in ["Hiragino Sans", "Noto Sans CJK JP", "IPAexGothic"]:
             try:
