@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import os
+import platform  # OS判定でフォントパスを切り替えるため。関数内importではpatch不可。
 import re
 from datetime import date as _date
 
@@ -37,13 +38,40 @@ def _fig_to_b64(fig) -> str:
 def _setup_matplotlib_font():
     import matplotlib.font_manager as fm
     import matplotlib.pyplot as plt
-    for font in ["Yu Gothic", "Noto Sans CJK JP", "Hiragino Sans", "MS Gothic"]:
-        try:
-            fm.findfont(fm.FontProperties(family=font), fallback_to_default=False)
-            plt.rcParams["font.family"] = font
-            break
-        except Exception:
-            pass
+
+    font_set = False
+
+    # Windows: フォントファイルパスを直接確認して登録（ファミリー名解決より確実）
+    if platform.system() == "Windows":
+        win_candidates = [
+            ("Yu Gothic", r"C:\Windows\Fonts\YuGothM.ttc"),
+            ("Meiryo",    r"C:\Windows\Fonts\meiryo.ttc"),
+            ("MS Gothic", r"C:\Windows\Fonts\msgothic.ttc"),
+        ]
+        for family, path in win_candidates:
+            if os.path.exists(path):
+                try:
+                    fm.fontManager.addfont(path)
+                    plt.rcParams["font.family"] = family
+                    font_set = True
+                    break
+                except Exception as e:
+                    logger.warning("フォント登録失敗: %s %s", path, e)
+
+    # macOS / Linux: ファミリー名で検索（DejaVu へのフォールバックを除外）
+    if not font_set:
+        for family in ["Hiragino Sans", "Noto Sans CJK JP", "IPAexGothic"]:
+            try:
+                found = fm.findfont(
+                    fm.FontProperties(family=family), fallback_to_default=False
+                )
+                if found and "DejaVu" not in found:
+                    plt.rcParams["font.family"] = family
+                    font_set = True
+                    break
+            except Exception:
+                pass
+
     plt.rcParams["axes.unicode_minus"] = False
 
 
