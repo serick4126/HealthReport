@@ -69,8 +69,8 @@ def _setup_matplotlib_font():
                     plt.rcParams["font.family"] = family
                     font_set = True
                     break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("フォント %s の検索失敗（スキップ）: %s", family, e)
 
     plt.rcParams["axes.unicode_minus"] = False
 
