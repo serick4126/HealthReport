@@ -30,7 +30,7 @@ def _date_label(iso: str) -> str:
 
 def _fig_to_b64(fig) -> str:
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
     buf.seek(0)
     return base64.b64encode(buf.read()).decode()
 
@@ -137,7 +137,7 @@ def generate_charts_base64(data: dict) -> dict:
     c_vals2 = [v or 0 for v in pfc_data["carb_kcal"]]
     pf_bottom = [p + f for p, f in zip(p_vals, f_vals)]
 
-    fig_c, ax_c = plt.subplots(figsize=(4.8, 2.2))
+    fig_c, ax_c = plt.subplots(figsize=(5.5, 2.2))
     ax_c.bar(c_labels, p_vals, label="P", color="#60a5fa", alpha=0.85)
     ax_c.bar(c_labels, f_vals, bottom=p_vals, label="F", color="#fbbf24", alpha=0.85)
     ax_c.bar(c_labels, c_vals2, bottom=pf_bottom, label="C", color="#34d399", alpha=0.85)
@@ -1358,7 +1358,7 @@ def generate_monthly_charts_base64(data: dict) -> dict:
         margin = max(0.3, (max(valid_w_val) - min(valid_w_val)) * 0.15) if len(valid_w_val) > 1 else 0.3
         ax_w.set_ylim(min(valid_w_val) - margin, max(valid_w_val) + margin)
     ax_w.set_xticks(x)
-    ax_w.set_xticklabels(labels, fontsize=5.5, rotation=45, ha="right")
+    ax_w.set_xticklabels(labels, fontsize=6.5, rotation=45, ha="right")
     ax_w.set_ylabel("kg", fontsize=6)
     ax_w.tick_params(axis="y", labelsize=6)
     ax_w.set_title("体重推移（朝）", fontsize=8)
