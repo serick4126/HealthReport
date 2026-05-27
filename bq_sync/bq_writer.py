@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 
 from google.cloud import bigquery
 from google.cloud.bigquery import LoadJobConfig, WriteDisposition
+
+logger = logging.getLogger(__name__)
 
 _TMP_TABLE_PREFIX = "_tmp_"
 _GOAL_KEY_CALORIES = "calories_goal"
@@ -145,7 +148,7 @@ def upsert_table(
         f"VALUES ({insert_values})"
     )
 
-    client.query(create_sql)
+    client.query(create_sql).result()
     try:
         client.load_table_from_json(
             rows,
@@ -154,7 +157,7 @@ def upsert_table(
                 write_disposition=WriteDisposition.WRITE_TRUNCATE,
             ),
         ).result()
-        client.query(merge_sql)
+        client.query(merge_sql).result()
     finally:
         client.delete_table(tmp_table_ref)
 
@@ -174,7 +177,7 @@ def delete_and_insert_daily_summary(
     delete_sql = (
         f"DELETE FROM `{table_ref}` WHERE log_date IN ({quoted_dates})"
     )
-    client.query(delete_sql)
+    client.query(delete_sql).result()
 
     client.load_table_from_json(
         rows,
@@ -193,7 +196,11 @@ def cleanup_temp_tables(
     dataset_ref = f"{project_id}.{dataset_id}"
     for table in client.list_tables(dataset_ref):
         if table.table_id.startswith(_TMP_TABLE_PREFIX):
-            client.delete_table(table.reference)
+            try:
+                client.delete_table(table.reference)
+                logger.info("残留一時テーブルを削除: %s", table.table_id)
+            except Exception as e:
+                logger.warning("一時テーブル削除失敗 (%s): %s", table.table_id, e)
 
 
 def get_current_calories_goal_from_bq(
@@ -239,4 +246,4 @@ def upsert_goal_change_log(
         f"CURRENT_TIMESTAMP()"
         f")"
     )
-    client.query(insert_sql)
+    client.query(insert_sql).result()
