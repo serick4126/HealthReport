@@ -61,16 +61,26 @@ def _resolve_extract_fn(name: str):
     return getattr(_MODULE, name)
 
 
-def _get_day_start_hour(db_path: str) -> int:
+def _get_setting_value(db_path: str, key: str) -> str | None:
     try:
         with sqlite3.connect(db_path) as conn:
             row = conn.execute(
-                "SELECT value FROM app_settings WHERE key = 'day_start_hour'"
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
             ).fetchone()
             if row and row[0]:
-                return int(row[0])
-    except Exception:
-        pass
+                return row[0]
+    except Exception as e:
+        logger.error("app_settings 読み取りエラー (key=%s): %s", key, e)
+    return None
+
+
+def _get_day_start_hour(db_path: str) -> int:
+    value = _get_setting_value(db_path, "day_start_hour")
+    if value is not None:
+        try:
+            return int(value)
+        except ValueError:
+            pass
     return 4
 
 
@@ -165,16 +175,8 @@ def _sync_goal_change_logs(
     db_path: str,
     today: str,
 ) -> None:
-    try:
-        with sqlite3.connect(db_path) as conn:
-            row = conn.execute(
-                "SELECT value FROM app_settings WHERE key = 'daily_calorie_goal'"
-            ).fetchone()
-        if row is None or row[0] is None:
-            return
-        local_goal = row[0]
-    except Exception as e:
-        logger.error("daily_calorie_goal のSQLite読み取りエラー: %s", e)
+    local_goal = _get_setting_value(db_path, "daily_calorie_goal")
+    if local_goal is None:
         return
 
     try:
@@ -261,16 +263,8 @@ def run_sync(
 
     detail_synced, detail_rows = _sync_detail_tables(client, project_id, dataset_id, db_path, dates)
 
-    calories_goal = None
-    try:
-        with sqlite3.connect(db_path) as conn:
-            row = conn.execute(
-                "SELECT value FROM app_settings WHERE key = 'daily_calorie_goal'"
-            ).fetchone()
-            if row and row[0]:
-                calories_goal = int(row[0])
-    except Exception:
-        pass
+    calories_goal_str = _get_setting_value(db_path, "daily_calorie_goal")
+    calories_goal = int(calories_goal_str) if calories_goal_str is not None else None
 
     daily_rows = aggregate_daily_summary(db_path, dates, calories_goal)
     if daily_rows:
