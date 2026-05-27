@@ -164,7 +164,6 @@ def delete_and_insert_daily_summary(
     project_id: str,
     dataset_id: str,
     rows: list[dict],
-    schema: list[bigquery.SchemaField],
     dates: list[str],
 ) -> None:
     if not rows or not dates:
