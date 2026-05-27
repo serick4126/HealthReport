@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from google.cloud import bigquery
@@ -124,6 +125,8 @@ def upsert_table(
 ) -> None:
     if not rows:
         return
+    synced_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = [{**r, "synced_at": synced_at} for r in rows]
     tmp_table_name = f"{_TMP_TABLE_PREFIX}{table_name}"
     tmp_table_ref = f"{project_id}.{dataset_id}.{tmp_table_name}"
     table_ref = f"{project_id}.{dataset_id}.{table_name}"
@@ -172,6 +175,8 @@ def delete_and_insert_daily_summary(
     if not rows or not dates:
         return
     table_ref = f"{project_id}.{dataset_id}.daily_summary"
+    synced_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = [{**r, "synced_at": synced_at} for r in rows]
 
     quoted_dates = ", ".join(f"'{d}'" for d in dates)
     delete_sql = (
