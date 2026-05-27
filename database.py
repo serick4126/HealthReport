@@ -74,6 +74,38 @@ def _migrate_meal_images_nullable(conn: sqlite3.Connection) -> None:
     logger.info("Migration: meal_images recreated successfully")
 
 
+_SYNC_TABLES = [
+    ("meals",                "meal_date"),
+    ("weight_logs",          "log_date"),
+    ("blood_pressure_logs",  "log_date"),
+    ("steps_logs",           "log_date"),
+    ("exercise_logs",        "log_date"),
+    ("body_fat_logs",        "log_date"),
+    ("weather_logs",         "log_date"),
+    ("memos",                "log_date"),
+]
+
+
+def _create_sync_triggers(conn: sqlite3.Connection) -> None:
+    for table, date_col in _SYNC_TABLES:
+        conn.executescript(f"""
+            CREATE TRIGGER IF NOT EXISTS trg_{table}_insert
+            AFTER INSERT ON {table} BEGIN
+                INSERT INTO sync_change_log (table_name, log_date)
+                VALUES ('{table}', NEW.{date_col});
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_{table}_update
+            AFTER UPDATE ON {table} BEGIN
+                INSERT INTO sync_change_log (table_name, log_date)
+                VALUES ('{table}', NEW.{date_col});
+                INSERT INTO sync_change_log (table_name, log_date)
+                SELECT '{table}', OLD.{date_col}
+                WHERE OLD.{date_col} != NEW.{date_col};
+            END;
+        """)
+
+
 def init_db():
     with get_conn() as conn:
         conn.executescript("""
@@ -209,6 +241,15 @@ def init_db():
         """)
 
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS sync_change_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name  TEXT    NOT NULL,
+                log_date    DATE    NOT NULL,
+                changed_at  DATETIME NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+        """)
+
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS conversation_messages (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 role         TEXT NOT NULL,
@@ -238,7 +279,10 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_body_fat_date     ON body_fat_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_weather_logs_log_date ON weather_logs(log_date);
             CREATE INDEX IF NOT EXISTS idx_memos_log_date ON memos (log_date);
+            CREATE INDEX IF NOT EXISTS idx_sync_change_log_changed_at ON sync_change_log(changed_at);
         """)
+
+        _create_sync_triggers(conn)
 
         # 既存DBへのカラム追加マイグレーション
         _run_migrations(conn, [
