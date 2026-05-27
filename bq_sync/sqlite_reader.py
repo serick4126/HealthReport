@@ -9,9 +9,8 @@ from configparser import ConfigParser
 
 
 def checkpoint_wal(db_path: str) -> None:
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
 
 def resolve_date_range(
@@ -37,13 +36,12 @@ def resolve_date_range(
 
 
 def collect_changed_dates(db_path: str, cutoff: str) -> set[str]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT DISTINCT log_date FROM sync_change_log WHERE changed_at >= ?",
-        (cutoff,),
-    ).fetchall()
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT DISTINCT log_date FROM sync_change_log WHERE changed_at >= ?",
+            (cutoff,),
+        ).fetchall()
     return {r["log_date"] for r in rows}
 
 
@@ -58,14 +56,13 @@ def _extract_table(
         return []
     dates_list = sorted(dates)
     placeholders = ",".join(["?"] * len(dates_list))
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    sql = (
-        f"SELECT {columns} FROM {table} "
-        f"WHERE {date_col} IN ({placeholders}) ORDER BY {date_col}"
-    )
-    rows = conn.execute(sql, dates_list).fetchall()
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        sql = (
+            f"SELECT {columns} FROM {table} "
+            f"WHERE {date_col} IN ({placeholders}) ORDER BY {date_col}"
+        )
+        rows = conn.execute(sql, dates_list).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -114,16 +111,15 @@ def extract_meals(db_path: str, dates: set[str] | list[str]) -> list[dict]:
         return []
     dates_list = sorted(dates)
     placeholders = ",".join(["?"] * len(dates_list))
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    sql = (
-        "SELECT id, meal_date AS log_date, meal_type, meal_time, description, "
-        "calories, protein, fat, carbs, sodium, notes "
-        "FROM meals WHERE meal_date IN ({placeholders}) "
-        "ORDER BY meal_date, meal_type"
-    ).replace("{placeholders}", placeholders)
-    rows = conn.execute(sql, dates_list).fetchall()
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        sql = (
+            "SELECT id, meal_date AS log_date, meal_type, meal_time, description, "
+            "calories, protein, fat, carbs, sodium, notes "
+            "FROM meals WHERE meal_date IN ({placeholders}) "
+            "ORDER BY meal_date, meal_type"
+        ).replace("{placeholders}", placeholders)
+        rows = conn.execute(sql, dates_list).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -188,10 +184,9 @@ def aggregate_daily_summary(
 
     sql = _DAILY_SUMMARY_SQL.replace("{placeholders}", placeholders)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
 
     results = []
     for r in rows:
