@@ -24,3 +24,5 @@ run.bat
 .vscode/extensions.json
 .superpowers/
 docs/
+service_account_writer.json
+bq_sync/service_account_writer.json
