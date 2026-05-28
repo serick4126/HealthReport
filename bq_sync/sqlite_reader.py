@@ -131,22 +131,22 @@ SELECT
         WHEN 3 THEN '水' WHEN 4 THEN '木' WHEN 5 THEN '金'
         WHEN 6 THEN '土'
     END AS weekday,
-    SUM(m.calories)               AS calories_total,
-    ROUND(SUM(m.protein), 1)      AS protein_g,
-    ROUND(SUM(m.fat),     1)      AS fat_g,
-    ROUND(SUM(m.carbs),   1)      AS carbs_g,
-    ROUND(SUM(m.sodium),  2)      AS sodium_g,
-    MAX(CASE WHEN w.time_of_day = 'morning' THEN w.weight_kg END) AS weight_morning_kg,
-    MAX(CASE WHEN w.time_of_day = 'evening' THEN w.weight_kg END) AS weight_evening_kg,
-    MAX(bf.body_fat_pct) AS body_fat_pct,
-    MAX(sl.steps) AS steps,
-    SUM(e.calories_burned) AS exercise_calories,
-    MAX(CASE WHEN bp.time_of_day = 'morning' THEN bp.systolic  END) AS bp_morning_systolic,
-    MAX(CASE WHEN bp.time_of_day = 'morning' THEN bp.diastolic END) AS bp_morning_diastolic,
-    MAX(CASE WHEN bp.time_of_day = 'evening' THEN bp.systolic  END) AS bp_evening_systolic,
-    MAX(CASE WHEN bp.time_of_day = 'evening' THEN bp.diastolic END) AS bp_evening_diastolic,
-    GROUP_CONCAT(weather.weather) AS weather,
-    GROUP_CONCAT(memo.memo_text, ' | ') AS memo
+    m.calories_total,
+    m.protein_g,
+    m.fat_g,
+    m.carbs_g,
+    m.sodium_g,
+    w.weight_morning_kg,
+    w.weight_evening_kg,
+    bf.body_fat_pct,
+    sl.steps,
+    e.exercise_calories,
+    bp.bp_morning_systolic,
+    bp.bp_morning_diastolic,
+    bp.bp_evening_systolic,
+    bp.bp_evening_diastolic,
+    weather.weather,
+    memo.memo_text AS memo
 FROM (
     SELECT DISTINCT log_date FROM (
         SELECT meal_date AS log_date FROM meals WHERE meal_date IN ({placeholders})
@@ -156,15 +156,56 @@ FROM (
         UNION SELECT value AS log_date FROM json_each(?)
     )
 ) d
-LEFT JOIN meals m ON m.meal_date = d.log_date
-LEFT JOIN weight_logs w ON w.log_date = d.log_date
-LEFT JOIN body_fat_logs bf ON bf.log_date = d.log_date
-LEFT JOIN steps_logs sl ON sl.log_date = d.log_date
-LEFT JOIN exercise_logs e ON e.log_date = d.log_date
-LEFT JOIN blood_pressure_logs bp ON bp.log_date = d.log_date
-LEFT JOIN weather_logs weather ON weather.log_date = d.log_date
-LEFT JOIN memos memo ON memo.log_date = d.log_date
-GROUP BY d.log_date
+LEFT JOIN (
+    SELECT meal_date AS log_date,
+        SUM(calories)         AS calories_total,
+        ROUND(SUM(protein),1) AS protein_g,
+        ROUND(SUM(fat),1)     AS fat_g,
+        ROUND(SUM(carbs),1)   AS carbs_g,
+        ROUND(SUM(sodium),2)  AS sodium_g
+    FROM meals WHERE meal_date IN ({placeholders})
+    GROUP BY meal_date
+) m ON m.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date,
+        MAX(CASE WHEN time_of_day = 'morning' THEN weight_kg END) AS weight_morning_kg,
+        MAX(CASE WHEN time_of_day = 'evening' THEN weight_kg END) AS weight_evening_kg
+    FROM weight_logs WHERE log_date IN ({placeholders})
+    GROUP BY log_date
+) w ON w.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date, MAX(body_fat_pct) AS body_fat_pct
+    FROM body_fat_logs WHERE log_date IN ({placeholders})
+    GROUP BY log_date
+) bf ON bf.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date, MAX(steps) AS steps
+    FROM steps_logs WHERE log_date IN ({placeholders})
+    GROUP BY log_date
+) sl ON sl.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date, SUM(calories_burned) AS exercise_calories
+    FROM exercise_logs WHERE log_date IN ({placeholders})
+    GROUP BY log_date
+) e ON e.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date,
+        MAX(CASE WHEN time_of_day = 'morning' THEN systolic  END) AS bp_morning_systolic,
+        MAX(CASE WHEN time_of_day = 'morning' THEN diastolic END) AS bp_morning_diastolic,
+        MAX(CASE WHEN time_of_day = 'evening' THEN systolic  END) AS bp_evening_systolic,
+        MAX(CASE WHEN time_of_day = 'evening' THEN diastolic END) AS bp_evening_diastolic
+    FROM blood_pressure_logs WHERE log_date IN ({placeholders})
+    GROUP BY log_date
+) bp ON bp.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date, MAX(weather) AS weather
+    FROM weather_logs WHERE log_date IN ({placeholders})
+    GROUP BY log_date
+) weather ON weather.log_date = d.log_date
+LEFT JOIN (
+    SELECT log_date, memo_text
+    FROM memos WHERE log_date IN ({placeholders})
+) memo ON memo.log_date = d.log_date
 ORDER BY d.log_date
 """
 
@@ -178,9 +219,10 @@ def aggregate_daily_summary(
         return []
     dates_list = sorted(dates)
     placeholders = ",".join(["?"] * len(dates_list))
-    params = dates_list * 4
     dates_json = json.dumps(dates_list)
-    params.append(dates_json)
+    # driving: meals/weight/bp/steps の4箇所 + json_each
+    # joins: meals/weight/body_fat/steps/exercise/bp/weather/memos の8箇所
+    params = dates_list * 4 + [dates_json] + dates_list * 8
 
     sql = _DAILY_SUMMARY_SQL.replace("{placeholders}", placeholders)
 
