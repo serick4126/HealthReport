@@ -23,6 +23,7 @@ load_dotenv()
 import claude_client
 import database
 import mcp_auth
+import record_service
 import report_generator
 from image_utils import _UPLOAD_DIR as UPLOAD_DIR, save_image_to_fs
 import weather as weather_module
@@ -50,8 +51,6 @@ VITAL_RANGES: dict[str, tuple[float, float]] = {
     "spo2": (70.0, 100.0),
 }
 
-_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
-
 
 def _require_api_key(request: Request) -> None:
     """X-API-Key ヘッダーで external_api_key 認証。失敗時は HTTPException を送出。"""
@@ -64,34 +63,32 @@ def _require_api_key(request: Request) -> None:
 
 
 def _validate_date(date_str: str) -> None:
-    """YYYY-MM-DD 形式の日付を検証。不正な場合は HTTPException(422) を送出。"""
+    """YYYY-MM-DD 形式の日付を検証。不正な場合は HTTPException(422) を送出。
+    record_service.validate_date に委譲し、ValidationError を既存 detail 文言に変換する。
+    """
     try:
-        datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
+        record_service.validate_date(date_str, allow_future=True)
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="dateはYYYY-MM-DD形式で指定してください")
 
 
 def _validate_time(time_str: str) -> None:
     """HH:MM 形式の時刻を検証。不正な場合は HTTPException(422) を送出。"""
-    if not _TIME_RE.match(time_str):
-        raise HTTPException(status_code=422, detail="timeはHH:MM形式で指定してください")
-    h, m = int(time_str[:2]), int(time_str[3:])
-    if not (0 <= h <= 23 and 0 <= m <= 59):
-        raise HTTPException(status_code=422, detail="timeの時・分が範囲外です（時: 0-23, 分: 0-59）")
+    try:
+        record_service.validate_time(time_str)
+    except record_service.ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 def _validate_memo_text(text: str, mode: str) -> str:
     """メモテキストをサニタイズ・検証。制御文字を除去し長さをチェックする。
     mode="put" は2000字、mode="patch" は500字上限。
     """
-    sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\t]", "", text)
-    if sanitized.strip() == "":
-        raise HTTPException(status_code=422, detail="メモを入力してください")
-    if mode == "put" and len(sanitized) > 2000:
-        raise HTTPException(status_code=422, detail="memo_text が2000字を超えています")
-    if mode == "patch" and len(sanitized) > 500:
-        raise HTTPException(status_code=422, detail="1回の追記は500字以内にしてください")
-    return sanitized
+    rs_mode = "replace" if mode == "put" else "append"
+    try:
+        return record_service.sanitize_memo_text(text, rs_mode)
+    except record_service.ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 # ── アプリ初期化 ───────────────────────────────────────────────────────────────
@@ -599,16 +596,8 @@ async def update_meal(request: Request, meal_id: int, body: MealUpdateRequest):
 @app.delete("/api/meals/{meal_id}")
 async def delete_meal(request: Request, meal_id: int):
     require_auth(request)
-    images = database.get_meal_images(meal_id)
-    ok = database.delete_meal(meal_id)
-    if not ok:
+    if not record_service.delete_meal_with_images(meal_id):
         raise HTTPException(status_code=404, detail="食事記録が見つかりません")
-    for img in images:
-        if img.get("image_path"):
-            try:
-                Path(img["image_path"]).unlink(missing_ok=True)
-            except Exception:
-                logger.warning("画像ファイルの削除に失敗 (path=%s)", img["image_path"], exc_info=True)
     return JSONResponse({"success": True})
 
 
@@ -1017,20 +1006,24 @@ class ExerciseUpdateRequest(BaseModel):
 
 def _validate_calories_and_desc(calories_burned: int, description: str) -> None:
     """calories_burned・description のバリデーション。違反時は HTTPException を送出。"""
-    if not (0 <= calories_burned <= 9999):
+    try:
+        record_service.validate_range("calories_burned", calories_burned, 0, 9999)
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
-    if len(description) > 500:
+    try:
+        record_service.validate_length("description", description, 500)
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
 
 
 def _validate_exercise_body(log_date: str, calories_burned: int, description: str) -> None:
     """運動ログ入力のバリデーション（日付＋calories＋description）。違反時は HTTPException を送出。"""
     try:
-        parsed = datetime.strptime(log_date, "%Y-%m-%d").date()
-    except ValueError:
+        record_service.validate_date(log_date, allow_future=False)
+    except record_service.ValidationError as exc:
+        if exc.code == "future_date":
+            raise HTTPException(status_code=422, detail="未来の日付は登録できません")
         raise HTTPException(status_code=422, detail="log_date は YYYY-MM-DD 形式で指定してください")
-    if parsed > datetime.now(_JST).date():
-        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
     _validate_calories_and_desc(calories_burned, description)
 
 
@@ -1126,15 +1119,14 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
         raise HTTPException(status_code=401, detail="APIキーが正しくありません")
 
     # 3. バリデーション
-    if body.steps < 1:
+    try:
+        record_service.validate_range("steps", body.steps, 1, float("inf"))
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="stepsは1以上の整数を指定してください")
     try:
-        log_date = datetime.strptime(body.date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=422, detail="dateはYYYY-MM-DD形式で指定してください")
-    today = datetime.now(_JST).date()
-    if log_date > today:
-        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+        record_service.validate_date(body.date, allow_future=False)
+    except record_service.ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     # 4. 保存（同日レコードがあれば上書き）
     result = database.save_steps(body.date, body.steps)
@@ -1165,15 +1157,14 @@ async def body_fat_ingest(request: Request, body: BodyFatIngestRequest):
         raise HTTPException(status_code=401, detail="APIキーが正しくありません")
 
     # 3. バリデーション
-    if not (1.0 <= body.body_fat <= 80.0):
+    try:
+        record_service.validate_range("body_fat", body.body_fat, 1.0, 80.0)
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="body_fatは1.0〜80.0の範囲で指定してください")
     try:
-        log_date = datetime.strptime(body.date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=422, detail="dateはYYYY-MM-DD形式で指定してください")
-    today = datetime.now(_JST).date()
-    if log_date > today:
-        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
+        record_service.validate_date(body.date, allow_future=False)
+    except record_service.ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     # 4. 保存（同日レコードがあれば上書き）
     result = database.save_body_fat(body.date, body.body_fat)
@@ -1214,17 +1205,20 @@ async def exercise_ingest(request: Request, body: ExerciseIngestRequest):
         raise HTTPException(status_code=401, detail="APIキーが正しくありません")
 
     # 2. バリデーション
-    if not (0 <= body.calories_burned <= 9999):
+    try:
+        record_service.validate_range("calories_burned", body.calories_burned, 0, 9999)
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
-    if len(body.description) > 500:
+    try:
+        record_service.validate_length("description", body.description, 500)
+    except record_service.ValidationError:
         raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
     try:
-        log_date = datetime.strptime(body.date, "%Y-%m-%d").date()
-    except ValueError:
+        record_service.validate_date(body.date, allow_future=False)
+    except record_service.ValidationError as exc:
+        if exc.code == "future_date":
+            raise HTTPException(status_code=422, detail="未来の日付は登録できません")
         raise HTTPException(status_code=422, detail="date は YYYY-MM-DD 形式で指定してください")
-    today = datetime.now(_JST).date()
-    if log_date > today:
-        raise HTTPException(status_code=422, detail="未来の日付は登録できません")
 
     # 3. 保存
     try:

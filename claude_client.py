@@ -14,6 +14,7 @@ import anthropic
 
 import database
 import food_search
+import record_service
 from image_utils import process_image_b64, save_image_to_fs
 
 JST = timezone(timedelta(hours=9))
@@ -649,13 +650,8 @@ def build_system_prompt(savings_mode: bool = False, summary: str | None = None) 
 
 # ── ツール実行 ─────────────────────────────────────────────────────────────────
 
-MEAL_TYPE_JA = {
-    "breakfast": "朝食",
-    "lunch": "昼食",
-    "dinner": "夕食",
-    "snack": "間食",
-    "late_night": "夜食",
-}
+# record_service で一元管理する定数を再エクスポート（既存参照の互換維持）
+MEAL_TYPE_JA = record_service.MEAL_TYPE_JA
 
 _WEEKDAYS_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
@@ -670,12 +666,9 @@ _MEAL_CONTEXT_ORDER = [
 
 def _tool_record_meal(inp: dict) -> dict:
     # meal_time: 明示なし × 当日 → 送信時刻(HH:MM)、過去日 → None のまま
-    meal_time = inp.get("meal_time")
-    if meal_time is None:
-        today_str = database.get_logical_today_jst()
-        meal_date = inp.get("meal_date", today_str)
-        if meal_date == today_str:
-            meal_time = datetime.now(JST).strftime("%H:%M")
+    meal_time = record_service.resolve_meal_time(
+        inp.get("meal_date"), inp.get("meal_time")
+    )
 
     meal_id = database.save_meal(
         meal_date=inp["meal_date"],
