@@ -22,6 +22,7 @@ def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -249,6 +250,20 @@ def init_db():
             );
         """)
 
+        # MCPツールの監査ログ（BigQuery同期対象外のため _SYNC_TABLES には追加しない）
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS mcp_audit_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                called_at     TEXT NOT NULL,
+                tool_name     TEXT NOT NULL,
+                arguments     TEXT,
+                result        TEXT NOT NULL,
+                affected_ids  TEXT,
+                error_message TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_mcp_audit_called_at ON mcp_audit_log(called_at);
+        """)
+
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS conversation_messages (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -330,6 +345,7 @@ def init_db():
                 ("longitude", "139.6917"),
                 ("timezone", "Asia/Tokyo"),
                 ("weather_api_enabled", "false"),
+                ("mcp_api_key", ""),
             ],
         )
 
@@ -587,6 +603,43 @@ def save_meal(
         return cur.lastrowid
 
 
+def save_meals_bulk(
+    meal_date: str,
+    meal_type: str,
+    items: list[dict],
+    meal_time: Optional[str] = None,
+) -> list[int]:
+    """食事を複数件一括登録する（単一トランザクション）。
+    途中で例外が起きた場合は自動ロールバックされ全件登録されない。
+    戻り値は登録された各 id の配列。items の各要素は
+    description / calories / protein / fat / carbs / sodium / notes。
+    """
+    ids: list[int] = []
+    with get_conn() as conn:
+        for item in items:
+            cur = conn.execute(
+                """
+                INSERT INTO meals
+                    (meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes, meal_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    meal_date,
+                    meal_type,
+                    item.get("description"),
+                    item.get("calories"),
+                    item.get("protein"),
+                    item.get("fat"),
+                    item.get("carbs"),
+                    item.get("sodium"),
+                    item.get("notes"),
+                    meal_time,
+                ),
+            )
+            ids.append(cur.lastrowid)
+    return ids
+
+
 def update_meal(meal_id: int, **kwargs) -> bool:
     allowed = {"description", "meal_type", "calories", "protein", "fat", "carbs", "sodium", "notes", "meal_time"}
     # meal_time は NULL 更新（削除）を許容する
@@ -655,6 +708,48 @@ def get_meals_by_date_and_type(meal_date: str, meal_type: str) -> list[dict]:
             (meal_date, meal_type),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+# ── MCP監査ログ ────────────────────────────────────────────────────────────────
+
+def save_mcp_audit_log(
+    tool_name: str,
+    arguments: str,
+    result: str,
+    affected_ids: Optional[str] = None,
+    error_message: Optional[str] = None,
+) -> int:
+    """MCPツール呼び出しの監査ログを1件記録し、id を返す。
+    arguments は呼び出し側でJSON文字列化済みのものを受け取り、2000文字に切り詰める。
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO mcp_audit_log
+                (called_at, tool_name, arguments, result, affected_ids, error_message)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
+                tool_name,
+                (arguments or "")[:2000],
+                result,
+                affected_ids,
+                error_message,
+            ),
+        )
+        return cur.lastrowid
+
+
+def get_mcp_audit_logs(limit: int = 100) -> list[dict]:
+    """監査ログを called_at 降順（新しい順）で最大 limit 件返す。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, called_at, tool_name, arguments, result, affected_ids, error_message "
+            "FROM mcp_audit_log ORDER BY called_at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ── 体重記録 ───────────────────────────────────────────────────────────────────
@@ -830,6 +925,18 @@ def update_blood_pressure_by_id(bp_id: int, systolic: int, diastolic: int) -> bo
             (systolic, diastolic, bp_id),
         )
     return cur.rowcount > 0
+
+
+def get_blood_pressure_by_id(bp_id: int) -> Optional[dict]:
+    """id 指定で血圧レコードを全フィールド返す。存在しない場合は None。
+    部分更新のマージ元として利用する（update_blood_pressure_by_id は全フィールド必須のため）。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, time_of_day, systolic, diastolic, recorded_at "
+            "FROM blood_pressure_logs WHERE id = ?",
+            (bp_id,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def delete_blood_pressure_by_id(bp_id: int) -> bool:
@@ -1099,6 +1206,18 @@ def update_exercise_by_id(
                 (calories_burned, description, exercise_id),
             )
     return cur.rowcount > 0
+
+
+def get_exercise_by_id(exercise_id: int) -> Optional[dict]:
+    """id 指定で運動レコードを全フィールド返す。存在しない場合は None。
+    部分更新のマージ元として利用する（update_exercise_by_id は全フィールド必須のため）。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, calories_burned, description, source, recorded_at "
+            "FROM exercise_logs WHERE id = ?",
+            (exercise_id,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def delete_exercise_by_id(exercise_id: int) -> bool:
