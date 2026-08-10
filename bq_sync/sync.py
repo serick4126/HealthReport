@@ -158,10 +158,11 @@ def _sync_one_table(
     except Exception as e:
         logger.error("テーブル %s のSQLite読み取りエラー: %s", table_name, e)
         return 0
-    if not rows:
-        return 0
     try:
-        upsert_table(client, project_id, dataset_id, table_name, rows, schema, merge_key)
+        upsert_table(
+            client, project_id, dataset_id, table_name, rows, schema, merge_key,
+            target_dates=sorted(dates),
+        )
         return len(rows)
     except Exception as e:
         logger.error("テーブル %s のBigQuery同期エラー: %s", table_name, e)

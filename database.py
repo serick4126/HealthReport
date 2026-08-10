@@ -104,6 +104,12 @@ def _create_sync_triggers(conn: sqlite3.Connection) -> None:
                 SELECT '{table}', OLD.{date_col}
                 WHERE OLD.{date_col} != NEW.{date_col};
             END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_{table}_delete
+            AFTER DELETE ON {table} BEGIN
+                INSERT INTO sync_change_log (table_name, log_date)
+                VALUES ('{table}', OLD.{date_col});
+            END;
         """)
 
 

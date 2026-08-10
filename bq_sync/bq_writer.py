@@ -114,6 +114,11 @@ def create_bq_client() -> bigquery.Client:
     return bigquery.Client.from_service_account_json(str(key_path))
 
 
+def _quote_dates(dates: list[str]) -> str:
+    """日付リストをSQLのIN句用にクォートしてカンマ区切りで返す"""
+    return ", ".join(f"'{d}'" for d in dates)
+
+
 def upsert_table(
     client: bigquery.Client,
     project_id: str,
@@ -122,8 +127,10 @@ def upsert_table(
     rows: list[dict],
     schema: list[bigquery.SchemaField],
     merge_key: str,
+    target_dates: list[str] | None = None,
+    date_col: str = "log_date",
 ) -> None:
-    if not rows:
+    if not rows and not target_dates:
         return
     synced_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = [{**r, "synced_at": synced_at} for r in rows]
@@ -150,17 +157,30 @@ def upsert_table(
         f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) "
         f"VALUES ({insert_values})"
     )
+    if target_dates:
+        quoted_dates = _quote_dates(target_dates)
+        merge_sql += (
+            f" WHEN NOT MATCHED BY SOURCE AND T.`{date_col}` IN ({quoted_dates}) "
+            f"THEN DELETE"
+        )
 
     client.query(create_sql).result()
     try:
-        client.load_table_from_json(
-            rows,
-            tmp_table_ref,
-            job_config=LoadJobConfig(
-                write_disposition=WriteDisposition.WRITE_TRUNCATE,
-            ),
-        ).result()
-        client.query(merge_sql).result()
+        if rows:
+            client.load_table_from_json(
+                rows,
+                tmp_table_ref,
+                job_config=LoadJobConfig(
+                    write_disposition=WriteDisposition.WRITE_TRUNCATE,
+                ),
+            ).result()
+        merge_job = client.query(merge_sql)
+        merge_job.result()
+        if target_dates:
+            logger.info(
+                "BigQuery同期 %s: 対象日付数=%d, MERGE影響行数=%s",
+                table_name, len(target_dates), merge_job.num_dml_affected_rows,
+            )
     finally:
         client.delete_table(tmp_table_ref)
 
@@ -178,7 +198,7 @@ def delete_and_insert_daily_summary(
     synced_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = [{**r, "synced_at": synced_at} for r in rows]
 
-    quoted_dates = ", ".join(f"'{d}'" for d in dates)
+    quoted_dates = _quote_dates(dates)
     delete_sql = (
         f"DELETE FROM `{table_ref}` WHERE log_date IN ({quoted_dates})"
     )
