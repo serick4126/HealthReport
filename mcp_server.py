@@ -7,6 +7,7 @@ import functools
 import inspect
 import json
 import logging
+from datetime import date
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -77,6 +78,27 @@ _DESC_SYSTOLIC = f"収縮期血圧(mmHg)。{_SYSTOLIC_MIN}〜{_SYSTOLIC_MAX}の�
 _DESC_DIASTOLIC = f"拡張期血圧(mmHg)。{_DIASTOLIC_MIN}〜{_DIASTOLIC_MAX}の整数"
 _DESC_CALORIES_BURNED = f"消費カロリー(kcal)。{_CALORIES_BURNED_MIN}〜{_CALORIES_BURNED_MAX}の整数"
 _DESC_EXERCISE_DESCRIPTION = f"運動内容。最大{_MAX_EXERCISE_DESC}文字。省略時は MCP"
+
+# 統合ツール（Step8）用の共通文言（P-12）
+_DESC_RECORD_TYPE = "meal / weight / steps / body_fat / blood_pressure / exercise / memo のいずれか"
+_DESC_RECORD_ID = "list_records で取得したID。memo の場合のみ YYYY-MM-DD 形式の日付を渡す"
+_DESC_FIELDS = (
+    "更新するフィールドのオブジェクト。許容キー: "
+    "weight: weight_kg / steps: steps / body_fat: body_fat_pct / "
+    "blood_pressure: systolic, diastolic / exercise: calories_burned, description"
+)
+
+# list_records の上限（description 文言とバリデーションを同期させる）
+_MAX_LIST_DAYS_MEAL = 31
+_MAX_LIST_DAYS_OTHER = 92
+_MAX_LIST_RECORDS = 500
+
+# 統合ツール共通のエラーメッセージ（R1: 3ツール間で重複させない）
+_MSG_INVALID_RECORD_TYPE = (
+    "record_type は meal / weight / steps / body_fat / blood_pressure / exercise / memo のいずれかを指定してください"
+)
+_MSG_RECORD_NOT_FOUND = "該当レコードが見つかりません"
+_MSG_DELETE_RECORD_FETCH_FAILED = "削除前のレコード内容の取得に失敗しました"
 
 _TIME_OF_DAY_JA = {"morning": "朝", "evening": "夜"}
 
@@ -185,19 +207,23 @@ def _audited(tool_name: str):
             try:
                 bound = sig.bind(*args, **kwargs)
                 bound.apply_defaults()
-                arguments = json.dumps(bound.arguments, ensure_ascii=False, default=_json_default)
+                arg_dict = dict(bound.arguments)
             except TypeError:
-                arguments = json.dumps(kwargs, ensure_ascii=False, default=_json_default)
+                arg_dict = dict(kwargs)
             result = await fn(*args, **kwargs)
             if isinstance(result, dict) and result.get("success"):
                 affected_ids = _extract_affected_ids(result)
                 affected_ids = json.dumps(affected_ids, ensure_ascii=False) if affected_ids is not None else None
                 result_kind = "success"
                 error_message = None
+                # delete_record: 削除前のレコード内容を arguments に追記（誤削除時の追跡 — 設計仕様書 §6.13）
+                if result.get("deleted_record") is not None:
+                    arg_dict["deleted_record"] = result["deleted_record"]
             else:
                 affected_ids = None
                 result_kind = "error"
                 error_message = result.get("error") if isinstance(result, dict) else None
+            arguments = json.dumps(arg_dict, ensure_ascii=False, default=_json_default)
             try:
                 database.save_mcp_audit_log(
                     tool_name, arguments, result_kind,
@@ -212,17 +238,24 @@ def _audited(tool_name: str):
     return decorator
 
 
-async def get_daily_summary(date: str | None = None) -> dict:
-    """指定日（省略時は論理上の今日）の食事・体重・歩数・体脂肪・スキップ状況を返す。
+@_safe_tool
+async def get_daily_summary(
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """指定日（省略時は論理上の今日）の食事・体重・歩数・体脂肪・スキップ状況と目標値を返す。
 
     date は原則省略する。ユーザーが明示的に過去日を指定した場合のみ渡すこと。
+    目標値（daily_calorie_goal / daily_steps_goal）も併せて返す。
     """
     target_date = date or database.get_logical_today_jst()
+    summary = database.get_daily_summary(target_date)
+    summary["daily_calorie_goal"] = int(database.get_setting("daily_calorie_goal") or 0)
+    summary["daily_steps_goal"] = int(database.get_setting("daily_steps_goal") or 0)
     return {
         "success": True,
         "tool": "get_daily_summary",
         "date": target_date,
-        "summary": database.get_daily_summary(target_date),
+        "summary": summary,
     }
 
 
@@ -297,7 +330,7 @@ async def update_meal(
         raise record_service.ValidationError("更新するフィールドを1つ以上指定してください")
     _validate_meal_fields(**updates)
     if not database.update_meal(meal_id, **updates):
-        raise record_service.ValidationError("該当レコードが見つかりません")
+        raise record_service.ValidationError(_MSG_RECORD_NOT_FOUND)
     return {
         "success": True,
         "tool": "update_meal",
@@ -507,6 +540,294 @@ async def set_meal_skip(
     }
 
 
+# ── 統合ツール（Step8）─ ディスパッチテーブル（CLAUDE.md §4: if-elif チェーン禁止）──
+
+_RECORD_TYPES: dict[str, dict] = {
+    "meal": {
+        "label": "食事",
+        "module": record_service,
+        "delete": "delete_meal_with_images",  # P-10: 画像ファイル実体も削除
+    },
+    "weight": {
+        "label": "体重",
+        "module": database,
+        "update": "update_weight_by_id",
+        "delete": "delete_weight_by_id",
+        "fields": ("weight_kg",),
+    },
+    "steps": {
+        "label": "歩数",
+        "module": database,
+        "update": "update_steps_by_id",
+        "delete": "delete_steps_by_id",
+        "fields": ("steps",),
+    },
+    "body_fat": {
+        "label": "体脂肪率",
+        "module": database,
+        "update": "update_body_fat_by_id",
+        "delete": "delete_body_fat_by_id",
+        "fields": ("body_fat_pct",),
+    },
+    "blood_pressure": {
+        "label": "血圧",
+        "module": database,
+        "update": "update_blood_pressure_by_id",
+        "delete": "delete_blood_pressure_by_id",
+        "fields": ("systolic", "diastolic"),
+        "read": "get_blood_pressure_by_id",  # C-5: 部分更新のマージ元
+    },
+    "exercise": {
+        "label": "運動",
+        "module": database,
+        "update": "update_exercise_by_id",
+        "delete": "delete_exercise_by_id",
+        "fields": ("calories_burned", "description"),
+        "read": "get_exercise_by_id",        # C-5: 部分更新のマージ元
+    },
+    "memo": {
+        "label": "メモ",
+        "module": database,
+        "delete": "delete_memo",
+        "read": "get_memo",
+    },
+}
+
+
+def _resolve_record_fn(info: dict, key: str):
+    """ディスパッチテーブルの関数を呼び出し時点でモジュール属性から解決する。
+
+    インポート時に関数オブジェクトを掴むと monkeypatch 等の差し替えが効かず、
+    内部例外を再現できないため、呼び出し時に getattr で解決する。
+    """
+    return getattr(info["module"], info[key])
+
+
+_UPDATE_FIELD_VALIDATORS = {
+    "weight_kg": lambda v: record_service.validate_range("体重", v, _WEIGHT_MIN, _WEIGHT_MAX),
+    "steps": lambda v: record_service.validate_range("歩数", v, _STEPS_MIN, _STEPS_MAX),
+    "body_fat_pct": lambda v: record_service.validate_range("体脂肪率", v, _BODY_FAT_MIN, _BODY_FAT_MAX),
+    "systolic": lambda v: record_service.validate_range("収縮期血圧", v, _SYSTOLIC_MIN, _SYSTOLIC_MAX),
+    "diastolic": lambda v: record_service.validate_range("拡張期血圧", v, _DIASTOLIC_MIN, _DIASTOLIC_MAX),
+    "calories_burned": lambda v: record_service.validate_range(
+        "消費カロリー", v, _CALORIES_BURNED_MIN, _CALORIES_BURNED_MAX
+    ),
+    "description": lambda v: record_service.validate_length("運動内容", v, _MAX_EXERCISE_DESC),
+}
+
+
+def _flat_meal(day: dict) -> list[dict]:
+    return day["meals"]
+
+
+def _flat_weight(day: dict) -> list[dict]:
+    return [
+        {"log_date": day["date"], "time_of_day": tod, **rec}
+        for tod, rec in day["weight"].items()
+    ]
+
+
+def _flat_steps(day: dict) -> list[dict]:
+    if day["steps_id"] is None:
+        return []
+    return [{"log_date": day["date"], "steps": day["steps"], "id": day["steps_id"]}]
+
+
+def _flat_body_fat(day: dict) -> list[dict]:
+    if day["body_fat_id"] is None:
+        return []
+    return [{"log_date": day["date"], "body_fat_pct": day["body_fat"], "id": day["body_fat_id"]}]
+
+
+def _flat_blood_pressure(day: dict) -> list[dict]:
+    return [
+        {"log_date": day["date"], "time_of_day": tod, **rec}
+        for tod, rec in day["blood_pressure"].items()
+    ]
+
+
+def _flat_exercise(day: dict) -> list[dict]:
+    return day["exercise"]
+
+
+# get_history の日付ネスト構造から種別ごとにフラット化する（id を含む）
+_HISTORY_EXTRACTORS = {
+    "meal": _flat_meal,
+    "weight": _flat_weight,
+    "steps": _flat_steps,
+    "body_fat": _flat_body_fat,
+    "blood_pressure": _flat_blood_pressure,
+    "exercise": _flat_exercise,
+}
+
+
+def _flatten_history(record_type: str, history: list[dict]) -> list[dict]:
+    extract = _HISTORY_EXTRACTORS[record_type]
+    return [rec for day in history for rec in extract(day)]
+
+
+def _fetch_deleted_record(record_type: str, record_id) -> dict:
+    """削除前のレコード内容を取得する。取得できない場合はその旨の dict を返す。
+
+    取得に失敗しても削除自体は実行する（呼び出し元が継続する — 設計仕様書 §6.13）。
+    """
+    info = _RECORD_TYPES.get(record_type, {})
+    if "read" not in info:
+        return {"note": _MSG_DELETE_RECORD_FETCH_FAILED}
+    reader = _resolve_record_fn(info, "read")
+    try:
+        content = reader(record_id)
+    except Exception:
+        logger.warning(
+            "delete_record: 削除前内容の取得に失敗 (record_type=%s)", record_type, exc_info=True
+        )
+        content = None
+    if content is None:
+        return {"note": _MSG_DELETE_RECORD_FETCH_FAILED}
+    return content
+
+
+@_safe_tool
+async def list_records(
+    record_type: Annotated[str, Field(description=_DESC_RECORD_TYPE)],
+    start_date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+    end_date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """記録一覧を取得する（読み取り専用のため監査ログは記録されない）。
+
+    start_date / end_date は原則省略する。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    食事は最大31日・食事以外は最大92日。500件を超える場合は期間を狭めること。
+    """
+    if record_type not in _RECORD_TYPES:
+        raise record_service.ValidationError(
+            _MSG_INVALID_RECORD_TYPE
+        )
+    start = start_date or database.get_logical_today_jst()
+    end = end_date or start
+    record_service.validate_date(start, allow_future=True)
+    record_service.validate_date(end, allow_future=True)
+    max_days = _MAX_LIST_DAYS_MEAL if record_type == "meal" else _MAX_LIST_DAYS_OTHER
+    span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+    if span < 1:
+        raise record_service.ValidationError("start_date は end_date 以前の日付を指定してください")
+    if span > max_days:
+        raise record_service.ValidationError(
+            f"{record_type} は一度に {max_days} 日までしか指定できません。期間を狭めてください"
+        )
+    if record_type == "memo":
+        records = database.get_memos_range(start, end)
+    else:
+        records = _flatten_history(record_type, database.get_history(start_date=start, end_date=end))
+    if len(records) > _MAX_LIST_RECORDS:
+        raise record_service.ValidationError(
+            f"件数が{_MAX_LIST_RECORDS}件を超えています。期間を狭めてください"
+        )
+    return {
+        "success": True,
+        "tool": "list_records",
+        "record_type": record_type,
+        "start_date": start,
+        "end_date": end,
+        "records": records,
+    }
+
+
+@_audited("update_record")
+@_safe_tool
+async def update_record(
+    record_type: Annotated[str, Field(description=_DESC_RECORD_TYPE)],
+    record_id: Annotated[int, Field(description=_DESC_RECORD_ID)],
+    fields: Annotated[dict, Field(description=_DESC_FIELDS)],
+) -> dict:
+    """記録を更新する（食事は対象外。update_meal を使うこと）。
+
+    record_type ごとに許容されるキー以外を指定するとエラーになる。
+    blood_pressure / exercise は一部のキーのみ指定しても、既存値を保持したまま部分更新できる。
+    """
+    info = _RECORD_TYPES.get(record_type)
+    if info is None:
+        raise record_service.ValidationError(
+            _MSG_INVALID_RECORD_TYPE
+        )
+    if record_type == "meal":
+        raise record_service.ValidationError("食事の更新は update_record ではなく update_meal を使ってください")
+    update_fn = _resolve_record_fn(info, "update") if "update" in info else None
+    if update_fn is None:
+        raise record_service.ValidationError(
+            f"{info['label']} の更新は update_record の対象外です。write_memo を使ってください"
+        )
+    allowed = set(info["fields"])
+    extra = set(fields) - allowed
+    if extra:
+        raise record_service.ValidationError(
+            f"更新できないキーが含まれています: {', '.join(sorted(extra))}"
+        )
+    if not fields:
+        raise record_service.ValidationError("fields に更新するキーを1つ以上指定してください")
+    for key, value in fields.items():
+        _UPDATE_FIELD_VALIDATORS[key](value)
+    values = dict(fields)
+    # C-5: blood_pressure / exercise は既存 update 関数が全フィールド必須のため、既存値を読み出してマージする
+    if "read" in info:
+        existing = _resolve_record_fn(info, "read")(record_id)
+        if existing is None:
+            raise record_service.ValidationError(_MSG_RECORD_NOT_FOUND)
+        for key in allowed:
+            if key not in values:
+                values[key] = existing[key]
+    if not update_fn(record_id, **values):
+        raise record_service.ValidationError(_MSG_RECORD_NOT_FOUND)
+    return {
+        "success": True,
+        "tool": "update_record",
+        "record_type": record_type,
+        "record_id": record_id,
+        "updated_fields": fields,
+    }
+
+
+@_audited("delete_record")
+@_safe_tool
+async def delete_record(
+    record_type: Annotated[str, Field(description=_DESC_RECORD_TYPE)],
+    record_id: Annotated[int | str, Field(description=_DESC_RECORD_ID)],
+) -> dict:
+    """記録を1件削除する（一括削除・日付範囲削除は提供しない）。
+
+    memo は record_id の代わりに YYYY-MM-DD 形式の日付を渡す。
+    削除前にレコード内容を取得し、監査ログの arguments に残す。
+    """
+    info = _RECORD_TYPES.get(record_type)
+    if info is None:
+        raise record_service.ValidationError(
+            _MSG_INVALID_RECORD_TYPE
+        )
+    if record_type == "memo":
+        log_date = str(record_id)
+        record_service.validate_date(log_date, allow_future=True)
+        deleted_record = _fetch_deleted_record("memo", log_date)
+        if not database.delete_memo(log_date):
+            raise record_service.ValidationError(_MSG_RECORD_NOT_FOUND)
+        return {
+            "success": True,
+            "tool": "delete_record",
+            "record_type": "memo",
+            "record_id": log_date,
+            "deleted_record": deleted_record,
+        }
+    delete_fn = _resolve_record_fn(info, "delete")
+    deleted_record = _fetch_deleted_record(record_type, record_id)
+    if not delete_fn(record_id):
+        raise record_service.ValidationError(_MSG_RECORD_NOT_FOUND)
+    return {
+        "success": True,
+        "tool": "delete_record",
+        "record_type": record_type,
+        "record_id": record_id,
+        "deleted_record": deleted_record,
+    }
+
+
 def build_mcp_server(instructions: str | None = None) -> MCPServer:
     """MCPServer を構築し、ツールを登録して返す。"""
     server = MCPServer(name="healthreport", instructions=instructions)
@@ -520,6 +841,9 @@ def build_mcp_server(instructions: str | None = None) -> MCPServer:
     server.tool()(log_exercise)
     server.tool()(write_memo)
     server.tool()(set_meal_skip)
+    server.tool()(list_records)
+    server.tool()(update_record)
+    server.tool()(delete_record)
     return server
 
 
