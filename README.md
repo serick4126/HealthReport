@@ -214,7 +214,76 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 5. HTTPS 化（Let's Encrypt、任意）
+### 5. MCP接続（claude.ai カスタムコネクタ）
+
+claude.ai（Web版）のカスタムコネクタから、このアプリを MCP サーバーとして登録すると、チャット上で食事の記録や当日サマリーの確認ができます。
+
+#### 前提
+
+- **HTTPS で公開済みであること**（MCP は `https://` でのみ利用可能）。未実施の場合は次項「HTTPS 化」を先に実施してください
+
+#### 接続URLの発行
+
+1. ブラウザで設定画面を開く
+2. 「MCP接続（claude.ai カスタムコネクタ）」セクションの「接続URLを発行 / 再発行」を押す
+3. 表示された URL を控える（**この画面を離れると再表示できません**）
+
+#### claude.ai 側の登録手順
+
+1. claude.ai の設定 → コネクタ → カスタムコネクタを追加
+2. 発行した URL を貼り付けて登録（認証設定は不要）
+
+#### 利用できること
+
+- **食事の一括登録** — 複数品目をまとめて登録（写真からの推定登録を含む）
+- **記録** — 体重 / 歩数 / 体脂肪率 / 血圧 / 運動（消費カロリー）/ メモ / 食事スキップ
+- **確認・管理** — 一覧取得 / 更新 / 削除 / 当日サマリー（目標カロリー・目標歩数を含む）
+
+#### トークン再発行時の注意
+
+再発行すると**旧 URL は即座に無効（404）になります**。**claude.ai 側のコネクタを削除して、新しい URL で登録し直す**必要があります。
+
+#### nginxログ運用
+
+アクセスログにはトークンを含む URL がそのまま記録されます。`/mcp/` へのリクエストをログから除外するには、nginx の設定に以下を追加してください。
+
+```nginx
+# /mcp/ へのアクセスはURLに秘密トークンを含むためログに残さない
+location /mcp/ {
+    access_log off;
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+#### BigQuery MCP との使い分け
+
+記録操作・直近の確認は本 MCP、長期トレンド分析は BigQuery MCP を使用してください。
+
+#### トラブルシュート
+
+| 症状 | 原因・対処 |
+|------|-----------|
+| 404 | トークン不一致またはキー未設定。接続URLを再発行し、claude.ai 側に再登録してください |
+| 429 | レート制限（60 req/分）。少し待ってから再試行してください |
+
+#### 監査ログの確認方法
+
+誤削除時の追跡用に、MCP ツール呼び出しの監査ログを SQLite から直接確認できます（UI での表示はスコープ外）。
+
+```bash
+sqlite3 health.db "SELECT called_at, tool_name, arguments FROM mcp_audit_log \
+  WHERE tool_name='delete_record' ORDER BY called_at DESC LIMIT 20;"
+```
+
+#### `--full` 同期時の注意
+
+BigQuery の削除反映は「対象日付範囲の BQ 行を SQLite に合わせる」動作のため、SQLite が破損・部分復元された状態で `--full` 同期を実行しないでください（BQ 側の正しいデータまで失われます）。
+
+### 6. HTTPS 化（Let's Encrypt、任意）
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
