@@ -4,9 +4,13 @@ record_service.py — FastAPI/MCP に依存しない共通ドメインロジッ�
 mcp_server.py と main.py の重複（R1違反）を防ぐため、バリデーション・
 時刻解決・定数・画像削除を共通化する。
 HTTPException は送出せず、独自の ValidationError を送出する。
-HTTP層（main.py）はこれを捕捉し、従来どおりの status_code / detail 文言を持つ
-HTTPException に変換する。detail 文言は record_service 側のメッセージ定数が
-元となり、main.py は変換時に変更しない。
+
+文言の層間契約:
+- ValidationError.message は MCP 層（mcp_server.py）がそのまま
+  {"success": False, "error": message} として利用する正である。
+- HTTP 層（main.py）は既存 HTTP 挙動不変（P-6）のため、既存 detail 文言が
+  record_service の生成文言（MSG_* 定数）と一致する経路では str(exc) を
+  そのまま利用し、一致しない経路のみ既存 detail 文言で上書き変換する。
 """
 
 import logging
@@ -30,6 +34,19 @@ MSG_MEMO_EMPTY = "メモを入力してください"
 MSG_MEMO_REPLACE_TOO_LONG = "memo_text が2000字を超えています"
 MSG_MEMO_APPEND_TOO_LONG = "1回の追記は500字以内にしてください"
 
+# ValidationError.code 定数（層間で比較するためマジック文字列を回避）
+CODE_VALIDATION_ERROR = "validation_error"
+CODE_INVALID_DATE_FORMAT = "invalid_date_format"
+CODE_FUTURE_DATE = "future_date"
+CODE_OUT_OF_RANGE = "out_of_range"
+CODE_TOO_LONG = "too_long"
+CODE_INVALID_TIME_FORMAT = "invalid_time_format"
+CODE_INVALID_TIME_RANGE = "invalid_time_range"
+CODE_INVALID_MODE = "invalid_mode"
+CODE_EMPTY_MEMO = "empty_memo"
+CODE_MEMO_REPLACE_TOO_LONG = "memo_replace_too_long"
+CODE_MEMO_APPEND_TOO_LONG = "memo_append_too_long"
+
 MEAL_TYPE_JA = {
     "breakfast": "朝食",
     "lunch": "昼食",
@@ -50,7 +67,7 @@ class ValidationError(Exception):
     code は検証種別を識別するための文字列（main.py 側の文言マッピング用）。
     """
 
-    def __init__(self, message: str, code: str = "validation_error"):
+    def __init__(self, message: str, code: str = CODE_VALIDATION_ERROR):
         super().__init__(message)
         self.message = message
         self.code = code
@@ -64,25 +81,25 @@ def validate_date(date_str: str, *, allow_future: bool = False) -> None:
     try:
         parsed = datetime.strptime(date_str, "%Y-%m-%d").date()
     except (ValueError, TypeError):
-        raise ValidationError(MSG_DATE_FORMAT, code="invalid_date_format")
+        raise ValidationError(MSG_DATE_FORMAT, code=CODE_INVALID_DATE_FORMAT)
     if not allow_future and parsed > datetime.now(JST).date():
-        raise ValidationError(MSG_DATE_FUTURE, code="future_date")
+        raise ValidationError(MSG_DATE_FUTURE, code=CODE_FUTURE_DATE)
 
 
 def validate_time(time_str: str) -> None:
     """HH:MM 形式の時刻を検証。不正な場合は ValidationError を送出。"""
     if not _TIME_RE.match(time_str):
-        raise ValidationError(MSG_TIME_FORMAT, code="invalid_time_format")
+        raise ValidationError(MSG_TIME_FORMAT, code=CODE_INVALID_TIME_FORMAT)
     h, m = int(time_str[:2]), int(time_str[3:])
     if not (0 <= h <= 23 and 0 <= m <= 59):
-        raise ValidationError(MSG_TIME_RANGE, code="invalid_time_range")
+        raise ValidationError(MSG_TIME_RANGE, code=CODE_INVALID_TIME_RANGE)
 
 
 def validate_range(name: str, value: float, lo: float, hi: float) -> None:
     """数値が [lo, hi] の範囲内かを検証。範囲外は ValidationError を送出。"""
     if value < lo or value > hi:
         raise ValidationError(
-            f"{name} は {lo}〜{hi} の範囲で指定してください", code="out_of_range"
+            f"{name} は {lo}〜{hi} の範囲で指定してください", code=CODE_OUT_OF_RANGE
         )
 
 
@@ -90,7 +107,7 @@ def validate_length(name: str, text: str, max_len: int) -> None:
     """文字列長が max_len を超えていないかを検証。超過時は ValidationError を送出。"""
     if len(text) > max_len:
         raise ValidationError(
-            f"{name} は {max_len} 文字以内で指定してください", code="too_long"
+            f"{name} は {max_len} 文字以内で指定してください", code=CODE_TOO_LONG
         )
 
 
@@ -101,15 +118,15 @@ def sanitize_memo_text(text: str, mode: str) -> str:
     """
     if mode not in ("replace", "append"):
         raise ValidationError(
-            f"mode は replace / append を指定してください: {mode}", code="invalid_mode"
+            f"mode は replace / append を指定してください: {mode}", code=CODE_INVALID_MODE
         )
     sanitized = _CTRL_RE.sub("", text)
     if sanitized.strip() == "":
-        raise ValidationError(MSG_MEMO_EMPTY, code="empty_memo")
+        raise ValidationError(MSG_MEMO_EMPTY, code=CODE_EMPTY_MEMO)
     if mode == "replace" and len(sanitized) > 2000:
-        raise ValidationError(MSG_MEMO_REPLACE_TOO_LONG, code="memo_replace_too_long")
+        raise ValidationError(MSG_MEMO_REPLACE_TOO_LONG, code=CODE_MEMO_REPLACE_TOO_LONG)
     if mode == "append" and len(sanitized) > 500:
-        raise ValidationError(MSG_MEMO_APPEND_TOO_LONG, code="memo_append_too_long")
+        raise ValidationError(MSG_MEMO_APPEND_TOO_LONG, code=CODE_MEMO_APPEND_TOO_LONG)
     return sanitized
 
 

@@ -1009,10 +1009,12 @@ def _validate_calories_and_desc(calories_burned: int, description: str) -> None:
     try:
         record_service.validate_range("calories_burned", calories_burned, 0, 9999)
     except record_service.ValidationError:
+        # P-6: 既存 detail 文言を優先
         raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
     try:
         record_service.validate_length("description", description, 500)
     except record_service.ValidationError:
+        # P-6: 既存 detail 文言を優先
         raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
 
 
@@ -1021,7 +1023,8 @@ def _validate_exercise_body(log_date: str, calories_burned: int, description: st
     try:
         record_service.validate_date(log_date, allow_future=False)
     except record_service.ValidationError as exc:
-        if exc.code == "future_date":
+        # P-6: 既存 detail 文言を優先
+        if exc.code == record_service.CODE_FUTURE_DATE:
             raise HTTPException(status_code=422, detail="未来の日付は登録できません")
         raise HTTPException(status_code=422, detail="log_date は YYYY-MM-DD 形式で指定してください")
     _validate_calories_and_desc(calories_burned, description)
@@ -1122,6 +1125,7 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
     try:
         record_service.validate_range("steps", body.steps, 1, float("inf"))
     except record_service.ValidationError:
+        # P-6: 既存 detail 文言を優先
         raise HTTPException(status_code=422, detail="stepsは1以上の整数を指定してください")
     try:
         record_service.validate_date(body.date, allow_future=False)
@@ -1160,6 +1164,7 @@ async def body_fat_ingest(request: Request, body: BodyFatIngestRequest):
     try:
         record_service.validate_range("body_fat", body.body_fat, 1.0, 80.0)
     except record_service.ValidationError:
+        # P-6: 既存 detail 文言を優先
         raise HTTPException(status_code=422, detail="body_fatは1.0〜80.0の範囲で指定してください")
     try:
         record_service.validate_date(body.date, allow_future=False)
@@ -1208,15 +1213,18 @@ async def exercise_ingest(request: Request, body: ExerciseIngestRequest):
     try:
         record_service.validate_range("calories_burned", body.calories_burned, 0, 9999)
     except record_service.ValidationError:
+        # P-6: 既存 detail 文言を優先
         raise HTTPException(status_code=422, detail="calories_burned は 0〜9999 の整数を指定してください")
     try:
         record_service.validate_length("description", body.description, 500)
     except record_service.ValidationError:
+        # P-6: 既存 detail 文言を優先
         raise HTTPException(status_code=422, detail="description は 500 文字以内で指定してください")
     try:
         record_service.validate_date(body.date, allow_future=False)
     except record_service.ValidationError as exc:
-        if exc.code == "future_date":
+        # P-6: 既存 detail 文言を優先
+        if exc.code == record_service.CODE_FUTURE_DATE:
             raise HTTPException(status_code=422, detail="未来の日付は登録できません")
         raise HTTPException(status_code=422, detail="date は YYYY-MM-DD 形式で指定してください")
 
