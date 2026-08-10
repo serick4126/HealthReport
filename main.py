@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 import uuid
 
@@ -333,7 +334,13 @@ REPORT_COLUMN_REGISTRY = [
 EDITABLE_SETTINGS = {"user_name", "user_height_cm", "daily_calorie_goal", "daily_steps_goal", "app_password", "anthropic_api_key", "user_notes", "savings_mode", "normal_model", "savings_model", "cache_ttl", "use_food_defaults", "auto_save_food_defaults", "split_multiple_items", "theme", "external_api_key", "day_start_hour", "password_disabled", "user_gender", "user_birthdate", "stats_widgets", "stats_summary_items", "available_models", "report_focus_items", "report_week_start_day", "prefecture_code", "country_code", "weather_api_enabled", "latitude", "longitude", "timezone", "report_columns"}
 
 
-SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key"}
+# EDITABLE_SETTINGS は app_settings 3箇所セット更新対象（database.py・main.py・settings.html）。
+# ただし mcp_api_key は設計仕様書 §4.2 / 確定事項#3 により編集不可キーとする
+# （rotate エンドポイント限定発行のため、フォーム編集で平文を POST させない）。
+# そのため EDITABLE_SETTINGS には意図的に追加しない。
+SENSITIVE_KEYS = {"app_password", "anthropic_api_key", "external_api_key", "mcp_api_key"}
+
+MCP_TOKEN_BYTES = 32  # token_urlsafe(32) = 43文字の秘密URL用トークン
 
 
 @app.get("/api/settings")
@@ -408,6 +415,19 @@ async def save_settings(request: Request, body: SettingsBatchRequest):
                 raise HTTPException(status_code=400, detail="誕生日から計算した年齢が不正です（1〜120歳の範囲で設定してください）")
         database.save_setting(key, value)
     return JSONResponse({"success": True})
+
+
+@app.post("/api/mcp/token/rotate")
+async def rotate_mcp_token(request: Request):
+    """MCP接続トークンを発行・再発行する。
+
+    平文はこの応答一度きり。GET /api/settings は以後 mcp_api_key='set' のみ返す
+    （SENSITIVE_KEYS 登録により平文は戻さない）。
+    """
+    require_auth(request)
+    token = secrets.token_urlsafe(MCP_TOKEN_BYTES)
+    database.save_setting("mcp_api_key", token)
+    return JSONResponse({"success": True, "token": token, "path": "/mcp/" + token})
 
 
 # ── 集計ページウィジェットレジストリ endpoint ──────────────────────────────────

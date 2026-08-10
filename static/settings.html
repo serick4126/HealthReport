@@ -630,6 +630,35 @@
           </div>
         </details>
 
+        <!-- MCP接続（claude.ai カスタムコネクタ） -->
+        <details class="collapsible-section">
+          <summary>MCP接続（claude.ai カスタムコネクタ）</summary>
+          <div class="card">
+            <div class="row">
+              <span class="row-label">MCP接続トークン</span>
+              <span style="flex:1;font-size:13px;color:var(--text-secondary)">状態: ${s.mcp_api_key === 'set' ? '発行済み' : '未発行'}</span>
+              <button id="rotateMcpTokenBtn" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">接続URLを発行 / 再発行</button>
+            </div>
+            <div id="mcpTokenResult" style="display:none;margin:0 14px 12px;padding:12px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius)">
+              <div style="display:flex;align-items:center;gap:8px;width:100%">
+                <code id="mcpTokenUrl" style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all"></code>
+                <button class="copy-mcp-url-btn" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
+              </div>
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:8px">
+                ⚠ <strong>この画面を離れると再表示できません。今すぐ控えてください</strong>
+              </div>
+            </div>
+            <div class="row note-tip" style="flex-direction:column;align-items:flex-start;gap:4px">
+              <div style="font-weight:600;font-size:13px">🔗 claude.ai カスタムコネクタ登録</div>
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+                <strong>再発行すると claude.ai 側のコネクタ再登録が必要です</strong><br>
+                発行した接続URLを claude.ai のカスタムコネクタに登録してください。<br>
+                URLに秘密が含まれるため、他人と共有しないでください。
+              </div>
+            </div>
+          </div>
+        </details>
+
         <!-- レポート出力設定 -->
         <details class="collapsible-section" open>
           <summary>レポート出力設定</summary>
@@ -697,6 +726,35 @@
           const url = window.location.origin + btn.dataset.url;
           navigator.clipboard.writeText(url)
             .then(function() { showToast(btn.dataset.url + ' をコピーしました ✓'); })
+            .catch(function() { showToast('コピーに失敗しました', 'error'); });
+        });
+      });
+      // MCP接続URL 発行/再発行（inline onclick禁止規約に従いaddEventListenerで設定）
+      var mcpTokenUrl = '';
+      var rotateMcpBtn = document.getElementById('rotateMcpTokenBtn');
+      if (rotateMcpBtn) {
+        rotateMcpBtn.addEventListener('click', function() {
+          rotateMcpBtn.disabled = true;
+          fetch('/api/mcp/token/rotate', { method: 'POST' })
+            .then(function(res) {
+              if (!res.ok) throw new Error('rotate failed');
+              return res.json();
+            })
+            .then(function(data) {
+              mcpTokenUrl = window.location.origin + '/mcp/' + data.token;
+              document.getElementById('mcpTokenUrl').textContent = mcpTokenUrl;
+              document.getElementById('mcpTokenResult').style.display = 'block';
+              showToast('接続URLを発行しました ✓');
+            })
+            .catch(function() { showToast('接続URLの発行に失敗しました', 'error'); })
+            .finally(function() { rotateMcpBtn.disabled = false; });
+        });
+      }
+      // MCP接続URL コピー（トークンを含むURLをDOM属性に残さないためJS変数から渡す）
+      document.querySelectorAll('.copy-mcp-url-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          navigator.clipboard.writeText(mcpTokenUrl)
+            .then(function() { showToast('接続URLをコピーしました ✓'); })
             .catch(function() { showToast('コピーに失敗しました', 'error'); });
         });
       });
