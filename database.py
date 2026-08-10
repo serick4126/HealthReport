@@ -679,6 +679,18 @@ def update_meal_full(
     return cur.rowcount > 0
 
 
+def get_meal_by_id(meal_id: int) -> Optional[dict]:
+    """id 指定で食事レコードを全フィールド返す。存在しない場合は None。
+    削除前内容の監査記録用に利用する。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, meal_date, meal_type, description, calories, protein, fat, carbs, sodium, notes, meal_time, recorded_at "
+            "FROM meals WHERE id = ?",
+            (meal_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def delete_meal(meal_id: int) -> bool:
     with get_conn() as conn:
         conn.execute("DELETE FROM meal_images WHERE meal_id = ?", (meal_id,))
@@ -793,6 +805,18 @@ def update_weight_by_id(weight_id: int, weight_kg: float) -> bool:
     return cur.rowcount > 0
 
 
+def get_weight_by_id(weight_id: int) -> Optional[dict]:
+    """id 指定で体重レコードを全フィールド返す。存在しない場合は None。
+    削除前内容の監査記録用に利用する。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, time_of_day, weight_kg, recorded_at "
+            "FROM weight_logs WHERE id = ?",
+            (weight_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def delete_weight_by_id(weight_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM weight_logs WHERE id=?", (weight_id,))
@@ -844,6 +868,18 @@ def update_steps_by_id(steps_id: int, steps: int) -> bool:
     return cur.rowcount > 0
 
 
+def get_steps_by_id(steps_id: int) -> Optional[dict]:
+    """id 指定で歩数レコードを全フィールド返す。存在しない場合は None。
+    削除前内容の監査記録用に利用する。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, steps, recorded_at "
+            "FROM steps_logs WHERE id = ?",
+            (steps_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def delete_steps_by_id(steps_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM steps_logs WHERE id=?", (steps_id,))
@@ -878,6 +914,18 @@ def update_body_fat_by_id(bf_id: int, body_fat_pct: float) -> bool:
             (body_fat_pct, bf_id),
         )
     return cur.rowcount > 0
+
+
+def get_body_fat_by_id(body_fat_id: int) -> Optional[dict]:
+    """id 指定で体脂肪率レコードを全フィールド返す。存在しない場合は None。
+    削除前内容の監査記録用に利用する。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, log_date, body_fat_pct, recorded_at "
+            "FROM body_fat_logs WHERE id = ?",
+            (body_fat_id,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def delete_body_fat_by_id(bf_id: int) -> bool:

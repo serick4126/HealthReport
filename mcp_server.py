@@ -545,14 +545,15 @@ async def set_meal_skip(
 _RECORD_TYPES: dict[str, dict] = {
     "meal": {
         "label": "食事",
-        "module": record_service,
-        "delete": "delete_meal_with_images",  # P-10: 画像ファイル実体も削除
+        "delete": (record_service, "delete_meal_with_images"),  # P-10: 画像ファイル実体も削除
+        "read": (database, "get_meal_by_id"),
     },
     "weight": {
         "label": "体重",
         "module": database,
         "update": "update_weight_by_id",
         "delete": "delete_weight_by_id",
+        "read": "get_weight_by_id",
         "fields": ("weight_kg",),
     },
     "steps": {
@@ -560,6 +561,7 @@ _RECORD_TYPES: dict[str, dict] = {
         "module": database,
         "update": "update_steps_by_id",
         "delete": "delete_steps_by_id",
+        "read": "get_steps_by_id",
         "fields": ("steps",),
     },
     "body_fat": {
@@ -567,6 +569,7 @@ _RECORD_TYPES: dict[str, dict] = {
         "module": database,
         "update": "update_body_fat_by_id",
         "delete": "delete_body_fat_by_id",
+        "read": "get_body_fat_by_id",
         "fields": ("body_fat_pct",),
     },
     "blood_pressure": {
@@ -597,10 +600,17 @@ _RECORD_TYPES: dict[str, dict] = {
 def _resolve_record_fn(info: dict, key: str):
     """ディスパッチテーブルの関数を呼び出し時点でモジュール属性から解決する。
 
+    値は (モジュール, 関数名) のタプルまたは {key}_module のモジュール + 関数名文字列。
     インポート時に関数オブジェクトを掴むと monkeypatch 等の差し替えが効かず、
     内部例外を再現できないため、呼び出し時に getattr で解決する。
     """
-    return getattr(info["module"], info[key])
+    value = info[key]
+    if isinstance(value, tuple):
+        module, func_name = value
+    else:
+        module = info.get(key + "_module", info["module"])
+        func_name = value
+    return getattr(module, func_name)
 
 
 _UPDATE_FIELD_VALIDATORS = {
