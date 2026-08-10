@@ -320,7 +320,7 @@ async def get_daily_summary(
     date は原則省略する。ユーザーが明示的に過去日を指定した場合のみ渡すこと。
     目標値（daily_calorie_goal / daily_steps_goal）も併せて返す。
     """
-    target_date = date or database.get_logical_today_jst()
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     summary = database.get_daily_summary(target_date)
     # 設定行欠落時の既定値は app 全体（database.py）と一致させる
     summary["daily_calorie_goal"] = int(database.get_setting("daily_calorie_goal") or 1500)
@@ -346,8 +346,7 @@ async def create_meals(
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     items の1件でも検証に失敗した場合は全件登録されません。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     _validate_meal_type(meal_type)
     if not items:
         raise record_service.ValidationError("items は1件以上指定してください")
@@ -424,8 +423,7 @@ async def log_weight(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     _validate_time_of_day(time_of_day)
     record_service.validate_range("体重", weight_kg, _WEIGHT_MIN, _WEIGHT_MAX)
     prev = database.get_previous_weight(time_of_day, target_date)
@@ -454,8 +452,7 @@ async def log_steps(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     record_service.validate_range("歩数", steps, _STEPS_MIN, _STEPS_MAX)
     result = database.save_steps(target_date, steps)
     return {
@@ -479,8 +476,7 @@ async def log_body_fat(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     record_service.validate_range("体脂肪率", body_fat_pct, _BODY_FAT_MIN, _BODY_FAT_MAX)
     result = database.save_body_fat(target_date, body_fat_pct)
     return {
@@ -506,8 +502,7 @@ async def log_blood_pressure(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     _validate_time_of_day(time_of_day)
     record_service.validate_range("収縮期血圧", systolic, _SYSTOLIC_MIN, _SYSTOLIC_MAX)
     record_service.validate_range("拡張期血圧", diastolic, _DIASTOLIC_MIN, _DIASTOLIC_MAX)
@@ -536,8 +531,7 @@ async def log_exercise(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     record_service.validate_range(
         "消費カロリー", calories_burned, _CALORIES_BURNED_MIN, _CALORIES_BURNED_MAX
     )
@@ -565,8 +559,7 @@ async def write_memo(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     sanitized = record_service.sanitize_memo_text(text, mode)
     if mode == "replace":
         result = database.upsert_memo(target_date, sanitized)
@@ -595,8 +588,7 @@ async def set_meal_skip(
 
     date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
     """
-    target_date = date or database.get_logical_today_jst()
-    record_service.validate_date(target_date, allow_future=False)
+    target_date = record_service.normalize_date(date or database.get_logical_today_jst())
     _validate_skip_meal_type(meal_type)
     if skipped:
         database.save_meal_skip(target_date, meal_type)
@@ -784,10 +776,10 @@ async def list_records(
         raise record_service.ValidationError(
             _MSG_INVALID_RECORD_TYPE
         )
-    start = start_date or database.get_logical_today_jst()
-    end = end_date or start
-    record_service.validate_date(start, allow_future=True)
-    record_service.validate_date(end, allow_future=True)
+    start = record_service.normalize_date(
+        start_date or database.get_logical_today_jst(), allow_future=True
+    )
+    end = record_service.normalize_date(end_date or start, allow_future=True)
     max_days = _MAX_LIST_DAYS_MEAL if record_type == "meal" else _MAX_LIST_DAYS_OTHER
     # strptime ベースでゼロパディング欠落（"2026-1-1"）を許容する（P-6 / validate_date と同一寛容性）
     span = (record_service.parse_date(end) - record_service.parse_date(start)).days + 1
@@ -886,8 +878,8 @@ async def delete_record(
             _MSG_INVALID_RECORD_TYPE
         )
     if record_type == "memo":
-        log_date = str(record_id)
-        record_service.validate_date(log_date, allow_future=True)
+        # 監査ログの arguments には正規化前の生値（record_id）が残る（追跡性のため）
+        log_date = record_service.normalize_date(str(record_id), allow_future=True)
         deleted_record = _fetch_deleted_record("memo", log_date)
         if not database.delete_memo(log_date):
             raise record_service.ValidationError(_MSG_RECORD_NOT_FOUND)

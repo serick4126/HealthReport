@@ -85,14 +85,26 @@ def parse_date(date_str: str):
         raise ValidationError(MSG_DATE_FORMAT, code=CODE_INVALID_DATE_FORMAT)
 
 
-def validate_date(date_str: str, *, allow_future: bool = False) -> None:
-    """YYYY-MM-DD 形式の日付を検証。不正な場合は ValidationError を送出。
-    allow_future=False（既定）のとき未来日付も拒否する。
-    ゼロパディング欠落の許容など strptime の挙動は既存実装と同一（P-6）。
+def normalize_date(date_str: str, *, allow_future: bool = False) -> str:
+    """YYYY-MM-DD に正規化して返す。検証内容は validate_date と同一。
+
+    "2026-8-1" のようなゼロパディング欠落を "2026-08-01" に揃える。
+    SQLite の日付列は TEXT であり比較が辞書順のため、非正規表記のまま保存すると
+    他の全経路（履歴・集計・レポート・BQ同期）から見えないレコードになる。
     """
     parsed = parse_date(date_str)
     if not allow_future and parsed > datetime.now(JST).date():
         raise ValidationError(MSG_DATE_FUTURE, code=CODE_FUTURE_DATE)
+    return parsed.isoformat()
+
+
+def validate_date(date_str: str, *, allow_future: bool = False) -> None:
+    """YYYY-MM-DD 形式の日付を検証。不正な場合は ValidationError を送出。
+
+    HTTP層（main.py）の既存 detail 文言・status_code を変えないため、
+    戻り値も送出する例外も現状のまま維持する（P-6 / P-15）。
+    """
+    normalize_date(date_str, allow_future=allow_future)
 
 
 def validate_time(time_str: str) -> None:

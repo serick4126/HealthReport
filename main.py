@@ -763,9 +763,11 @@ async def create_blood_pressure(request: Request, body: BloodPressureCreateReque
     require_auth(request)
     if body.time_of_day not in ("morning", "evening"):
         raise HTTPException(status_code=422, detail="time_of_dayはmorning/eveningのみ有効です")
-    _validate_date(body.log_date)
+    _validate_date(body.log_date)  # 既存検証（detail 文言・status 不変）
     _validate_blood_pressure(body.systolic, body.diastolic)
-    bp_id = database.save_blood_pressure(body.log_date, body.time_of_day, body.systolic, body.diastolic)
+    bp_id = database.save_blood_pressure(
+        record_service.normalize_date(body.log_date), body.time_of_day, body.systolic, body.diastolic
+    )
     return JSONResponse({"success": True, "id": bp_id})
 
 
@@ -853,11 +855,12 @@ async def get_weather_range(request: Request, start: str, end: str):
 async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
     """指定日の天気をOpen-Meteoから取得してDB保存する（リロードボタン用）"""
     require_auth(request)
-    _validate_date(body.date)
+    _validate_date(body.date)  # 既存検証（detail 文言・status 不変）
+    fetch_date = record_service.normalize_date(body.date)  # 保存値のみ正規化（C-2）
 
-    if not weather_module.validate_date_range(body.date, body.date):
+    if not weather_module.validate_date_range(fetch_date, fetch_date):
         return JSONResponse({
-            "date": body.date,
+            "date": fetch_date,
             "status": "invalid",
             "message": "取得対象日が範囲外です（当日または366日以前）",
         })
@@ -877,10 +880,10 @@ async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
         })
 
     # Open-Meteo APIから取得
-    result = await weather_module.fetch_weather_from_api(lat, lng, body.date, body.date, tz)
+    result = await weather_module.fetch_weather_from_api(lat, lng, fetch_date, fetch_date, tz)
     if not result["success"]:
         return JSONResponse({
-            "date": body.date,
+            "date": fetch_date,
             "weather": None,
             "recorded_at": None,
             "status": "error",
@@ -888,21 +891,21 @@ async def post_weather_fetch(request: Request, body: WeatherFetchRequest):
         })
 
     data = result["data"]
-    if body.date not in data:
+    if fetch_date not in data:
         return JSONResponse({
-            "date": body.date,
+            "date": fetch_date,
             "weather": None,
             "recorded_at": None,
             "status": "error",
             "message": "天気データを抽出できませんでした",
         })
 
-    weather_str = weather_module.compute_weather_display(data[body.date])
+    weather_str = weather_module.compute_weather_display(data[fetch_date])
     now_str = _jst_now_str()
-    database.upsert_weather_log(body.date, weather_str, now_str)
+    database.upsert_weather_log(fetch_date, weather_str, now_str)
 
     return JSONResponse({
-        "date": body.date,
+        "date": fetch_date,
         "weather": weather_str,
         "recorded_at": now_str,
         "status": "updated",
@@ -1055,7 +1058,9 @@ async def create_exercise(request: Request, body: ExerciseRequest):
     require_auth(request)
     _validate_exercise_body(body.log_date, body.calories_burned, body.description)
     try:
-        eid = database.save_exercise(body.log_date, body.calories_burned, body.description, source="manual")
+        eid = database.save_exercise(
+            record_service.normalize_date(body.log_date), body.calories_burned, body.description, source="manual"
+        )
     except Exception:
         logger.error("運動ログの保存に失敗しました", exc_info=True)
         raise HTTPException(status_code=500, detail="運動ログの保存に失敗しました")
@@ -1153,10 +1158,10 @@ async def steps_ingest(request: Request, body: StepsIngestRequest):
         raise HTTPException(status_code=422, detail=str(exc))
 
     # 4. 保存（同日レコードがあれば上書き）
-    result = database.save_steps(body.date, body.steps)
+    result = database.save_steps(record_service.normalize_date(body.date), body.steps)
     return JSONResponse({
         "success": True,
-        "date": body.date,
+        "date": record_service.normalize_date(body.date),
         "steps": body.steps,
         "updated": result["updated"],
     })
@@ -1192,10 +1197,10 @@ async def body_fat_ingest(request: Request, body: BodyFatIngestRequest):
         raise HTTPException(status_code=422, detail=str(exc))
 
     # 4. 保存（同日レコードがあれば上書き）
-    result = database.save_body_fat(body.date, body.body_fat)
+    result = database.save_body_fat(record_service.normalize_date(body.date), body.body_fat)
     return JSONResponse({
         "success": True,
-        "date": body.date,
+        "date": record_service.normalize_date(body.date),
         "body_fat": body.body_fat,
         "updated": result["updated"],
     })
@@ -1250,14 +1255,16 @@ async def exercise_ingest(request: Request, body: ExerciseIngestRequest):
 
     # 3. 保存
     try:
-        result = database.upsert_exercise(body.date, body.calories_burned, body.description, source="api")
+        result = database.upsert_exercise(
+            record_service.normalize_date(body.date), body.calories_burned, body.description, source="api"
+        )
     except Exception:
         logger.error("運動ログ(ingest)の保存に失敗しました", exc_info=True)
         raise HTTPException(status_code=500, detail="運動ログの保存に失敗しました")
     return JSONResponse({
         "success": True,
         "id": result["id"],
-        "date": body.date,
+        "date": record_service.normalize_date(body.date),
         "calories_burned": body.calories_burned,
         "updated": result["updated"],
     })
@@ -1631,12 +1638,12 @@ async def sleep_ingest(request: Request, body: SleepIngestRequest):
         if val is not None and not (0 <= val <= 1440):
             raise HTTPException(status_code=422, detail=f"{field_name}は0〜1440の範囲で指定してください")
     result = database.upsert_sleep_log(
-        body.date, body.sleep_start, body.sleep_end,
+        record_service.normalize_date(body.date), body.sleep_start, body.sleep_end,
         body.deep_minutes, body.rem_minutes, body.awake_minutes,
         body.source,
     )
     return JSONResponse(
-        {"success": True, "date": body.date, "duration_minutes": result["duration_minutes"]},
+        {"success": True, "date": record_service.normalize_date(body.date), "duration_minutes": result["duration_minutes"]},
         status_code=201,
     )
 
@@ -1682,7 +1689,9 @@ async def vitals_ingest(request: Request, body: VitalIngestRequest):
             status_code=422,
             detail=f"valueが範囲外です（{body.type}: {low}〜{high}）",
         )
-    vid = database.insert_vital_log(body.date, body.type, body.value, body.time, source=body.source)
+    vid = database.insert_vital_log(
+        record_service.normalize_date(body.date), body.type, body.value, body.time, source=body.source
+    )
     return JSONResponse({"success": True, "id": vid}, status_code=201)
 
 
@@ -1693,7 +1702,9 @@ async def vitals_alert(request: Request, body: VitalAlertRequest):
     _validate_date(body.date)
     if body.time:
         _validate_time(body.time)
-    vid = database.insert_vital_log(body.date, "bp_alert", note=body.note, time=body.time)
+    vid = database.insert_vital_log(
+        record_service.normalize_date(body.date), "bp_alert", note=body.note, time=body.time
+    )
     return JSONResponse({"success": True, "id": vid}, status_code=201)
 
 
@@ -1892,7 +1903,8 @@ async def get_memo_range(request: Request, start: str, end: str):
 @app.put("/api/memos/{log_date}")
 async def put_memo(log_date: str, body: MemoRequest, request: Request):
     require_auth(request)
-    _validate_date(log_date)
+    _validate_date(log_date)  # 既存検証（detail 文言・status 不変）
+    log_date = record_service.normalize_date(log_date)  # 保存値のみ正規化（C-2）
     validated = _validate_memo_text(body.memo_text, "put")
     result = database.upsert_memo(log_date, validated)
     return JSONResponse({
@@ -1906,7 +1918,8 @@ async def put_memo(log_date: str, body: MemoRequest, request: Request):
 @app.patch("/api/memos/{log_date}/append")
 async def patch_memo_append(log_date: str, body: MemoRequest, request: Request):
     require_auth(request)
-    _validate_date(log_date)
+    _validate_date(log_date)  # 既存検証（detail 文言・status 不変）
+    log_date = record_service.normalize_date(log_date)  # 保存値のみ正規化（C-2）
     validated = _validate_memo_text(body.memo_text, "patch")
     existing = database.get_memo(log_date)
     if existing and len(existing["memo_text"]) + len(validated) > 2000:
@@ -1926,7 +1939,8 @@ async def patch_memo_append(log_date: str, body: MemoRequest, request: Request):
 @app.delete("/api/memos/{log_date}")
 async def delete_memo(log_date: str, request: Request):
     require_auth(request)
-    _validate_date(log_date)
+    _validate_date(log_date)  # 既存検証（detail 文言・status 不変）
+    log_date = record_service.normalize_date(log_date)  # 保存値のみ正規化（C-2）
     ok = database.delete_memo(log_date)
     if not ok:
         raise HTTPException(status_code=404, detail="memo not found")
