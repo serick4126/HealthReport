@@ -637,14 +637,14 @@
             <div class="row">
               <span class="row-label">MCP接続トークン</span>
               <span id="mcpTokenStatus" style="flex:1;font-size:13px;color:var(--text-secondary)">状態: ${s.mcp_api_key === 'set' ? '発行済み' : '未発行'}</span>
-              <button id="rotateMcpTokenBtn" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">接続URLを発行 / 再発行</button>
+              <button id="rotateMcpTokenBtn" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">${s.mcp_api_key === 'set' ? '接続URLを再発行' : '接続URLを発行'}</button>
             </div>
-            <div id="mcpTokenResult" style="display:none;margin:0 14px 12px;padding:12px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius)">
+            <div id="mcpTokenResult" style="display:none;margin:0 14px 12px;padding:12px 14px;background:var(--note-tip-bg);border:1px solid var(--border);border-radius:var(--radius)">
               <div style="display:flex;align-items:center;gap:8px;width:100%">
                 <code id="mcpTokenUrl" style="font-size:12px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;flex:1;word-break:break-all"></code>
                 <button class="copy-mcp-url-btn" style="flex-shrink:0;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:13px;cursor:pointer">コピー</button>
               </div>
-              <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:8px">
+              <div style="font-size:12px;color:var(--text-primary);font-weight:600;line-height:1.6;margin-top:8px">
                 ⚠ <strong>この画面を離れると再表示できません。今すぐ控えてください</strong>
               </div>
             </div>
@@ -730,10 +730,29 @@
         });
       });
       // MCP接続URL 発行/再発行（inline onclick禁止規約に従いaddEventListenerで設定）
+      // D-1: 発行済み状態でのみ confirm を挟む / U-1: 発行成功時に自動クリップボードコピー、
+      // 失敗時のみ beforeunload 警告にフォールバック（確定事項5）
       var mcpTokenUrl = '';
+      var mcpBeforeUnload = null;
+      function setMcpUnloadGuard(on) {
+        // §3: リスナーは変数に保持し、不要になったら removeEventListener で解除する
+        if (on && !mcpBeforeUnload) {
+          mcpBeforeUnload = function(e) { e.preventDefault(); e.returnValue = ''; };
+          window.addEventListener('beforeunload', mcpBeforeUnload);
+        } else if (!on && mcpBeforeUnload) {
+          window.removeEventListener('beforeunload', mcpBeforeUnload);
+          mcpBeforeUnload = null;
+        }
+      }
       var rotateMcpBtn = document.getElementById('rotateMcpTokenBtn');
       if (rotateMcpBtn) {
+        // D-1: 初期値は s.mcp_api_key === 'set' で決定し、rotate 成功時に更新する
+        var wasIssued = s.mcp_api_key === 'set';
         rotateMcpBtn.addEventListener('click', function() {
+          // D-1: 発行済み状態でのみ確認ダイアログ（未発行からの初回発行は確認不要）
+          if (wasIssued && !confirm('再発行すると現在の接続URLは即座に無効になります。claude.ai 側のコネクタを削除して新しいURLで登録し直す必要があります。続行しますか？')) {
+            return;
+          }
           rotateMcpBtn.disabled = true;
           fetch('/api/mcp/token/rotate', { method: 'POST' })
             .then(function(res) {
@@ -745,7 +764,18 @@
               document.getElementById('mcpTokenUrl').textContent = mcpTokenUrl;
               document.getElementById('mcpTokenResult').style.display = 'block';
               document.getElementById('mcpTokenStatus').textContent = '状態: 発行済み';
-              showToast('接続URLを発行しました ✓');
+              rotateMcpBtn.textContent = '接続URLを再発行';
+              wasIssued = true;
+              // U-1: 自動クリップボードコピーを試行
+              navigator.clipboard.writeText(mcpTokenUrl)
+                .then(function() {
+                  showToast('接続URLを発行し、クリップボードにコピーしました ✓');
+                })
+                .catch(function() {
+                  // コピー失敗時のみ離脱警告にフォールバック（劣化が安全）
+                  showToast('接続URLを発行しました。コピーボタンで控えてください');
+                  setMcpUnloadGuard(true);
+                });
             })
             .catch(function() { showToast('接続URLの発行に失敗しました', 'error'); })
             .finally(function() { rotateMcpBtn.disabled = false; });
@@ -755,7 +785,10 @@
       document.querySelectorAll('.copy-mcp-url-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           navigator.clipboard.writeText(mcpTokenUrl)
-            .then(function() { showToast('接続URLをコピーしました ✓'); })
+            .then(function() {
+              showToast('接続URLをコピーしました ✓');
+              setMcpUnloadGuard(false);  // 控え済みのため離脱警告を解除
+            })
             .catch(function() { showToast('コピーに失敗しました', 'error'); });
         });
       });
