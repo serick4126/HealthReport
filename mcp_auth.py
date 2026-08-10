@@ -166,7 +166,13 @@ async def mcp_lifespan():
         _last_hash_check_at = time.monotonic()
         yield
     finally:
-        await stack.aclose()
+        # 再構築で _mcp_stack が新スタックに差し替わっている可能性があるため、
+        # ローカル変数ではなく現在の _mcp_stack を閉じる（新サーバーのセッション
+        # マネージャの lifespan exit を確実に実行しシャットダウンリークを防ぐ）。
+        # 旧スタックは rebuild 時に close 済みのため二重 close は起きない。
+        current = _mcp_stack
+        if current is not None:
+            await current.aclose()
         _mcp_stack = None
         _mcp_app = None
         _settings_hash = None
