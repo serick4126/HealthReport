@@ -46,6 +46,7 @@ CODE_INVALID_MODE = "invalid_mode"
 CODE_EMPTY_MEMO = "empty_memo"
 CODE_MEMO_REPLACE_TOO_LONG = "memo_replace_too_long"
 CODE_MEMO_APPEND_TOO_LONG = "memo_append_too_long"
+CODE_REQUIRED = "required"
 
 MEAL_TYPE_JA = {
     "breakfast": "朝食",
@@ -130,6 +131,12 @@ def validate_length(name: str, text: str, max_len: int) -> None:
         raise ValidationError(
             f"{name} は {max_len} 文字以内で指定してください", code=CODE_TOO_LONG
         )
+
+
+def validate_required(name: str, text: str) -> None:
+    """必須文字列が空・空白のみでないかを検証。未入力は ValidationError を送出。"""
+    if not text.strip():
+        raise ValidationError(f"{name} を指定してください", code=CODE_REQUIRED)
 
 
 def sanitize_memo_text(text: str, mode: str) -> str:

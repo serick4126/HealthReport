@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 _DESC_DATE = "YYYY-MM-DD形式。原則省略する。ユーザーが明示的に過去日を指定した場合のみ渡す"
 _DESC_MEAL_TYPE = "breakfast / lunch / dinner / snack / late_night のいずれか"
 _DESC_MEAL_TIME = "HH:MM形式。省略時は当日なら現在時刻、過去日ならNULL"
-_DESC_ITEMS = "登録する品目の配列（1件以上）。各要素は description / calories / protein / fat / carbs / sodium / notes"
+_DESC_ITEMS = "登録する品目の配列（1件以上・最大30件）。各要素は description / calories / protein / fat / carbs / sodium / notes"
 _DESC_MEAL_ID = "更新対象の食事記録ID（get_daily_summary で確認できる）"
 
 # バリデーション上限（description 文言と同期させる）
 _MAX_DESC = 500
 _MAX_NOTES = 1000
 _MAX_NUMERIC = 9999
+_MAX_ITEMS = 30  # create_meals の items 件数上限（_DESC_ITEMS 文言と同期）
 
 _DESC_MEAL_FIELDS = {
     "description": f"品目名。最大{_MAX_DESC}文字",
@@ -198,6 +199,7 @@ def _validate_meal_type(meal_type: str) -> None:
 def _validate_meal_fields(**fields) -> None:
     """食事の個別フィールド（品目名・カロリー・PFC・メモ・時刻）を検証する。"""
     if "description" in fields:
+        record_service.validate_required("品目名", fields["description"])
         record_service.validate_length("品目名", fields["description"], _MAX_DESC)
     if "calories" in fields:
         record_service.validate_range("カロリー", fields["calories"], 0, _MAX_NUMERIC)
@@ -350,6 +352,8 @@ async def create_meals(
     _validate_meal_type(meal_type)
     if not items:
         raise record_service.ValidationError("items は1件以上指定してください")
+    if len(items) > _MAX_ITEMS:
+        raise record_service.ValidationError(f"items は最大{_MAX_ITEMS}件までです（{len(items)}件指定されました）")
     if meal_time is not None:
         record_service.validate_time(meal_time)
     resolved_time = record_service.resolve_meal_time(target_date, meal_time)
