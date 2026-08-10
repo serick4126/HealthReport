@@ -656,6 +656,8 @@
                 URLに秘密が含まれるため、他人と共有しないでください。
               </div>
             </div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin:14px 14px 6px">MCPツール呼び出し履歴（監査ログ）</div>
+            <div id="mcpAuditTable" style="margin:0 14px 14px"></div>
           </div>
         </details>
 
@@ -720,6 +722,7 @@
         </div>
       `;
       renderFoodTable();
+      renderMcpAuditTable();
       // コピーボタン（data-url属性からURLを取得 — inline onclick禁止規約に従いaddEventListenerで設定）
       document.querySelectorAll('.copy-endpoint-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -832,6 +835,70 @@
           </tbody>
         </table>
       `;
+    }
+
+    // MCPツール呼び出し履歴（監査ログ）の読み取り専用一覧（U-2 / Phase43.1-Step7）
+    // renderFoodTable()（#foodTable + .empty-food）を構造・命名の参照元とする（P-20）
+    function renderMcpAuditTable() {
+      const el = document.getElementById('mcpAuditTable');
+      if (!el) return;
+      fetch('/api/mcp/audit-logs?limit=50')
+        .then(function(res) {
+          if (res.status === 401) { location.href = '/'; throw new Error('unauth'); }
+          if (!res.ok) throw new Error('audit fetch failed');
+          return res.json();
+        })
+        .then(function(data) {
+          const logs = data.logs || [];
+          if (!logs.length) {
+            el.innerHTML = '<div class="empty-food">監査ログはまだありません</div>';
+            return;
+          }
+          el.innerHTML = `
+            <table class="food-table">
+              <thead>
+                <tr>
+                  <th>日時</th>
+                  <th>ツール</th>
+                  <th>結果</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${logs.map(function(l) {
+                  return `
+                  <tr style="cursor:pointer" data-args="${escHtml(l.arguments || '')}" data-expanded="0">
+                    <td class="td-keyword" data-label="日時">${escHtml(l.called_at)}</td>
+                    <td data-label="ツール">${escHtml(l.tool_name)}</td>
+                    <td data-label="結果">${escHtml(l.result)}</td>
+                    <td style="width:60px;text-align:right" data-label="">詳細 ▾</td>
+                  </tr>
+                  <tr data-args-row="1" style="display:none"><td colspan="4" style="white-space:pre-wrap;word-break:break-all;font-size:12px;color:var(--text-secondary)"></td></tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+          // 行クリックで arguments を展開（data-* 属性経由・インライン onclick 禁止 — §3）
+          el.querySelectorAll('tr[data-args]').forEach(function(tr) {
+            tr.addEventListener('click', function() {
+              const row = tr.nextElementSibling;
+              if (!row || !row.hasAttribute('data-args-row')) return;
+              const expanded = tr.getAttribute('data-expanded') === '1';
+              if (!expanded) {
+                row.firstElementChild.textContent = tr.getAttribute('data-args');
+                row.style.display = '';
+                tr.setAttribute('data-expanded', '1');
+              } else {
+                row.style.display = 'none';
+                tr.setAttribute('data-expanded', '0');
+              }
+            });
+          });
+        })
+        .catch(function(err) {
+          if (err && err.message === 'unauth') return;
+          el.innerHTML = '<div class="empty-food">監査ログの取得に失敗しました</div>';
+        });
     }
 
     // トグル・セレクト変更時の連動UI更新

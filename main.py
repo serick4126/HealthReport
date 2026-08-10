@@ -430,6 +430,22 @@ async def rotate_mcp_token(request: Request):
     return JSONResponse({"success": True, "token": token, "path": "/mcp/" + token})
 
 
+@app.get("/api/mcp/audit-logs")
+async def get_mcp_audit_logs_api(request: Request, limit: int = 50):
+    """MCPツール呼び出しの監査ログを新しい順で返す（U-2 / Phase43.1-Step7）。
+
+    監査ログの arguments にはユーザーの食事内容などが含まれるため、
+    セッション認証（require_auth）を必ず通す。外部APIキー認証では公開しない。
+    """
+    require_auth(request)
+    if not 1 <= limit <= 200:
+        raise HTTPException(
+            status_code=422, detail="limit は 1〜200 の範囲で指定してください"
+        )
+    logs = database.get_mcp_audit_logs(limit=limit)
+    return JSONResponse({"logs": logs})
+
+
 # ── 集計ページウィジェットレジストリ endpoint ──────────────────────────────────
 
 @app.get("/api/stats/widgets")
