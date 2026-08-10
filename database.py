@@ -738,7 +738,10 @@ def save_mcp_audit_log(
     error_message: Optional[str] = None,
 ) -> int:
     """MCPツール呼び出しの監査ログを1件記録し、id を返す。
-    arguments は呼び出し側でJSON文字列化済みのものを受け取り、2000文字に切り詰める。
+
+    arguments は呼び出し側でJSON文字列化済みのものを受け取り、上限を超える場合は
+    切り詰め注記を付けて 2000 文字以内に収める（C-5: 途中で壊れた JSON が
+    残らないよう、切り詰め箇所に「…(truncated)」を明示する）。
     """
     with get_conn() as conn:
         cur = conn.execute(
@@ -750,13 +753,28 @@ def save_mcp_audit_log(
             (
                 datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
                 tool_name,
-                (arguments or "")[:2000],
+                _truncate_audit_arguments(arguments),
                 result,
                 affected_ids,
                 error_message,
             ),
         )
         return cur.lastrowid
+
+
+_AUDIT_ARGS_MAX = 2000  # 監査ログ arguments の最大長（C-5）
+
+
+def _truncate_audit_arguments(arguments: Optional[str]) -> Optional[str]:
+    """監査ログ arguments を _AUDIT_ARGS_MAX 文字以内に収める。
+
+    超過時は末尾に「…(truncated)」を付けて、壊れた JSON が注記なしで
+    残ることを防ぐ。全長は _AUDIT_ARGS_MAX 文字以内を維持する。
+    """
+    if arguments is None or len(arguments) <= _AUDIT_ARGS_MAX:
+        return arguments
+    note = "…(truncated)"
+    return arguments[: _AUDIT_ARGS_MAX - len(note)] + note
 
 
 def get_mcp_audit_logs(limit: int = 100) -> list[dict]:

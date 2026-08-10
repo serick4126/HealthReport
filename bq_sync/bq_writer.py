@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 _TMP_TABLE_PREFIX = "_tmp_"
 _GOAL_KEY_CALORIES = "calories_goal"
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 SCHEMA_WEIGHT_LOGS = [
     bigquery.SchemaField("id", "INT64", mode="REQUIRED"),
@@ -115,8 +118,16 @@ def create_bq_client() -> bigquery.Client:
 
 
 def _quote_dates(dates: list[str]) -> str:
-    """日付リストをSQLのIN句用にクォートしてカンマ区切りで返す"""
-    return ", ".join(f"'{d}'" for d in dates)
+    """日付リストをSQLのIN句用にクォートしてカンマ区切りで返す。
+
+    YYYY-MM-DD 形式でない値は除外する。MERGE の削除句に流れる値であり、
+    無検証で文字列連結すると SQL を壊す・意図しない行を対象にするおそれがある（C-4）。
+    """
+    valid = [d for d in dates if _DATE_RE.fullmatch(d)]
+    skipped = len(dates) - len(valid)
+    if skipped:
+        logger.warning("BigQuery同期: 不正な日付形式を %d 件除外しました", skipped)
+    return ", ".join(f"'{d}'" for d in valid)
 
 
 def upsert_table(
@@ -159,10 +170,15 @@ def upsert_table(
     )
     if target_dates:
         quoted_dates = _quote_dates(target_dates)
-        merge_sql += (
-            f" WHEN NOT MATCHED BY SOURCE AND T.`{date_col}` IN ({quoted_dates}) "
-            f"THEN DELETE"
-        )
+        if quoted_dates:  # P-19: 検証後が空なら削除句を付けない（WHEN NOT MATCHED BY SOURCE が全体に効くのを防ぐ）
+            merge_sql += (
+                f" WHEN NOT MATCHED BY SOURCE AND T.`{date_col}` IN ({quoted_dates}) "
+                f"THEN DELETE"
+            )
+        else:
+            logger.warning(
+                "BigQuery同期 %s: 有効な対象日付が0件のため削除句を付与しません", table_name
+            )
 
     client.query(create_sql).result()
     try:
@@ -199,10 +215,12 @@ def delete_and_insert_daily_summary(
     rows = [{**r, "synced_at": synced_at} for r in rows]
 
     quoted_dates = _quote_dates(dates)
-    delete_sql = (
-        f"DELETE FROM `{table_ref}` WHERE log_date IN ({quoted_dates})"
-    )
-    client.query(delete_sql).result()
+    # P-19: 検証後が空なら DELETE を実行しない（全件削除を防ぐ）
+    if quoted_dates:
+        delete_sql = (
+            f"DELETE FROM `{table_ref}` WHERE log_date IN ({quoted_dates})"
+        )
+        client.query(delete_sql).result()
 
     client.load_table_from_json(
         rows,
