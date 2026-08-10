@@ -109,6 +109,20 @@ def _safe_tool(fn):
     return wrapper
 
 
+_AFFECTED_ID_KEYS = ("meal_ids", "meal_id", "record_id")
+
+
+def _extract_affected_ids(result: dict):
+    """成功戻り値から affected_ids の元になるIDを探す。見つからなければ None。
+
+    create_meals は複数ID（meal_ids）、update_meal 等の単値系は単一ID（meal_id / record_id）。
+    """
+    for key in _AFFECTED_ID_KEYS:
+        if result.get(key) is not None:
+            return result[key]
+    return None
+
+
 def _audited(tool_name: str):
     """監査ログを記録するデコレータ。戻り値 dict の success キーで成功/失敗を判定する。
 
@@ -129,7 +143,7 @@ def _audited(tool_name: str):
                 arguments = json.dumps(kwargs, ensure_ascii=False, default=_json_default)
             result = await fn(*args, **kwargs)
             if isinstance(result, dict) and result.get("success"):
-                affected_ids = result.get("meal_ids")
+                affected_ids = _extract_affected_ids(result)
                 affected_ids = json.dumps(affected_ids, ensure_ascii=False) if affected_ids is not None else None
                 result_kind = "success"
                 error_message = None
