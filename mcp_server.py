@@ -140,6 +140,11 @@ _INSTRUCTIONS_TEMPLATE = (
     "- 未記録の食事があり、ユーザーが当日の記録を確認しようとしている場合は、記録を促すか、"
     "スキップであれば set_meal_skip で登録するよう提案してよい。\n"
     "- 数値項目（steps / body_fat / weight）の null は「未測定」であり、食事のスキップとは別概念である。\n"
+    "\n"
+    "【メモ】\n"
+    f"- write_memo は置換（mode=replace）{record_service.MEMO_MAX_REPLACE}文字・追記（mode=append）"
+    f"{record_service.MEMO_MAX_APPEND}文字が上限。\n"
+    "  超える場合は mode=append で分割して複数回に分けて送る。\n"
 )
 
 _DYNAMIC_INSTRUCTION_FIELDS = [

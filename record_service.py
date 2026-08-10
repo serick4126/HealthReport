@@ -34,6 +34,10 @@ MSG_MEMO_EMPTY = "メモを入力してください"
 MSG_MEMO_REPLACE_TOO_LONG = "memo_text が2000字を超えています"
 MSG_MEMO_APPEND_TOO_LONG = "1回の追記は500字以内にしてください"
 
+# メモ文字数上限（sanitize_memo_text と instructions 文言の両方から参照する単一情報源 — R1/R5）
+MEMO_MAX_REPLACE = 2000
+MEMO_MAX_APPEND = 500
+
 # ValidationError.code 定数（層間で比較するためマジック文字列を回避）
 CODE_VALIDATION_ERROR = "validation_error"
 CODE_INVALID_DATE_FORMAT = "invalid_date_format"
@@ -151,9 +155,9 @@ def sanitize_memo_text(text: str, mode: str) -> str:
     sanitized = _CTRL_RE.sub("", text)
     if sanitized.strip() == "":
         raise ValidationError(MSG_MEMO_EMPTY, code=CODE_EMPTY_MEMO)
-    if mode == "replace" and len(sanitized) > 2000:
+    if mode == "replace" and len(sanitized) > MEMO_MAX_REPLACE:
         raise ValidationError(MSG_MEMO_REPLACE_TOO_LONG, code=CODE_MEMO_REPLACE_TOO_LONG)
-    if mode == "append" and len(sanitized) > 500:
+    if mode == "append" and len(sanitized) > MEMO_MAX_APPEND:
         raise ValidationError(MSG_MEMO_APPEND_TOO_LONG, code=CODE_MEMO_APPEND_TOO_LONG)
     return sanitized
 
