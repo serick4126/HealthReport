@@ -22,6 +22,7 @@ load_dotenv()
 
 import claude_client
 import database
+import mcp_auth
 import report_generator
 from image_utils import _UPLOAD_DIR as UPLOAD_DIR, save_image_to_fs
 import weather as weather_module
@@ -131,7 +132,10 @@ async def lifespan(app: FastAPI):
     saved = database.load_recent_conversation(HISTORY_KEEP_ON_SESSION_END)
     saved = _sanitize_loaded_history(saved)
     conversation_history.extend(saved)
-    yield
+    # P-1: app.mount() では内側アプリ（MCP）の lifespan が起動しないため、
+    # ここで MCP アプリの lifespan（セッションマネージャ）を開始・終了する。
+    async with mcp_auth.mcp_lifespan():
+        yield
 
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -139,6 +143,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=str(Path(__file__).parent / "uploads")), name="uploads")
+app.mount("/mcp", mcp_auth.get_asgi_app())
 
 
 # ── 認証ヘルパー ───────────────────────────────────────────────────────────────
