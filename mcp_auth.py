@@ -42,7 +42,6 @@ _CONFIG_HASH_KEYS = [
     "user_notes",
 ]
 
-_instructions: str | None = None  # Step9 で build_instructions() の結果が入る
 _mcp_app = None  # 内側 Starlette アプリ（lifespan 中に構築）
 _mcp_stack = None  # 内側アプリの lifespan を保持する AsyncExitStack
 _settings_hash: str | None = None  # 最後に検知した設定ハッシュ
@@ -64,7 +63,7 @@ async def _rebuild_server(new_hash: str):
     enter 失敗時も旧アプリが生きており、`_mcp_app` は常に有効な旧/新のどちらかになる。
     """
     global _mcp_app, _mcp_stack, _settings_hash
-    server = mcp_server.build_mcp_server(instructions=_instructions)
+    server = mcp_server.build_mcp_server(instructions=mcp_server.build_instructions())
     new_app = mcp_server.build_mcp_asgi(server)
     old_stack = _mcp_stack
     new_stack = AsyncExitStack()
@@ -164,7 +163,7 @@ class TokenGuardASGI:
 async def mcp_lifespan():
     """内側 MCP アプリを構築し、その lifespan（セッションマネージャ）を開始する。"""
     global _mcp_app, _mcp_stack, _settings_hash, _last_hash_check_at
-    server = mcp_server.build_mcp_server(instructions=_instructions)
+    server = mcp_server.build_mcp_server(instructions=mcp_server.build_instructions())
     inner = mcp_server.build_mcp_asgi(server)
     _mcp_app = inner
     stack = AsyncExitStack()

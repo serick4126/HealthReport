@@ -103,6 +103,76 @@ _MSG_DELETE_RECORD_FETCH_FAILED = "削除前のレコード内容の取得に失
 
 _TIME_OF_DAY_JA = {"morning": "朝", "evening": "夜"}
 
+# ── server instructions（Step9）────────────────────────────────────────────────
+# 固定部（設計仕様書 §7.2）+ 動的部（DB設定）。food_defaults は注入しない（§13 スコープ外）。
+
+_INSTRUCTIONS_TEMPLATE = (
+    "このサーバーは HealthReport（食事・体重・歩数・体脂肪・血圧・運動・メモの記録管理）のMCPサーバーです。\n"
+    "ユーザーの代わりに記録操作と直近の確認を行います。長期トレンド分析は BigQuery MCP を使い、"
+    "本MCPは記録操作と直近の確認に使ってください（役割分担）。\n"
+    "\n"
+    "【食事の記録手順】\n"
+    "1. 写真や文章から、食事の内容・分量・推定カロリーを読み取って記録する。\n"
+    "2. 複数品目は1品1レコードに分割し、create_meals の items[] にまとめて渡す。\n"
+    "3. カロリー・PFCが推定できない場合は null のまま登録し、記録を残すことを優先する。\n"
+    "4. 登録後は必ず結果を要約してユーザーに提示する。\n"
+    "\n"
+    "【meal_type の判定基準】\n"
+    "- 朝食（breakfast）: 5〜10時頃の食事 / 昼食（lunch）: 11〜14時頃 / 夕食（dinner）: 17〜21時頃。\n"
+    "- 間食は snack、22時以降の食事は late_night を使う。\n"
+    "- 時刻で判別できない場合はユーザーに確認する。\n"
+    "\n"
+    "【分量表現の換算方針】\n"
+    "- 「2枚」「大盛り」「一人前」等の表現は一般的な分量で kcal と PFC に換算する。\n"
+    "- 換算できない場合は該当項目を null にする。\n"
+    "\n"
+    "【date の扱い】\n"
+    "- date は原則省略する。ユーザーが明示的に過去日を指定した場合のみ渡す。\n"
+    "\n"
+    "【更新・削除】\n"
+    "- 更新・削除の前には必ず list_records でIDを確認する。\n"
+    "\n"
+    "【スキップと未記録の区別】（P-13）\n"
+    "- skipped_meal_types に含まれる食事は、ユーザーが意図的にスキップしたものである。"
+    "「記録なし」ではなく「スキップ」と明示して提示する。\n"
+    "- meals にも skipped_meal_types にも無い食事は「未記録」である。スキップと混同しないこと。\n"
+    "- 未記録の食事があり、ユーザーが当日の記録を確認しようとしている場合は、記録を促すか、"
+    "スキップであれば set_meal_skip で登録するよう提案してよい。\n"
+    "- 数値項目（steps / body_fat / weight）の null は「未測定」であり、食事のスキップとは別概念である。\n"
+)
+
+_DYNAMIC_INSTRUCTION_FIELDS = [
+    ("user_name", "ユーザー名: {}"),
+    ("user_height_cm", "身長: {} cm"),
+    ("user_gender", "性別: {}"),
+    ("user_birthdate", "生年月日: {}"),
+    ("daily_calorie_goal", "目標カロリー: {} kcal/日"),
+    ("daily_steps_goal", "目標歩数: {} 歩/日"),
+    ("day_start_hour", "1日の開始時刻（day_start_hour）: {} 時"),
+]
+
+
+def _build_instructions_dynamic() -> list[str]:
+    """動的部（DB設定）を1行ずつ組み立てる。未設定の項目は該当行を出力しない。"""
+    lines = []
+    for key, label in _DYNAMIC_INSTRUCTION_FIELDS:
+        value = database.get_setting(key)
+        if value:
+            lines.append(label.format(value))
+    notes = database.get_setting("user_notes")
+    if notes:
+        lines.append(f"ユーザーからの注意事項: {notes}")
+    return lines
+
+
+def build_instructions() -> str:
+    """server instructions を生成する。固定部（_INSTRUCTIONS_TEMPLATE）+ 動的部（DB設定）。"""
+    fixed = _INSTRUCTIONS_TEMPLATE.strip()
+    dynamic = _build_instructions_dynamic()
+    if not dynamic:
+        return fixed
+    return fixed + "\n\n【ユーザー設定】\n" + "\n".join(dynamic)
+
 
 class MealItem(BaseModel):
     """create_meals の items[] の1要素。型検証は SDK に任せ、範囲・業務ルールは record_service で検証する。"""
