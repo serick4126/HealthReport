@@ -48,6 +48,38 @@ _NUTRIENT_NAMES = {
     "sodium": "食塩相当量(g)",
 }
 
+# P-12: 単値系ツールの共通引数 description（7ツール間で文言を完全に統一する）
+_DESC_TIME_OF_DAY = "morning（朝）または evening（夜）"
+_DESC_SKIP_MEAL_TYPE = "breakfast / lunch / dinner のいずれか"
+_DESC_MODE = "replace（置換・既定）または append（追記）"
+_DESC_SKIPPED = "true=スキップ設定 / false=解除"
+_DESC_MEMO_TEXT = "メモ本文。置換は2000文字・追記は500文字以内"
+
+# 単値系ツールの数値範囲（description 文言とバリデーションを同期させる）
+_WEIGHT_MIN = 20
+_WEIGHT_MAX = 300
+_STEPS_MIN = 0
+_STEPS_MAX = 999999
+_BODY_FAT_MIN = 1.0
+_BODY_FAT_MAX = 80.0
+_SYSTOLIC_MIN = 50
+_SYSTOLIC_MAX = 300
+_DIASTOLIC_MIN = 30
+_DIASTOLIC_MAX = 200
+_CALORIES_BURNED_MIN = 0
+_CALORIES_BURNED_MAX = 9999
+_MAX_EXERCISE_DESC = 500
+
+_DESC_WEIGHT_KG = f"体重(kg)。{_WEIGHT_MIN}〜{_WEIGHT_MAX}の範囲"
+_DESC_STEPS = f"歩数。{_STEPS_MIN}〜{_STEPS_MAX}の整数"
+_DESC_BODY_FAT = f"体脂肪率(%)。{_BODY_FAT_MIN}〜{_BODY_FAT_MAX}の範囲"
+_DESC_SYSTOLIC = f"収縮期血圧(mmHg)。{_SYSTOLIC_MIN}〜{_SYSTOLIC_MAX}の整数"
+_DESC_DIASTOLIC = f"拡張期血圧(mmHg)。{_DIASTOLIC_MIN}〜{_DIASTOLIC_MAX}の整数"
+_DESC_CALORIES_BURNED = f"消費カロリー(kcal)。{_CALORIES_BURNED_MIN}〜{_CALORIES_BURNED_MAX}の整数"
+_DESC_EXERCISE_DESCRIPTION = f"運動内容。最大{_MAX_EXERCISE_DESC}文字。省略時は MCP"
+
+_TIME_OF_DAY_JA = {"morning": "朝", "evening": "夜"}
+
 
 class MealItem(BaseModel):
     """create_meals の items[] の1要素。型検証は SDK に任せ、範囲・業務ルールは record_service で検証する。"""
@@ -85,6 +117,21 @@ def _validate_meal_fields(**fields) -> None:
 
 def _validate_meal_item(item: MealItem) -> None:
     _validate_meal_fields(**{k: v for k, v in item.model_dump().items() if v is not None})
+
+
+def _validate_time_of_day(time_of_day: str) -> None:
+    if time_of_day not in record_service.TIME_OF_DAY_VALUES:
+        raise record_service.ValidationError(
+            "time_of_day は morning（朝）または evening（夜）を指定してください"
+        )
+
+
+def _validate_skip_meal_type(meal_type: str) -> None:
+    """set_meal_skip の meal_type 検証。database.SKIP_MEAL_TYPES を参照する（R1: 再定義しない）。"""
+    if meal_type not in database.SKIP_MEAL_TYPES:
+        raise record_service.ValidationError(
+            "meal_type は breakfast / lunch / dinner のいずれかを指定してください"
+        )
 
 
 def _json_default(o):
@@ -259,12 +306,220 @@ async def update_meal(
     }
 
 
+@_audited("log_weight")
+@_safe_tool
+async def log_weight(
+    weight_kg: Annotated[float, Field(description=_DESC_WEIGHT_KG)],
+    time_of_day: Annotated[str, Field(description=_DESC_TIME_OF_DAY)],
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """体重を記録する。直前の記録との差（delta）も返す。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    _validate_time_of_day(time_of_day)
+    record_service.validate_range("体重", weight_kg, _WEIGHT_MIN, _WEIGHT_MAX)
+    prev = database.get_previous_weight(time_of_day, target_date)
+    weight_id = database.save_weight(target_date, time_of_day, weight_kg)
+    delta = round(weight_kg - prev, 1) if prev is not None else None
+    return {
+        "success": True,
+        "tool": "log_weight",
+        "date": target_date,
+        "record_id": weight_id,
+        "weight_kg": weight_kg,
+        "time_of_day": time_of_day,
+        "time_of_day_ja": _TIME_OF_DAY_JA[time_of_day],
+        "previous_weight": prev,
+        "delta": delta,
+    }
+
+
+@_audited("log_steps")
+@_safe_tool
+async def log_steps(
+    steps: Annotated[int, Field(description=_DESC_STEPS)],
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """歩数を記録する（同日は上書き）。既存レコードの上書きかどうかは updated で返す。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    record_service.validate_range("歩数", steps, _STEPS_MIN, _STEPS_MAX)
+    result = database.save_steps(target_date, steps)
+    return {
+        "success": True,
+        "tool": "log_steps",
+        "date": target_date,
+        "record_id": result["id"],
+        "steps": steps,
+        "updated": result["updated"],
+        "previous_steps": result.get("previous_steps"),
+    }
+
+
+@_audited("log_body_fat")
+@_safe_tool
+async def log_body_fat(
+    body_fat_pct: Annotated[float, Field(description=_DESC_BODY_FAT)],
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """体脂肪率(%)を記録する（同日は上書き）。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    record_service.validate_range("体脂肪率", body_fat_pct, _BODY_FAT_MIN, _BODY_FAT_MAX)
+    result = database.save_body_fat(target_date, body_fat_pct)
+    return {
+        "success": True,
+        "tool": "log_body_fat",
+        "date": target_date,
+        "record_id": result["id"],
+        "body_fat_pct": body_fat_pct,
+        "updated": result["updated"],
+        "previous_body_fat_pct": result.get("previous_body_fat_pct"),
+    }
+
+
+@_audited("log_blood_pressure")
+@_safe_tool
+async def log_blood_pressure(
+    systolic: Annotated[int, Field(description=_DESC_SYSTOLIC)],
+    diastolic: Annotated[int, Field(description=_DESC_DIASTOLIC)],
+    time_of_day: Annotated[str, Field(description=_DESC_TIME_OF_DAY)],
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """血圧を記録する（同日同時間帯は上書き）。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    _validate_time_of_day(time_of_day)
+    record_service.validate_range("収縮期血圧", systolic, _SYSTOLIC_MIN, _SYSTOLIC_MAX)
+    record_service.validate_range("拡張期血圧", diastolic, _DIASTOLIC_MIN, _DIASTOLIC_MAX)
+    result = database.upsert_blood_pressure(target_date, time_of_day, systolic, diastolic)
+    return {
+        "success": True,
+        "tool": "log_blood_pressure",
+        "date": target_date,
+        "record_id": result["id"],
+        "systolic": systolic,
+        "diastolic": diastolic,
+        "time_of_day": time_of_day,
+        "time_of_day_ja": _TIME_OF_DAY_JA[time_of_day],
+        "updated": result["updated"],
+    }
+
+
+@_audited("log_exercise")
+@_safe_tool
+async def log_exercise(
+    calories_burned: Annotated[int, Field(description=_DESC_CALORIES_BURNED)],
+    description: Annotated[str, Field(description=_DESC_EXERCISE_DESCRIPTION)] = "MCP",
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """運動ログを追加登録する（上書きしない。同日複数回は複数レコードになる）。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    record_service.validate_range(
+        "消費カロリー", calories_burned, _CALORIES_BURNED_MIN, _CALORIES_BURNED_MAX
+    )
+    description = description or "MCP"
+    record_service.validate_length("運動内容", description, _MAX_EXERCISE_DESC)
+    exercise_id = database.save_exercise(target_date, calories_burned, description, source="mcp")
+    return {
+        "success": True,
+        "tool": "log_exercise",
+        "date": target_date,
+        "record_id": exercise_id,
+        "calories_burned": calories_burned,
+        "description": description,
+    }
+
+
+@_audited("write_memo")
+@_safe_tool
+async def write_memo(
+    text: Annotated[str, Field(description=_DESC_MEMO_TEXT)],
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+    mode: Annotated[str, Field(description=_DESC_MODE)] = "replace",
+) -> dict:
+    """当日のメモを書き込む。mode="replace" は全文置換、mode="append" は末尾追記。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    sanitized = record_service.sanitize_memo_text(text, mode)
+    if mode == "replace":
+        result = database.upsert_memo(target_date, sanitized)
+        current_total_chars = len(sanitized)
+    else:
+        result = database.append_memo(target_date, sanitized)
+        current_total_chars = result["current_total_chars"]
+    return {
+        "success": True,
+        "tool": "write_memo",
+        "date": target_date,
+        "mode": mode,
+        "status": result["status"],
+        "current_total_chars": current_total_chars,
+    }
+
+
+@_audited("set_meal_skip")
+@_safe_tool
+async def set_meal_skip(
+    meal_type: Annotated[str, Field(description=_DESC_SKIP_MEAL_TYPE)],
+    skipped: Annotated[bool, Field(description=_DESC_SKIPPED)],
+    date: Annotated[str | None, Field(description=_DESC_DATE)] = None,
+) -> dict:
+    """食事のスキップを設定/解除する。skipped=True で設定、False で解除。
+
+    date は原則省略すること。ユーザーが明示的に過去日を指定した場合のみ渡す。
+    """
+    target_date = date or database.get_logical_today_jst()
+    record_service.validate_date(target_date, allow_future=False)
+    _validate_skip_meal_type(meal_type)
+    if skipped:
+        database.save_meal_skip(target_date, meal_type)
+        deleted = None
+    else:
+        deleted = database.delete_meal_skip(target_date, meal_type)
+    return {
+        "success": True,
+        "tool": "set_meal_skip",
+        "date": target_date,
+        "meal_type": meal_type,
+        "meal_type_ja": record_service.MEAL_TYPE_JA[meal_type],
+        "skipped": skipped,
+        "deleted": deleted,
+    }
+
+
 def build_mcp_server(instructions: str | None = None) -> MCPServer:
     """MCPServer を構築し、ツールを登録して返す。"""
     server = MCPServer(name="healthreport", instructions=instructions)
     server.tool()(get_daily_summary)
     server.tool()(create_meals)
     server.tool()(update_meal)
+    server.tool()(log_weight)
+    server.tool()(log_steps)
+    server.tool()(log_body_fat)
+    server.tool()(log_blood_pressure)
+    server.tool()(log_exercise)
+    server.tool()(write_memo)
+    server.tool()(set_meal_skip)
     return server
 
 
