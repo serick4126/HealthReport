@@ -23,12 +23,29 @@ import mcp_server
 
 logger = logging.getLogger(__name__)
 
-RATE_LIMIT_MAX = 60  # 1分あたりの最大リクエスト数（プロセス全体）
+RATE_LIMIT_MAX = 60  # 認証済み: 1分あたりの最大リクエスト数
+RATE_LIMIT_UNAUTH_MAX = 300  # トークン照合前: 過剰なDBアクセスとログ肥大を抑えるための上限
+# （43文字の token_urlsafe に総当たりは成立しないため、総当たり対策が目的ではない）
 RATE_LIMIT_WINDOW_SEC = 60.0
 RATE_LIMIT_MESSAGE = (
     "リクエストが多すぎます。1分間に60回までです。少し待ってから再試行してください。"
 )
 REBUILD_CHECK_INTERVAL_SEC = 60.0  # 設定ハッシュの再チェック間隔（秒）
+
+
+def _hit_rate_limit(timestamps: deque, now: float, limit: int) -> bool:
+    """タイムスタンプを記録し、窓内の件数が limit を超えたら True を返す。
+
+    超過時は自分自身のタイムスタンプを取り消す。取り消さないと、拒否された
+    リクエストが窓を埋め続け、送信が止まるまで永久に回復しない（C-3）。
+    """
+    timestamps.append(now)
+    while timestamps and now - timestamps[0] > RATE_LIMIT_WINDOW_SEC:
+        timestamps.popleft()
+    if len(timestamps) > limit:
+        timestamps.pop()
+        return True
+    return False
 
 # 設定ハッシュの対象キー（mcp_server の動的部定義から導出。両者が乖離しない一元化）
 _CONFIG_HASH_KEYS = list(mcp_server.DYNAMIC_INSTRUCTION_KEYS)
@@ -151,23 +168,26 @@ class TokenGuardASGI:
     def __init__(self, inner_app_provider):
         self._inner_app_provider = inner_app_provider
         # レート制限キューはインスタンス属性（本番は単一インスタンス = プロセス全体60req/分）
-        self._rate_timestamps = deque()
+        # C-3: 未認証枠（照合前）と認証枠（照合後）を分離する
+        self._unauth_timestamps = deque()
+        self._auth_timestamps = deque()
+
+    async def _send_429(self, scope, receive, send) -> None:
+        await JSONResponse({"error": RATE_LIMIT_MESSAGE}, status_code=429)(
+            scope, receive, send
+        )
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             await _send_404(scope, receive, send)
             return
 
-        # ── レート制限（トークン照合の前） ──
+        # ── 未認証枠（トークン照合の前）。匿名の第三者によるフラッドで
+        #    正当な接続を閉塞できないよう、過剰なリクエストのみ抑止する ──
         now = time.monotonic()
-        self._rate_timestamps.append(now)
-        while self._rate_timestamps and now - self._rate_timestamps[0] > RATE_LIMIT_WINDOW_SEC:
-            self._rate_timestamps.popleft()  # 60秒より古いタイムスタンプを破棄
-        if len(self._rate_timestamps) > RATE_LIMIT_MAX:
-            logger.warning("MCP rate limit exceeded (%d req/min)", len(self._rate_timestamps))
-            await JSONResponse({"error": RATE_LIMIT_MESSAGE}, status_code=429)(
-                scope, receive, send
-            )
+        if _hit_rate_limit(self._unauth_timestamps, now, RATE_LIMIT_UNAUTH_MAX):
+            logger.warning("MCP unauth rate limit exceeded")
+            await self._send_429(scope, receive, send)
             return
 
         stored = database.get_setting("mcp_api_key") or ""
@@ -187,6 +207,12 @@ class TokenGuardASGI:
             # トークン全体はログに出さない（長さのみ記録）
             logger.warning("MCP token mismatch (len=%d)", len(token))
             await _send_404(scope, receive, send)
+            return
+
+        # ── 認証枠（トークン照合成功後）。C-3: 誤トークンが認証枠を消費しない ──
+        if _hit_rate_limit(self._auth_timestamps, now, RATE_LIMIT_MAX):
+            logger.warning("MCP rate limit exceeded (%d req/min)", len(self._auth_timestamps))
+            await self._send_429(scope, receive, send)
             return
 
         new_root = root + "/" + token
