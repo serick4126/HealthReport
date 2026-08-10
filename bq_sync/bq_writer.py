@@ -258,6 +258,10 @@ def upsert_goal_change_log(
     max_id_row = list(client.query(max_id_sql).result())[0]
     next_id = 1 if max_id_row.max_id is None else int(max_id_row.max_id) + 1
 
+    # Python 3.11 では f-string 式内にバックスラッシュを含められないため
+    # 変数に切り出してから挿入する
+    quoted_old = f'"{old_value}"' if old_value is not None else "NULL"
+
     insert_sql = (
         f"INSERT INTO `{table_ref}` "
         f"(id, log_date, `key`, old_value, new_value, detected_at, synced_at) "
@@ -265,7 +269,7 @@ def upsert_goal_change_log(
         f"{next_id}, "
         f"DATE('{today}'), "
         f"'{_GOAL_KEY_CALORIES}', "
-        f"{'NULL' if old_value is None else f'\"{old_value}\"'}, "
+        f"{quoted_old}, "
         f"'{new_value}', "
         f"CURRENT_TIMESTAMP(), "
         f"CURRENT_TIMESTAMP()"
