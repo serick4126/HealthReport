@@ -73,15 +73,24 @@ class ValidationError(Exception):
         self.code = code
 
 
+def parse_date(date_str: str):
+    """YYYY-MM-DD 形式の日付文字列を date オブジェクトに変換して返す。
+
+    ゼロパディング欠落（"2026-1-1"）の許容など strptime の挙動は既存実装と同一（P-6）。
+    不正な場合は ValidationError（MSG_DATE_FORMAT）を送出する。
+    """
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        raise ValidationError(MSG_DATE_FORMAT, code=CODE_INVALID_DATE_FORMAT)
+
+
 def validate_date(date_str: str, *, allow_future: bool = False) -> None:
     """YYYY-MM-DD 形式の日付を検証。不正な場合は ValidationError を送出。
     allow_future=False（既定）のとき未来日付も拒否する。
     ゼロパディング欠落の許容など strptime の挙動は既存実装と同一（P-6）。
     """
-    try:
-        parsed = datetime.strptime(date_str, "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        raise ValidationError(MSG_DATE_FORMAT, code=CODE_INVALID_DATE_FORMAT)
+    parsed = parse_date(date_str)
     if not allow_future and parsed > datetime.now(JST).date():
         raise ValidationError(MSG_DATE_FUTURE, code=CODE_FUTURE_DATE)
 

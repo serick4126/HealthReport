@@ -7,7 +7,6 @@ import functools
 import inspect
 import json
 import logging
-from datetime import date
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -82,6 +81,8 @@ _DESC_EXERCISE_DESCRIPTION = f"運動内容。最大{_MAX_EXERCISE_DESC}文字�
 # 統合ツール（Step8）用の共通文言（P-12）
 _DESC_RECORD_TYPE = "meal / weight / steps / body_fat / blood_pressure / exercise / memo のいずれか"
 _DESC_RECORD_ID = "list_records で取得したID。memo の場合のみ YYYY-MM-DD 形式の日付を渡す"
+# update_record は memo 非対応のため「memo の場合のみ…」を付けない（delete_record は共用文言のまま）
+_DESC_RECORD_ID_UPDATE = "list_records で取得したID"
 _DESC_FIELDS = (
     "更新するフィールドのオブジェクト。許容キー: "
     "weight: weight_kg / steps: steps / body_fat: body_fat_pct / "
@@ -249,8 +250,9 @@ async def get_daily_summary(
     """
     target_date = date or database.get_logical_today_jst()
     summary = database.get_daily_summary(target_date)
-    summary["daily_calorie_goal"] = int(database.get_setting("daily_calorie_goal") or 0)
-    summary["daily_steps_goal"] = int(database.get_setting("daily_steps_goal") or 0)
+    # 設定行欠落時の既定値は app 全体（database.py）と一致させる
+    summary["daily_calorie_goal"] = int(database.get_setting("daily_calorie_goal") or 1500)
+    summary["daily_steps_goal"] = int(database.get_setting("daily_steps_goal") or 8000)
     return {
         "success": True,
         "tool": "get_daily_summary",
@@ -600,7 +602,7 @@ _RECORD_TYPES: dict[str, dict] = {
 def _resolve_record_fn(info: dict, key: str):
     """ディスパッチテーブルの関数を呼び出し時点でモジュール属性から解決する。
 
-    値は (モジュール, 関数名) のタプルまたは {key}_module のモジュール + 関数名文字列。
+    値は (モジュール, 関数名) のタプル、または info["module"] + 関数名文字列の2形式。
     インポート時に関数オブジェクトを掴むと monkeypatch 等の差し替えが効かず、
     内部例外を再現できないため、呼び出し時に getattr で解決する。
     """
@@ -608,7 +610,7 @@ def _resolve_record_fn(info: dict, key: str):
     if isinstance(value, tuple):
         module, func_name = value
     else:
-        module = info.get(key + "_module", info["module"])
+        module = info["module"]
         func_name = value
     return getattr(module, func_name)
 
@@ -680,11 +682,9 @@ def _fetch_deleted_record(record_type: str, record_id) -> dict:
     """削除前のレコード内容を取得する。取得できない場合はその旨の dict を返す。
 
     取得に失敗しても削除自体は実行する（呼び出し元が継続する — 設計仕様書 §6.13）。
+    全7種別がディスパッチテーブルに read を持つため、取得元は必ず存在する。
     """
-    info = _RECORD_TYPES.get(record_type, {})
-    if "read" not in info:
-        return {"note": _MSG_DELETE_RECORD_FETCH_FAILED}
-    reader = _resolve_record_fn(info, "read")
+    reader = _resolve_record_fn(_RECORD_TYPES[record_type], "read")
     try:
         content = reader(record_id)
     except Exception:
@@ -717,7 +717,8 @@ async def list_records(
     record_service.validate_date(start, allow_future=True)
     record_service.validate_date(end, allow_future=True)
     max_days = _MAX_LIST_DAYS_MEAL if record_type == "meal" else _MAX_LIST_DAYS_OTHER
-    span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+    # strptime ベースでゼロパディング欠落（"2026-1-1"）を許容する（P-6 / validate_date と同一寛容性）
+    span = (record_service.parse_date(end) - record_service.parse_date(start)).days + 1
     if span < 1:
         raise record_service.ValidationError("start_date は end_date 以前の日付を指定してください")
     if span > max_days:
@@ -746,7 +747,7 @@ async def list_records(
 @_safe_tool
 async def update_record(
     record_type: Annotated[str, Field(description=_DESC_RECORD_TYPE)],
-    record_id: Annotated[int, Field(description=_DESC_RECORD_ID)],
+    record_id: Annotated[int, Field(description=_DESC_RECORD_ID_UPDATE)],
     fields: Annotated[dict, Field(description=_DESC_FIELDS)],
 ) -> dict:
     """記録を更新する（食事は対象外。update_meal を使うこと）。
