@@ -34,7 +34,6 @@ REBUILD_CHECK_INTERVAL_SEC = 60.0  # 設定ハッシュの再チェック間隔�
 _CONFIG_HASH_KEYS = list(mcp_server.DYNAMIC_INSTRUCTION_KEYS)
 
 _mcp_app = None  # 内側 Starlette アプリ（lifespan 中に構築）
-_mcp_stack = None  # 内側アプリの lifespan を保持する AsyncExitStack
 _settings_hash: str | None = None  # 最後に検知した設定ハッシュ
 _last_hash_check_at: float | None = None  # 最後にハッシュを確認した時刻（time.monotonic 基準）
 _rebuild_lock = asyncio.Lock()  # 再構築中の並行リクエストを直列化
@@ -46,30 +45,77 @@ def _compute_settings_hash() -> str:
     return hashlib.sha256("\u0000".join(parts).encode("utf-8")).hexdigest()
 
 
-async def _rebuild_server(new_hash: str):
-    """新しい MCPServer と ASGI アプリを構築し、lifespan を差し替える（P-1/P-3）。
-
-    順序は「新 enter → 原子swap → 旧 close」。旧 close を先にすると、swap までの
-    窓で並行リクエストが閉じた旧アプリへ委譲され MCP 内部で 500 になる。
-    enter 失敗時も旧アプリが生きており、`_mcp_app` は常に有効な旧/新のどちらかになる。
-    """
-    global _mcp_app, _mcp_stack, _settings_hash
+def _build_inner_app():
+    """MCPServer と ASGI アプリを構築する（instructions は毎回 DB から生成）。"""
     server = mcp_server.build_mcp_server(instructions=mcp_server.build_instructions())
-    new_app = mcp_server.build_mcp_asgi(server)
-    old_stack = _mcp_stack
-    new_stack = AsyncExitStack()
-    await new_stack.enter_async_context(  # 新 lifespan を先に有効化（P-1）
-        new_app.router.lifespan_context(new_app)
-    )
-    _mcp_stack, _mcp_app, _settings_hash = new_stack, new_app, new_hash  # 原子差し替え
-    if old_stack is not None:
-        await old_stack.aclose()  # 旧 lifespan を最後に閉鎖（P-1）
+    return mcp_server.build_mcp_asgi(server)
+
+
+class _AppHost:
+    """内側アプリ1つの lifespan を専有タスクで保持する。
+
+    MCP SDK の streamable_http_manager.run() は内部で anyio.create_task_group() を
+    使うため、(a) enter したタスクと同じタスクでしか exit できず、(b) 同一タスク内で
+    入れ子でない2つの cancel scope を LIFO 以外の順で閉じられない（C-1・実測）。
+    「1アプリ = 1タスクが生涯を所有する」形にすることで、両制約を構造的に満たす。
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self._ready = asyncio.Event()
+        self._stop = asyncio.Event()
+        self._task = None
+        self._error = None
+
+    async def start(self):
+        self._task = asyncio.create_task(self._run())
+        await self._ready.wait()
+        if self._error is not None:
+            raise self._error
+
+    async def _run(self):
+        try:
+            async with AsyncExitStack() as stack:
+                await stack.enter_async_context(self.app.router.lifespan_context(self.app))
+                self._ready.set()
+                await self._stop.wait()
+        except Exception as exc:
+            self._error = exc
+            logger.error("MCP内側アプリの lifespan が異常終了しました", exc_info=True)
+        finally:
+            self._ready.set()  # 起動失敗時も待機を解除する（start() が永久に待たないように）
+
+    async def stop(self):
+        self._stop.set()
+        if self._task is not None:
+            await self._task
+
+
+_host: "_AppHost | None" = None
+
+
+async def _rebuild(new_hash: str) -> None:
+    """新アプリを別タスクで起動してから差し替え、旧アプリを旧タスク自身に閉じさせる。
+
+    順序は「新start → 原子swap → 旧stop」。この間ずっと有効なアプリが存在するため、
+    並行リクエストが閉じたアプリへ委譲されることがない（P-1）。
+    """
+    global _host, _mcp_app, _settings_hash
+    new_host = _AppHost(_build_inner_app())
+    await new_host.start()  # 新: 自分のタスクで enter
+    old_host = _host
+    _host, _mcp_app, _settings_hash = new_host, new_host.app, new_hash  # 原子swap
+    if old_host is not None:
+        await old_host.stop()  # 旧: 旧タスク自身が exit
     logger.info("MCP server rebuilt (settings changed)")
 
 
 async def _maybe_rebuild():
-    """最大60秒に1回、設定ハッシュを確認し変化時に MCPServer/ASGI を再構築する（P-3）。"""
+    """最大60秒に1回、設定ハッシュを確認し変化時に再構築する。"""
     global _last_hash_check_at
+    if _host is None:
+        logger.debug("MCP app host is not running; skip rebuild")  # P-17
+        return
     now = time.monotonic()
     if _last_hash_check_at is not None and now - _last_hash_check_at < REBUILD_CHECK_INTERVAL_SEC:
         return
@@ -78,9 +124,14 @@ async def _maybe_rebuild():
     if new_hash == _settings_hash:
         return
     async with _rebuild_lock:
-        # ロック待ちの間に別リクエストが再構築済みの可能性があるため再確認する
-        if new_hash != _settings_hash:
-            await _rebuild_server(new_hash)
+        if new_hash == _settings_hash:  # ロック待ちの間に他リクエストが再構築済み
+            return
+        try:
+            await _rebuild(new_hash)
+        except Exception:
+            # P-18: 再構築に失敗しても旧アプリで処理を継続する。
+            # _settings_hash は更新しないため、次のチェック機会に再試行される。
+            logger.error("MCPサーバーの再構築に失敗しました", exc_info=True)
 
 
 async def _inner_app_provider():
@@ -152,28 +203,23 @@ class TokenGuardASGI:
 
 @asynccontextmanager
 async def mcp_lifespan():
-    """内側 MCP アプリを構築し、その lifespan（セッションマネージャ）を開始する。"""
-    global _mcp_app, _mcp_stack, _settings_hash, _last_hash_check_at
-    server = mcp_server.build_mcp_server(instructions=mcp_server.build_instructions())
-    inner = mcp_server.build_mcp_asgi(server)
-    _mcp_app = inner
-    stack = AsyncExitStack()
-    _mcp_stack = stack
+    """内側 MCP アプリのホストタスクを起動し、終了時に停止する。"""
+    global _host, _mcp_app, _settings_hash, _last_hash_check_at
+    _host = _AppHost(_build_inner_app())
+    await _host.start()
+    _mcp_app = _host.app
+    _settings_hash = _compute_settings_hash()
+    _last_hash_check_at = time.monotonic()
     try:
-        await stack.enter_async_context(inner.router.lifespan_context(inner))
-        # 起動時点の設定を基準ハッシュにし、最初のリクエストで無駄な再構築をしない
-        _settings_hash = _compute_settings_hash()
-        _last_hash_check_at = time.monotonic()
         yield
     finally:
-        # 再構築で _mcp_stack が新スタックに差し替わっている可能性があるため、
-        # ローカル変数ではなく現在の _mcp_stack を閉じる（新サーバーのセッション
-        # マネージャの lifespan exit を確実に実行しシャットダウンリークを防ぐ）。
-        # 旧スタックは rebuild 時に close 済みのため二重 close は起きない。
-        current = _mcp_stack
-        if current is not None:
-            await current.aclose()
-        _mcp_stack = None
+        # 再構築で _host が差し替わっている可能性があるため、現在の _host を停止する。
+        # 旧ホストは再構築時に stop 済みのため二重停止は起きない。
+        # テストで TestClient を入れ子にした場合、内側の finally が _host を None に
+        # 戻した後に外側の finally が実行されるため、None ガードで安全にする。
+        if _host is not None:
+            await _host.stop()
+        _host = None
         _mcp_app = None
         _settings_hash = None
         _last_hash_check_at = None
