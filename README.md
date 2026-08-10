@@ -21,7 +21,7 @@ FastAPI + Claude API を使った個人用健康管理 Web アプリです。
 
 | 項目 | 内容 |
 |------|------|
-| バックエンド | Python 3.11+, FastAPI, uvicorn |
+| バックエンド | Python 3.12+, FastAPI, uvicorn |
 | AI | Anthropic Claude API (claude-sonnet-4-6 / claude-haiku-4-5) |
 | DB | SQLite3 (WAL モード) |
 | フロント | HTML / CSS / JavaScript (バニラ) |
@@ -34,7 +34,7 @@ FastAPI + Claude API を使った個人用健康管理 Web アプリです。
 
 ### 前提条件
 
-- Python 3.11 以上
+- Python 3.12 以上
 - [uv](https://docs.astral.sh/uv/) インストール済み
 - Anthropic API キー（[console.anthropic.com](https://console.anthropic.com/) で取得）
 
@@ -55,8 +55,8 @@ winget install --id astral-sh.uv
 git clone https://github.com/serick4126/HealthReport.git
 cd HealthReport
 
-# 2. Python 3.11 のインストール（未インストールの場合のみ。システムの Python を変更しません）
-uv python install 3.11
+# 2. Python 3.12 のインストール（未インストールの場合のみ。システムの Python を変更しません）
+uv python install 3.12
 
 # 3. 仮想環境の作成と依存パッケージのインストール
 uv sync
@@ -125,8 +125,8 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```bash
 sudo apt update && sudo apt upgrade -y
 
-# Python 3.11+
-sudo apt install -y python3.11 python3.11-venv python3-pip git
+# Python 3.12+
+sudo apt install -y python3.12 python3.12-venv python3-pip git
 
 # matplotlib 日本語フォント（グラフ内の日本語表示に必要）
 sudo apt install -y fonts-noto-cjk
@@ -135,8 +135,8 @@ sudo apt install -y fonts-noto-cjk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env   # またはシェルを再起動
 
-# Python 3.11 のインストール
-uv python install 3.11
+# Python 3.12 のインストール
+uv python install 3.12
 ```
 
 ### 2. アプリのデプロイ
@@ -295,7 +295,7 @@ sudo certbot --nginx -d your-domain.com
 ## pip を使う場合（uv が使えない環境）
 
 ```bash
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000

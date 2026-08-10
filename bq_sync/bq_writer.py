@@ -258,8 +258,7 @@ def upsert_goal_change_log(
     max_id_row = list(client.query(max_id_sql).result())[0]
     next_id = 1 if max_id_row.max_id is None else int(max_id_row.max_id) + 1
 
-    # Python 3.11 では f-string 式内にバックスラッシュを含められないため
-    # 変数に切り出してから挿入する
+    # 可読性のため変数に切り出してから挿入する
     quoted_old = f'"{old_value}"' if old_value is not None else "NULL"
 
     insert_sql = (
