@@ -57,20 +57,23 @@ def _compute_settings_hash() -> str:
 
 
 async def _rebuild_server(new_hash: str):
-    """新しい MCPServer と ASGI アプリを構築し、lifespan を差し替える（P-1/P-3）。"""
+    """新しい MCPServer と ASGI アプリを構築し、lifespan を差し替える（P-1/P-3）。
+
+    順序は「新 enter → 原子swap → 旧 close」。旧 close を先にすると、swap までの
+    窓で並行リクエストが閉じた旧アプリへ委譲され MCP 内部で 500 になる。
+    enter 失敗時も旧アプリが生きており、`_mcp_app` は常に有効な旧/新のどちらかになる。
+    """
     global _mcp_app, _mcp_stack, _settings_hash
     server = mcp_server.build_mcp_server(instructions=_instructions)
     new_app = mcp_server.build_mcp_asgi(server)
     old_stack = _mcp_stack
-    if old_stack is not None:
-        await old_stack.aclose()  # 旧 lifespan を exit（リソースリーク防止、P-1）
     new_stack = AsyncExitStack()
-    await new_stack.enter_async_context(  # 新 lifespan を enter（P-1）
+    await new_stack.enter_async_context(  # 新 lifespan を先に有効化（P-1）
         new_app.router.lifespan_context(new_app)
     )
-    _mcp_stack = new_stack
-    _mcp_app = new_app
-    _settings_hash = new_hash
+    _mcp_stack, _mcp_app, _settings_hash = new_stack, new_app, new_hash  # 原子差し替え
+    if old_stack is not None:
+        await old_stack.aclose()  # 旧 lifespan を最後に閉鎖（P-1）
     logger.info("MCP server rebuilt (settings changed)")
 
 
