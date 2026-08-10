@@ -30,17 +30,8 @@ RATE_LIMIT_MESSAGE = (
 )
 REBUILD_CHECK_INTERVAL_SEC = 60.0  # 設定ハッシュの再チェック間隔（秒）
 
-# 設定ハッシュの対象キー（instructions 動的部の元となる設定値）
-_CONFIG_HASH_KEYS = [
-    "user_name",
-    "user_height_cm",
-    "user_gender",
-    "user_birthdate",
-    "daily_calorie_goal",
-    "daily_steps_goal",
-    "day_start_hour",
-    "user_notes",
-]
+# 設定ハッシュの対象キー（mcp_server の動的部定義から導出。両者が乖離しない一元化）
+_CONFIG_HASH_KEYS = list(mcp_server.DYNAMIC_INSTRUCTION_KEYS)
 
 _mcp_app = None  # 内側 Starlette アプリ（lifespan 中に構築）
 _mcp_stack = None  # 内側アプリの lifespan を保持する AsyncExitStack

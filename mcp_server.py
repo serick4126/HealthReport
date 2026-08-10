@@ -149,7 +149,12 @@ _DYNAMIC_INSTRUCTION_FIELDS = [
     ("daily_calorie_goal", "目標カロリー: {} kcal/日"),
     ("daily_steps_goal", "目標歩数: {} 歩/日"),
     ("day_start_hour", "1日の開始時刻（day_start_hour）: {} 時"),
+    ("user_notes", "ユーザーからの注意事項: {}"),
 ]
+
+# 設定ハッシュ監視（mcp_auth._CONFIG_HASH_KEYS）と共有する動的部の入力キー。
+# _DYNAMIC_INSTRUCTION_FIELDS から導出するため、キー追加時はフィールド表の1箇所で済む。
+DYNAMIC_INSTRUCTION_KEYS = tuple(key for key, _ in _DYNAMIC_INSTRUCTION_FIELDS)
 
 
 def _build_instructions_dynamic() -> list[str]:
@@ -159,9 +164,6 @@ def _build_instructions_dynamic() -> list[str]:
         value = database.get_setting(key)
         if value:
             lines.append(label.format(value))
-    notes = database.get_setting("user_notes")
-    if notes:
-        lines.append(f"ユーザーからの注意事項: {notes}")
     return lines
 
 
