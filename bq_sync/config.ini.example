@@ -1,0 +1,18 @@
+; bq_sync 設定ファイルの雛形。
+; 本ファイルをコピーして config.ini を作成する（config.ini は .gitignore 対象）。
+;   cp bq_sync/config.ini.example bq_sync/config.ini
+
+[sqlite]
+; 同期元 SQLite の絶対パス
+db_path = /path/to/HealthReport/health.db
+
+[bigquery]
+; 同期先 BigQuery のプロジェクトID・データセットID
+project_id = your-gcp-project-id
+dataset_id = your_dataset_id
+
+[sync]
+; 初回同期の開始日（YYYY-MM-DD）
+initial_from_date = 2026-01-01
+; 差分同期でさかのぼる日数
+lookback_days = 3

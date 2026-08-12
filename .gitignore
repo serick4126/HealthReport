@@ -13,7 +13,6 @@ test/
 samples/
 memory/
 logs/
-仕様書/
 設計書/
 *.lock
 CLAUDE.md
@@ -26,3 +25,4 @@ run.bat
 docs/
 service_account_writer.json
 bq_sync/service_account_writer.json
+bq_sync/config.ini
